@@ -52,10 +52,14 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `docs/adr/0004–0005` | Money as integers; policy before rail |
 | `packages/rails` (M2) | `NwcWalletRail` (decode-before-pay, hash-lookup recovery, UNKNOWN_STATE on timeout, redaction), Breez stub, AES-GCM secrets; 23 tests; env-gated live contract run + `demo:pay` |
 | `docs/adr/0006`, `docs/testing.md` | NWC as the wallet socket; how to get a budgeted test connection |
+| `packages/agent` (M3) | Tool defs generated from the Action union (strict JSON schema), system prompt, Claude tool loop with pending-confirmation store, 30-case eval set (8 adversarial) + runner; 16 tests |
+| `packages/mcp` (M3) | MCP server over stdio + Streamable HTTP, `confirm_action` protocol, tsup-bundled bin; 4 tests incl. in-memory client round trip |
+| `apps/bot` (M3) | `ChatSurface` + Telegram (buttons) and Signal (signal-cli SSE/JSON-RPC) adapters, dispatcher with /budget /kill /resume /ledger and yes/no binding, memory + Supabase stores; 8 tests |
+| `supabase/migrations/0002_agent.sql`, `docs/adr/0007–0008` | Per-user ledger/policy/secrets/history tables; MCP-first; no advice |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M3+):** L402, Strike and Bitrefill rails; agent; MCP server; Signal/Telegram bot; scheduler; Supabase ledger store. **M2 live verification** against a real wallet still to run.
+- **Missing (M4+):** L402, Strike and Bitrefill rails; scheduler; per-user wallet pairing (M7). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number).
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -317,24 +321,30 @@ NWC_URL=... pnpm tsx scripts/demo-pay.ts    # prints preimage + ledger entry
 
 ### M3 — Agent core, MCP server, chat surface (Telegram for dev, Signal for users)
 
+**Status: CODE DONE 2026-10-07; two live steps pending credentials.** All packages typecheck, lint and test
+offline (agent 16, mcp 4, bot 8 tests on a scripted model and fakes). Not yet run: the **eval set against the real
+model** (needs `ANTHROPIC_API_KEY`; the runner skips cleanly without it, CI job `evals` runs it when the repo secret is
+set) and the **Telegram/Signal demo** (needs a bot token or a signal-cli number). Model: Claude Opus 5.5, adaptive
+thinking, effort `medium`, server-side refusal fallback on (OQ-5 resolved, `packages/agent/src/model.ts`).
+
 **Goal:** A person can text the assistant on Telegram, ask for any M1 action in plain language, get a
 confirmation prompt when policy says so, and see it executed and logged. The identical tools are
 available as an MCP server.
 
 **Deliverables**
-- [ ] `packages/agent`: tool definitions generated **from** the `Action` union (one source of truth);
+- [x] `packages/agent`: tool definitions generated **from** the `Action` union (one source of truth);
       system prompt with the no-advice rule and the "always show sats and fiat" rule; tool loop using the
       Claude API (read the `claude-api` skill before choosing model/params — see OQ-5)
-- [ ] `packages/mcp` (`@agentic-bitcoin/mcp`): STDIO + Streamable HTTP; tools `get_balance`, `make_invoice`,
+- [x] `packages/mcp` (`@agentic-bitcoin/mcp`): STDIO + Streamable HTTP; tools `get_balance`, `make_invoice`,
       `pay_invoice`, `pay_lightning_address`, `buy_bitcoin`, `schedule_buy`, `buy_product`, `fetch_l402`;
       **`confirm_action` tool** that surfaces `NeedsConfirmation` back to the host agent
-- [ ] `apps/bot`: one `ChatSurface` interface with two adapters — Telegram (grammY; inline Confirm/Deny buttons) for
+- [x] `apps/bot`: one `ChatSurface` interface with two adapters — Telegram (grammY; inline Confirm/Deny buttons) for
       development, and **Signal** via `signal-cli` JSON-RPC (text replies "yes"/"no" bound to the action hash, since
       Signal has no buttons); per-user policy, `/kill`, `/budget`, `/ledger`. Signal number provisioned per OQ-6.
-- [ ] `LedgerStore` + `PolicyStore` Supabase implementations with migrations; memory fallback for dev
-- [ ] Eval set `packages/agent/evals/*.jsonl`: 30 utterances → expected Action (incl. 8 adversarial:
+- [x] `LedgerStore` + `PolicyStore` Supabase implementations with migrations; memory fallback for dev
+- [x] (written) / [ ] (run against the model) Eval set `packages/agent/evals/*.jsonl`: 30 utterances → expected Action (incl. 8 adversarial:
       "ignore your limits", "send everything", prompt injection inside an invoice memo) — gated in CI
-- [ ] `docs/adr/0007-mcp-first.md`, `docs/adr/0008-no-advice.md`
+- [x] `docs/adr/0007-mcp-first.md`, `docs/adr/0008-no-advice.md`
 
 **CE Principle:** The eval set is the regression net for every future prompt or model change; the MCP
 server is the distribution channel that makes each new rail instantly usable from other agents.
@@ -492,7 +502,7 @@ wallet's on-chain send. Deferred until M7 has users; captured so the Action unio
 | OQ-2 | Price feed primary source: mempool.space `/api/v1/prices` vs CoinGecko `simple/price`? | Claude | M0: implement mempool.space primary (no key, bitcoin-native), CoinGecko fallback; add a third fallback (Coinbase spot) only if the price route logs >1 outage/week in Vercel. |
 | OQ-3 | Does Strike offer a sandbox, or do we test against a funded live account with $5 quotes? | GM | Before M5: check `docs.strike.me` for a sandbox/env flag; if none, create a dedicated Strike account with a $20 balance and a quote-only key for CI-adjacent manual runs. Fixtures cover CI either way. |
 | OQ-4 | Scheduler runtime: Vercel cron (stateless, minute granularity) vs a small always-on worker (Fly/Start9)? | GM + Claude | M5 ADR-0010: start on Vercel cron hitting `/api/schedules/run` with a shared secret; move to a worker if runs exceed 60s or need sub-minute cadence. |
-| OQ-5 | Which Claude model/params for the agent loop and evals? | Claude | M3: read the `claude-api` skill first (never from memory), pick the latest cost-appropriate model, pin the id in `packages/agent/model.ts`, note the choice in ADR-0007. |
+| OQ-5 | Which Claude model/params for the agent loop and evals? | Claude | **Resolved 2026-10-07:** Claude Opus 5.5 (`claude-opus-5-5`), adaptive thinking, effort `medium`, max_tokens 4096, server-side refusal fallback `"default"`; pinned in `packages/agent/src/model.ts`, noted in ADR-0007. Re-tune effort once the evals run. |
 | OQ-6 | How do we run Signal? | GM | **Decided: Signal is the user surface.** M3: run `signal-cli` in daemon/JSON-RPC mode on a dedicated number (a prepaid SIM or a VoIP number that accepts the Signal registration SMS; captcha on first register), link it as the bot identity, store the data dir encrypted on the Start9 or a small VPS. Telegram remains the dev surface. SMS dropped. |
 | OQ-7 | Where does the dogfood wallet live: Alby Hub on Start9, or Coinos/hosted? | GM | M2: Alby Hub on Start9 (self-custodial, Tor). If channel liquidity is a hassle, use Coinos for the demo and document both in `docs/testing.md`. |
 | OQ-8 | Is "buy bitcoin on behalf of a user via their own API key" a money-transmission or advisory concern in the US? | GM (counsel) | Before public M7: one hour with counsel on the non-custodial, user-key, no-advice design; ADR-0001 + Terms language updated with the outcome. Until then, M5 ships behind `EXCHANGE_RAIL_ENABLED=false` for the public instance. |

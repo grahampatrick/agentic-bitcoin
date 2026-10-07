@@ -1,0 +1,34 @@
+{
+  "name": "@agentic-bitcoin/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server exposing the Agentic Bitcoin tools (same definitions as the agent) over stdio and Streamable HTTP.",
+  "bin": {
+    "agentic-bitcoin-mcp": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsup",
+    "test": "vitest run",
+    "start": "tsx src/cli.ts",
+    "smoke": "node scripts/smoke.mjs dist/cli.js"
+  },
+  "dependencies": {
+    "@agentic-bitcoin/agent": "workspace:*",
+    "@agentic-bitcoin/core": "workspace:*",
+    "@agentic-bitcoin/rails": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.1"
+  },
+  "devDependencies": {
+    "@agentic-bitcoin/fixtures": "workspace:*",
+    "@types/node": "22.10.7",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8",
+    "tsup": "8.3.5"
+  }
+}
