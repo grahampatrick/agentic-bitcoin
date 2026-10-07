@@ -58,6 +58,30 @@ importers:
         specifier: 5.7.3
         version: 5.7.3
 
+  packages/core:
+    devDependencies:
+      '@agentic-bitcoin/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+      '@types/node':
+        specifier: 22.10.7
+        version: 22.10.7
+      typescript:
+        specifier: 5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.7)
+
+  packages/fixtures:
+    devDependencies:
+      '@types/node':
+        specifier: 22.10.7
+        version: 22.10.7
+      typescript:
+        specifier: 5.7.3
+        version: 5.7.3
+
 packages:
 
   '@ampproject/remapping@2.3.0':

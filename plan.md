@@ -17,8 +17,10 @@ simplicity of instinct.com and speaks in the words of the Bitcoin whitepaper.
 >   new money plumbing.
 > - **Every action passes the policy engine.** Budget caps, allowlists, confirm-above-threshold,
 >   kill switch, append-only ledger. The LLM never touches a rail directly.
-> - **The agent is an MCP server first, a chatbot second.** The same tool set powers our Telegram/SMS
+> - **The agent is an MCP server first, a chatbot second.** The same tool set powers our chat
 >   assistant *and* any third-party agent (Claude Code, Claude Desktop, OpenAI Agents SDK).
+> - **Signal is the chat surface** (GM, 2026-10-07). Telegram stays as the zero-cost dev surface because
+>   its bot API needs no phone number; Signal ships via `signal-cli` (JSON-RPC daemon) on a dedicated number. SMS is dropped.
 > - **No advice.** The agent executes instructions ("buy $25 every Friday"); it never recommends
 >   when or whether to buy. Copy and system prompt both say so.
 > - **Landing = instinct.com structure, whitepaper language.** Single column, no nav, no hero image,
@@ -45,10 +47,13 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `apps/web/lib/waitlist/*`, `/api/waitlist`, `/text` | Email **or npub** waitlist, memory store with Supabase opt-in; 17 tests |
 | `/privacy`, `/terms` | Plain-language, non-custodial, no-advice |
 | `docs/adr/0001–0003` | Open-source/non-custodial, clone boundaries, fonts |
+| `packages/core` (M1) | `money` (sats/cents as bigint, snapshot conversions), `action` (9-kind union, canonical hash), `policy` (ordered gates), `ledger` (event-sourced, window budget), `rails` (4 contracts + typed errors), `fakes`, `executor`; 85 tests incl. contract suite |
+| `packages/fixtures` (M1) | Actions, policies, synthetic invoices, L402 challenge, Strike quote, Bitrefill invoice shape, price snapshot |
+| `docs/adr/0004–0005` | Money as integers; policy before rail |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M1+):** action contract, policy engine, ledger, fixtures package, wallet/exchange/goods/compute rails, agent, MCP server, bot, scheduler.
+- **Missing (M2+):** real rails (NWC, L402, Strike, Bitrefill), agent, MCP server, Signal/Telegram bot, scheduler, Supabase ledger store.
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -233,25 +238,27 @@ curl -s localhost:3900/api/price | jq -e '.usd > 0 and .satsPerDollar > 0'
 
 ### M1 — Action contract, policy engine, ledger (pure, offline)
 
+**Status: DONE 2026-10-07.** Also shipped (not in the original list): `executor.ts`, the one path from Action to rail, with confirmation-hash binding and idempotent replay; `FakeGoodsRail`; `describeExchangeRail` / `describeGoodsRail` contract suites.
+
 **Goal:** A dependency-free core package where every bitcoin action is a typed, policy-checked,
 ledger-recorded request — testable with zero network.
 
 **Deliverables**
-- [ ] `packages/core/src/action.ts`: discriminated union `Action = PayInvoice | PayAddress | MakeInvoice |
+- [x] `packages/core/src/action.ts`: discriminated union `Action = PayInvoice | PayAddress | MakeInvoice |
       GetBalance | BuyBitcoin | ScheduleBuy | BuyProduct | PayL402 | CancelSchedule`, all amounts `bigint` sats
       or integer cents, `idempotencyKey`, `requestedBy: 'user' | 'schedule' | 'agent'`
-- [ ] `packages/core/src/policy.ts`: `Policy { dailyCapSats, perActionCapSats, confirmAboveSats,
+- [x] `packages/core/src/policy.ts`: `Policy { dailyCapSats, perActionCapSats, confirmAboveSats,
       allowDestinations[], denyDestinations[], killSwitch, rails: {wallet, exchange, goods, compute}: boolean }`
       and `evaluate(action, policy, ledgerWindow) → Allow | NeedsConfirmation | Deny(reason)`
-- [ ] `packages/core/src/ledger.ts`: append-only `LedgerEntry { id, action, decision, outcome, preimage?, at }`;
+- [x] `packages/core/src/ledger.ts`: append-only `LedgerEntry { id, action, decision, outcome, preimage?, at }`;
       in-memory store + `LedgerStore` interface (Supabase impl in M3)
-- [ ] `packages/core/src/rails.ts`: adapter interfaces — `WalletRail`, `ExchangeRail`, `GoodsRail`,
+- [x] `packages/core/src/rails.ts`: adapter interfaces — `WalletRail`, `ExchangeRail`, `GoodsRail`,
       `ComputeRail` — and `FakeWalletRail`, `FakeExchangeRail` deterministic fakes
-- [ ] `packages/fixtures`: canonical actions, policies, invoices (`lnbc…` test vectors), L402 challenge
+- [x] `packages/fixtures`: canonical actions, policies, invoices (`lnbc…` test vectors), L402 challenge
       headers, Strike quote JSON, Bitrefill invoice JSON — **shared by every package's tests**
-- [ ] Contract test suite `packages/core/test/rail-contract.ts` (`describeWalletRail(factory)`) that any
+- [x] Contract test suite `packages/core/test/rail-contract.ts` (`describeWalletRail(factory)`) that any
       real adapter must pass
-- [ ] `docs/adr/0003-money-as-integers.md`, `docs/adr/0004-policy-before-rail.md`
+- [x] `docs/adr/0004-money-as-integers.md`, `docs/adr/0005-policy-before-rail.md` (numbers shifted: 0003 is fonts)
 
 **CE Principle:** Fixtures + the contract suite mean M2/M4/M5/M6 each ship one adapter file and
 reuse the same tests; the policy engine means the LLM layer (M3) can be wired with zero new safety code.
@@ -282,7 +289,7 @@ real wallet over Nostr Wallet Connect, with the wallet's own budget as a second 
 - [ ] `scripts/demo-pay.ts`: "pay 21 sats to gm@<lightning address>" end-to-end through policy → ledger → NWC
 - [ ] Test harness: docker-compose `polar`/LNbits regtest **or** signet Alby Hub instructions in `docs/testing.md`;
       contract suite runs against it in `pnpm test:wallet` (opt-in, needs `NWC_URL`)
-- [ ] `docs/adr/0005-nwc-as-wallet-socket.md`
+- [ ] `docs/adr/0006-nwc-as-wallet-socket.md`
 
 **CE Principle:** Every later rail pays through this file. The encrypted-secret pattern is reused for
 Strike and Bitrefill keys.
@@ -301,7 +308,7 @@ NWC_URL=... pnpm tsx scripts/demo-pay.ts    # prints preimage + ledger entry
 
 ---
 
-### M3 — Agent core, MCP server, Telegram surface
+### M3 — Agent core, MCP server, chat surface (Telegram for dev, Signal for users)
 
 **Goal:** A person can text the assistant on Telegram, ask for any M1 action in plain language, get a
 confirmation prompt when policy says so, and see it executed and logged. The identical tools are
@@ -314,11 +321,13 @@ available as an MCP server.
 - [ ] `packages/mcp` (`@agentic-bitcoin/mcp`): STDIO + Streamable HTTP; tools `get_balance`, `make_invoice`,
       `pay_invoice`, `pay_lightning_address`, `buy_bitcoin`, `schedule_buy`, `buy_product`, `fetch_l402`;
       **`confirm_action` tool** that surfaces `NeedsConfirmation` back to the host agent
-- [ ] `apps/bot`: Telegram bot (grammY), inline Confirm/Deny buttons, per-user policy, `/kill`, `/budget`, `/ledger`
+- [ ] `apps/bot`: one `ChatSurface` interface with two adapters — Telegram (grammY; inline Confirm/Deny buttons) for
+      development, and **Signal** via `signal-cli` JSON-RPC (text replies "yes"/"no" bound to the action hash, since
+      Signal has no buttons); per-user policy, `/kill`, `/budget`, `/ledger`. Signal number provisioned per OQ-6.
 - [ ] `LedgerStore` + `PolicyStore` Supabase implementations with migrations; memory fallback for dev
 - [ ] Eval set `packages/agent/evals/*.jsonl`: 30 utterances → expected Action (incl. 8 adversarial:
       "ignore your limits", "send everything", prompt injection inside an invoice memo) — gated in CI
-- [ ] `docs/adr/0006-mcp-first.md`, `docs/adr/0007-no-advice.md`
+- [ ] `docs/adr/0007-mcp-first.md`, `docs/adr/0008-no-advice.md`
 
 **CE Principle:** The eval set is the regression net for every future prompt or model change; the MCP
 server is the distribution channel that makes each new rail instantly usable from other agents.
@@ -349,7 +358,7 @@ demo it by buying inference from a Lightning-paid LLM endpoint.
 - [ ] Price guard: refuse any 402 above `perActionCapSats` without confirmation; log sats/request in ledger
 - [ ] `scripts/demo-compute.ts` against `llm402.ai` (and LightningProx if reachable); record cost per call
 - [ ] MCP tool `fetch_l402` + agent skill: "ask the sats-paid model to summarise X"
-- [ ] `docs/adr/0008-l402-over-x402.md` (why Lightning/L402, not Coinbase's USDC-on-Base x402, for a bitcoin product)
+- [ ] `docs/adr/0009-l402-over-x402.md` (why Lightning/L402, not Coinbase's USDC-on-Base x402, for a bitcoin product)
 
 **CE Principle:** `fetchL402` is a generic paid-HTTP primitive; any future "buy data / buy API /
 buy GPU seconds" is just a URL.
@@ -383,7 +392,7 @@ scoped API key, and the schedule survives restarts.
 - [ ] Optional "withdraw to Lightning" step after a buy (Strike → user's NWC wallet) so bought sats leave the exchange
 - [ ] `scripts/demo-dca.ts`: create a $5 quote → execute → ledger entry (needs a funded Strike account; see OQ-3)
 - [ ] Agent: `buy_bitcoin`, `schedule_buy`, `cancel_schedule` with explicit no-advice guardrails in the prompt
-- [ ] `docs/adr/0009-schedules-are-actions.md`
+- [ ] `docs/adr/0010-schedules-are-actions.md`
 
 **CE Principle:** Schedules reuse policy + ledger unchanged; a second exchange adapter is a one-file PR.
 
@@ -414,7 +423,7 @@ wallet, and the agent only reports success once the code is actually delivered.
       sats and fiat, and merchant in the confirm card
 - [ ] `scripts/demo-goods.ts`: smallest purchasable item (a $1–5 top-up or gift card)
 - [ ] Agent: `search_products`, `buy_product`; refuses unknown merchants; MCP exposes the same
-- [ ] `docs/adr/0010-payment-is-not-delivery.md`
+- [ ] `docs/adr/0011-payment-is-not-delivery.md`
 
 **CE Principle:** The "invoice → pay → poll → deliver" state machine is the template for every
 future merchant (domains, eSIMs, Fold, Oshi, Nostr marketplaces).
@@ -438,7 +447,7 @@ BITREFILL_API_KEY=... NWC_URL=... pnpm tsx scripts/demo-goods.ts   # prints mask
 budget, and performs their first action within five minutes.
 
 **Deliverables**
-- [ ] `/text` becomes a real onboarding flow: Telegram deep link (SMS via Twilio behind a flag — OQ-6)
+- [ ] `/text` becomes a real onboarding flow: a Signal link (`https://signal.me/#p/+1…`) with a QR, Telegram deep link as the fallback (OQ-6)
 - [ ] Wallet pairing: NWC URI paste **or** QR; guided creation of a *budgeted, expiring* connection
       (Alby Hub / Coinos walkthroughs with screenshots); refuse unbudgeted strings without an explicit override
 - [ ] First-run policy wizard: daily cap, confirm threshold, which rails to enable
@@ -451,7 +460,7 @@ budget, and performs their first action within five minutes.
 
 **Key pitfalls**
 - Pairing an unbudgeted wallet is the single biggest user risk — make the budgeted path the only easy path.
-- Telegram and SMS deliver prompt injection in-band; the M3 adversarial evals must cover both surfaces.
+- Signal and Telegram deliver prompt injection in-band; the M3 adversarial evals must cover both surfaces.
 
 **Definition of Done**
 ```bash
@@ -475,9 +484,9 @@ wallet's on-chain send. Deferred until M7 has users; captured so the Action unio
 | OQ-1 | Which OFL fonts stand in for Aime (serif, 24px body) and Melange (sans, legal)? | GM | **Resolved 2026-10-07:** compared Newsreader, Source Serif 4, Instrument Serif, Fraunces at 24px; Newsreader + Inter, vendored (ADR-0003). GM can veto by swapping the files. |
 | OQ-2 | Price feed primary source: mempool.space `/api/v1/prices` vs CoinGecko `simple/price`? | Claude | M0: implement mempool.space primary (no key, bitcoin-native), CoinGecko fallback; add a third fallback (Coinbase spot) only if the price route logs >1 outage/week in Vercel. |
 | OQ-3 | Does Strike offer a sandbox, or do we test against a funded live account with $5 quotes? | GM | Before M5: check `docs.strike.me` for a sandbox/env flag; if none, create a dedicated Strike account with a $20 balance and a quote-only key for CI-adjacent manual runs. Fixtures cover CI either way. |
-| OQ-4 | Scheduler runtime: Vercel cron (stateless, minute granularity) vs a small always-on worker (Fly/Start9)? | GM + Claude | M5 ADR-0009: start on Vercel cron hitting `/api/schedules/run` with a shared secret; move to a worker if runs exceed 60s or need sub-minute cadence. |
-| OQ-5 | Which Claude model/params for the agent loop and evals? | Claude | M3: read the `claude-api` skill first (never from memory), pick the latest cost-appropriate model, pin the id in `packages/agent/model.ts`, note the choice in ADR-0006. |
-| OQ-6 | Telegram-only at launch or SMS too? | GM | M7: Telegram first (zero cost, existing Hermes experience). Add Twilio SMS behind `SMS_ENABLED` only after 25 Telegram users; SMS adds A2P 10DLC registration lead time — start that paperwork at M5. |
+| OQ-4 | Scheduler runtime: Vercel cron (stateless, minute granularity) vs a small always-on worker (Fly/Start9)? | GM + Claude | M5 ADR-0010: start on Vercel cron hitting `/api/schedules/run` with a shared secret; move to a worker if runs exceed 60s or need sub-minute cadence. |
+| OQ-5 | Which Claude model/params for the agent loop and evals? | Claude | M3: read the `claude-api` skill first (never from memory), pick the latest cost-appropriate model, pin the id in `packages/agent/model.ts`, note the choice in ADR-0007. |
+| OQ-6 | How do we run Signal? | GM | **Decided: Signal is the user surface.** M3: run `signal-cli` in daemon/JSON-RPC mode on a dedicated number (a prepaid SIM or a VoIP number that accepts the Signal registration SMS; captcha on first register), link it as the bot identity, store the data dir encrypted on the Start9 or a small VPS. Telegram remains the dev surface. SMS dropped. |
 | OQ-7 | Where does the dogfood wallet live: Alby Hub on Start9, or Coinos/hosted? | GM | M2: Alby Hub on Start9 (self-custodial, Tor). If channel liquidity is a hassle, use Coinos for the demo and document both in `docs/testing.md`. |
 | OQ-8 | Is "buy bitcoin on behalf of a user via their own API key" a money-transmission or advisory concern in the US? | GM (counsel) | Before public M7: one hour with counsel on the non-custodial, user-key, no-advice design; ADR-0001 + Terms language updated with the outcome. Until then, M5 ships behind `EXCHANGE_RAIL_ENABLED=false` for the public instance. |
 | OQ-9 | Exact Bitrefill Personal API invoice/pay/poll endpoints and whether Lightning invoices are returned directly? | Claude | M6 first task: read `docs.bitrefill.com` and `bitrefill/agents` repo; encode the real shapes into `packages/fixtures` before writing the adapter. |
@@ -507,7 +516,7 @@ Every PR is reviewed against these:
 - **CI gates** (`.github/workflows/ci.yml`): `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, gitleaks, quote-drift test (whitepaper phrases verbatim), brand-token drift check, and from M3 `pnpm test:evals`. Red = no merge.
 - **Shared fixtures** (`packages/fixtures`): invoices, L402 challenges, Strike quotes, Bitrefill orders, policies, ledger windows — consumed by core, rails, agent, bot. A fixture change that breaks any package is caught in one run.
 - **Contract suite** (`describeWalletRail`, `describeExchangeRail`, `describeGoodsRail`): real adapters must pass the exact tests fakes pass; new rail = one file + fixtures.
-- **ADRs at decision time** (`docs/adr/NNNN-*.md`): numbered above per milestone; written in the same PR as the decision, never after.
+- **ADRs at decision time** (`docs/adr/NNNN-*.md`): numbered above per milestone (0003 became the fonts ADR in M0, so M1+ numbers shifted by one); written in the same PR as the decision, never after.
 - **Demo per milestone**: a `scripts/demo-*.ts` that a stranger can run with env vars, printing a ledger id. Also the proof in each Definition of Done.
 - **Ledger as the oracle**: every demo and eval asserts on ledger entries, so observability and tests share one source of truth.
 - **Status page** (M7) turns external-dependency drift into a visible signal rather than a surprise.

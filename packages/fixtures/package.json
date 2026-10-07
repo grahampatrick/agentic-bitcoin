@@ -1,0 +1,10 @@
+{
+  "name": "@agentic-bitcoin/fixtures",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared test fixtures — one truth consumed by core, rails, agent and bot suites.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "devDependencies": { "@types/node": "22.10.7", "typescript": "5.7.3" }
+}

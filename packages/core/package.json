@@ -1,0 +1,21 @@
+{
+  "name": "@agentic-bitcoin/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic Bitcoin domain core — actions, policy engine, ledger, rail contracts, executor. Pure functions, no I/O, no dependencies.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./contract": "./test/rail-contract.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@agentic-bitcoin/fixtures": "workspace:*",
+    "@types/node": "22.10.7",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
+  }
+}

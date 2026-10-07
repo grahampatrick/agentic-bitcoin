@@ -51,6 +51,8 @@ pnpm build       # next build
 
 ```
 apps/web            Next 15 landing: /, /text, /privacy, /terms, /api/price, /api/waitlist
+packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
+packages/fixtures   shared test data for every package
 packages/brand      design tokens → tokens.css
 docs/adr            architecture decision records
 supabase/migrations waitlist table
