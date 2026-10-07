@@ -50,10 +50,12 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `packages/core` (M1) | `money` (sats/cents as bigint, snapshot conversions), `action` (9-kind union, canonical hash), `policy` (ordered gates), `ledger` (event-sourced, window budget), `rails` (4 contracts + typed errors), `fakes`, `executor`; 85 tests incl. contract suite |
 | `packages/fixtures` (M1) | Actions, policies, synthetic invoices, L402 challenge, Strike quote, Bitrefill invoice shape, price snapshot |
 | `docs/adr/0004–0005` | Money as integers; policy before rail |
+| `packages/rails` (M2) | `NwcWalletRail` (decode-before-pay, hash-lookup recovery, UNKNOWN_STATE on timeout, redaction), Breez stub, AES-GCM secrets; 23 tests; env-gated live contract run + `demo:pay` |
+| `docs/adr/0006`, `docs/testing.md` | NWC as the wallet socket; how to get a budgeted test connection |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M2+):** real rails (NWC, L402, Strike, Bitrefill), agent, MCP server, Signal/Telegram bot, scheduler, Supabase ledger store.
+- **Missing (M3+):** L402, Strike and Bitrefill rails; agent; MCP server; Signal/Telegram bot; scheduler; Supabase ledger store. **M2 live verification** against a real wallet still to run.
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -278,18 +280,23 @@ pnpm typecheck && pnpm lint
 
 ### M2 — Wallet rail: NWC adapter (real sats, test network)
 
+**Status: CODE DONE 2026-10-07; live run pending a connection string.** Unit suite (23 tests, fake NIP-47 client) and
+the contract suite on fakes are green. `pnpm test:wallet` and `demo:pay` are wired and env-gated but have **not** been
+run against a real wallet yet: GM needs to issue a budgeted NWC string (docs/testing.md). Also shipped: core
+`UNKNOWN_STATE` error code — a timed-out payment stays `pending` in the ledger (budget reserved) instead of `failed`.
+
 **Goal:** The core can check balance, make an invoice, and pay an invoice/Lightning address through a
 real wallet over Nostr Wallet Connect, with the wallet's own budget as a second fence.
 
 **Deliverables**
-- [ ] `packages/rails/src/wallet/nwc.ts` using `@getalby/sdk` (`get_balance`, `make_invoice`, `pay_invoice`,
+- [x] `packages/rails/src/wallet/nwc.ts` using `@getalby/sdk` (`get_balance`, `make_invoice`, `pay_invoice`,
       `lookup_invoice`, `list_transactions`, `pay_keysend` optional); Lightning-address → LNURL-pay resolution
-- [ ] `packages/rails/src/wallet/breez.ts` **stub + ADR** (nodeless fallback; implement only if NWC proves insufficient)
-- [ ] Connection-string storage: encrypted at rest (libsodium secretbox, key from env), never logged, redacted in errors
-- [ ] `scripts/demo-pay.ts`: "pay 21 sats to gm@<lightning address>" end-to-end through policy → ledger → NWC
-- [ ] Test harness: docker-compose `polar`/LNbits regtest **or** signet Alby Hub instructions in `docs/testing.md`;
+- [x] `packages/rails/src/wallet/breez.ts` **stub + ADR** (nodeless fallback; implement only if NWC proves insufficient)
+- [x] Connection-string storage: encrypted at rest (AES-256-GCM via node:crypto, not libsodium — ADR-0006; key from env), never logged, redacted in errors
+- [x] `packages/rails/scripts/demo-pay.ts` (`pnpm --filter @agentic-bitcoin/rails demo:pay`): "pay 21 sats to gm@<lightning address>" end-to-end through policy → ledger → NWC
+- [x] (code) / [ ] (live run) Test harness: docker-compose `polar`/LNbits regtest **or** signet Alby Hub instructions in `docs/testing.md`;
       contract suite runs against it in `pnpm test:wallet` (opt-in, needs `NWC_URL`)
-- [ ] `docs/adr/0006-nwc-as-wallet-socket.md`
+- [x] `docs/adr/0006-nwc-as-wallet-socket.md`
 
 **CE Principle:** Every later rail pays through this file. The encrypted-secret pattern is reused for
 Strike and Bitrefill keys.

@@ -18,6 +18,8 @@ export type RailErrorCode =
   | "AMOUNT_OUT_OF_RANGE"
   | "EXPIRED"
   | "BAD_CONFIG"
+  /** The rail cannot say whether money moved (e.g. timeout after pay). Caller must NOT retry blindly. */
+  | "UNKNOWN_STATE"
 
 export class RailError extends Error {
   readonly code: RailErrorCode

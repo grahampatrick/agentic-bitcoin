@@ -5,7 +5,7 @@ import { type Confirmation, execute } from "./executor"
 import { FakeExchangeRail, FakeGoodsRail, FakeWalletRail } from "./fakes"
 import { InMemoryLedgerStore, readEntries } from "./ledger"
 import type { Policy } from "./policy"
-import type { ComputeRail, Rails } from "./rails"
+import { type ComputeRail, RailError, type Rails } from "./rails"
 
 const now = clockAt()
 let n = 0
@@ -186,6 +186,29 @@ describe("execute: daily cap from the ledger window", () => {
       newId,
     })
     expect(b.status).toBe("succeeded")
+  })
+})
+
+describe("execute: unknown state", () => {
+  it("keeps the entry pending (budget reserved) when the rail cannot say whether money moved", async () => {
+    const wallet = new FakeWalletRail({ now })
+    const unknown: typeof wallet = Object.assign(
+      Object.create(Object.getPrototypeOf(wallet)),
+      wallet,
+      {
+        payInvoice: async () => {
+          throw new RailError("nwc", "UNKNOWN_STATE", "maybe in flight")
+        },
+      },
+    )
+    const { run, ledger } = setup(POLICIES.open, { wallet: unknown })
+    const res = await run(ACTIONS.tip)
+    expect(res).toMatchObject({ status: "failed", code: "UNKNOWN_STATE" })
+    const [e] = await readEntries(ledger)
+    expect(e?.outcome).toBe("pending")
+    // a retry with the same key is replayed, never re-paid
+    const again = await run(ACTIONS.tip)
+    expect(again).toMatchObject({ status: "succeeded", replayed: true })
   })
 })
 

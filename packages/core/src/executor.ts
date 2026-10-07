@@ -112,14 +112,13 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
     return { status: "succeeded", id, decision, result }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    await ledger.append({ type: "failed", id, at: now().toISOString(), error: message })
-    return {
-      status: "failed",
-      id,
-      decision,
-      error: message,
-      code: err instanceof RailError ? err.code : undefined,
+    const code = err instanceof RailError ? err.code : undefined
+    // UNKNOWN_STATE: money may have moved. Leave the entry pending so the budget stays reserved and
+    // an operator (or a later reconciliation) resolves it; a retry with the same key is replayed, not re-paid.
+    if (code !== "UNKNOWN_STATE") {
+      await ledger.append({ type: "failed", id, at: now().toISOString(), error: message })
     }
+    return { status: "failed", id, decision, error: message, code }
   }
 }
 

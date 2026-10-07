@@ -8,9 +8,14 @@
 import { describe, expect, it } from "vitest"
 import { type ExchangeRail, type GoodsRail, RailError, type WalletRail } from "../src/rails"
 
+export type Payable = { bolt11: string; amountSats: bigint }
+
 export interface WalletHarness {
-  /** A bolt11 the wallet can pay, and its amount. Fakes accept anything starting with lnbc. */
-  payable: { bolt11: string; amountSats: bigint }
+  /**
+   * A bolt11 the wallet can pay, and its amount — or a factory that produces a FRESH one per call
+   * (real wallets refuse to pay the same settled invoice twice). Fakes accept anything starting with lnbc.
+   */
+  payable: Payable | (() => Promise<Payable>)
   /** A bolt11 that must fail with REJECTED. */
   failing?: { bolt11: string; amountSats: bigint }
   /** A valid lightning address for `resolveAddress`. */
@@ -52,20 +57,24 @@ export function describeWalletRail(
       const w = await make()
       await expect(w.lookupInvoice("f".repeat(64))).rejects.toBeInstanceOf(RailError)
     })
+    const payable = async (): Promise<Payable> =>
+      typeof h.payable === "function" ? h.payable() : h.payable
     it("pays an invoice and returns a preimage, and is idempotent on the key", async () => {
       const w = await make()
       const before = (await w.getBalance()).sats
-      const p1 = await w.payInvoice({ ...h.payable, idempotencyKey: `contract-${Date.now()}-a` })
+      const first = await payable()
+      const p1 = await w.payInvoice({ ...first, idempotencyKey: `contract-${Date.now()}-a` })
       expect(p1.preimage).toMatch(/^[0-9a-f]{64}$/)
-      expect(p1.amountSats).toBe(h.payable.amountSats)
+      expect(p1.amountSats).toBe(first.amountSats)
       expect(p1.feeSats >= 0n).toBe(true)
       const after = (await w.getBalance()).sats
-      expect(before - after >= h.payable.amountSats).toBe(true)
+      expect(before - after >= first.amountSats).toBe(true)
       // same key → same payment, no second debit
       const key = `contract-${Date.now()}-b`
-      const a = await w.payInvoice({ ...h.payable, idempotencyKey: key })
+      const second = await payable()
+      const a = await w.payInvoice({ ...second, idempotencyKey: key })
       const mid = (await w.getBalance()).sats
-      const b = await w.payInvoice({ ...h.payable, idempotencyKey: key })
+      const b = await w.payInvoice({ ...second, idempotencyKey: key })
       expect(b).toEqual(a)
       expect((await w.getBalance()).sats).toBe(mid)
     })

@@ -1,0 +1,31 @@
+{
+  "name": "@agentic-bitcoin/rails",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Real rail adapters: NWC wallet (M2), L402 compute (M4), Strike exchange (M5), Bitrefill goods (M6). Each passes the core contract suite.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./wallet/nwc": "./src/wallet/nwc.ts",
+    "./secrets": "./src/secrets/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:wallet": "RUN_WALLET_CONTRACT=1 vitest run test/wallet-live.test.ts",
+    "demo:pay": "tsx scripts/demo-pay.ts"
+  },
+  "dependencies": {
+    "@agentic-bitcoin/core": "workspace:*",
+    "@getalby/lightning-tools": "9.0.1",
+    "@getalby/sdk": "8.0.3"
+  },
+  "devDependencies": {
+    "@agentic-bitcoin/fixtures": "workspace:*",
+    "@types/node": "22.10.7",
+    "@vitest/coverage-v8": "2.1.8",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8",
+    "tsx": "4.19.2"
+  }
+}
