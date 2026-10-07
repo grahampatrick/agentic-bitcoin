@@ -12,7 +12,9 @@ const REFRESH_MS = 60_000
  */
 export function LivePrice({ initial }: { initial: PriceQuote | null }) {
   const [quote, setQuote] = useState<PriceQuote | null>(initial)
-  const [now, setNow] = useState<number>(() => Date.now())
+  // null until mounted so the server HTML and the first client render agree (no hydration diff);
+  // the clock starts in the effect below.
+  const [now, setNow] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -27,6 +29,7 @@ export function LivePrice({ initial }: { initial: PriceQuote | null }) {
       }
     }
     if (!initial) void refresh()
+    setNow(Date.now())
     const poll = setInterval(refresh, REFRESH_MS)
     const tick = setInterval(() => setNow(Date.now()), 1_000)
     return () => {
@@ -44,8 +47,9 @@ export function LivePrice({ initial }: { initial: PriceQuote | null }) {
     )
   }
 
-  const ageS = Math.max(0, Math.floor((now - Date.parse(quote.asOf)) / 1000))
-  const age = ageS < 60 ? `${ageS}s` : `${Math.floor(ageS / 60)}m`
+  const ageS = now === null ? null : Math.max(0, Math.floor((now - Date.parse(quote.asOf)) / 1000))
+  const age =
+    ageS === null ? "just now" : ageS < 60 ? `${ageS}s ago` : `${Math.floor(ageS / 60)}m ago`
 
   return (
     <p className="price" aria-live="polite">
@@ -63,7 +67,7 @@ export function LivePrice({ initial }: { initial: PriceQuote | null }) {
       </span>
       <span className="price__age">
         {quote.stale ? "last known, " : "updated "}
-        {age} ago
+        {age}
       </span>
     </p>
   )
