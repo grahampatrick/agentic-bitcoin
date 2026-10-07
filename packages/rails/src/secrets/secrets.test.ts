@@ -24,7 +24,10 @@ describe("secrets at rest", () => {
   it("detects tampering and wrong keys", () => {
     const blob = encryptSecret("hello", key)
     const parts = blob.split(".")
-    const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${parts[3]?.replace(/.$/, (c) => (c === "A" ? "B" : "A"))}`
+    // flip one real byte of the ciphertext (editing a base64 character can decode to the same bytes)
+    const ct = Buffer.from(parts[3] ?? "", "base64url")
+    ct[0] = (ct[0] ?? 0) ^ 0xff
+    const tampered = `${parts[0]}.${parts[1]}.${parts[2]}.${ct.toString("base64url")}`
     expect(() => decryptSecret(tampered, key)).toThrow(SecretsError)
     expect(() => decryptSecret(blob, parseKey(generateKeyHex()))).toThrow(SecretsError)
     expect(() => decryptSecret("nope", key)).toThrow(SecretsError)
