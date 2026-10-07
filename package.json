@@ -1,0 +1,23 @@
+{
+  "name": "agentic-bitcoin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agentic Bitcoin — an assistant that holds, sends, and spends your bitcoin, non-custodially, over Lightning.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @agentic-bitcoin/brand build && pnpm --filter @agentic-bitcoin/web dev",
+    "build": "pnpm --filter @agentic-bitcoin/brand build && pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "biome check . && node scripts/no-float-money.mjs",
+    "lint:fix": "biome check --write .",
+    "test": "pnpm -r --if-present test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "typescript": "5.7.3"
+  }
+}

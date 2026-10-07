@@ -1,0 +1,201 @@
+/* Base: the instinct.com frame, measured 2026-10-07. Tokens come from @agentic-bitcoin/brand. */
+
+:root {
+  --text-default: 18px;
+  --leading-body: 115%;
+  --leading-button: 115%;
+  --space-global-top-y-margin: 1rem;
+  --reaction-hidden-scale: 0;
+}
+
+@media (min-width: 80rem) {
+  :root {
+    --text-default: 22px;
+    --leading-body: 120%;
+    --leading-button: 110%;
+    --space-global-top-y-margin: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --reaction-hidden-scale: 1;
+  }
+}
+
+html,
+body {
+  background-color: var(--color-sand-100);
+  margin: 0;
+  padding: 0;
+}
+
+.marketing-site {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  font-family: var(--font-sans);
+  background-color: var(--color-sand-100);
+  color: var(--color-onyx-450);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizelegibility;
+  font-kerning: normal;
+}
+
+.marketing-site *,
+.marketing-site ::before,
+.marketing-site ::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.marketing-site h1,
+.marketing-site h2,
+.marketing-site h3 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.marketing-site ol,
+.marketing-site ul {
+  list-style: none;
+}
+
+.marketing-site a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+.marketing-site img,
+.marketing-site svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.marketing-site ::selection {
+  background: var(--color-sand-100);
+  color: var(--color-onyx-450);
+  text-shadow: none;
+}
+
+.body-reg,
+.body-semi {
+  font-size: var(--text-default);
+  line-height: var(--leading-body);
+  letter-spacing: -0.01em;
+}
+.body-reg {
+  font-weight: 400;
+}
+.body-semi {
+  font-weight: 600;
+}
+
+/* Header: logo only. */
+.site-header {
+  padding: 20px var(--space-reg);
+  flex-shrink: 0;
+}
+.site-header__home {
+  display: block;
+  width: fit-content;
+}
+.site-header__logo {
+  width: var(--layout-logo-width);
+}
+@media (min-width: 80rem) {
+  .site-header {
+    padding: 20px var(--space-xl) 0;
+  }
+  .site-header__logo {
+    width: var(--layout-logo-width-wide);
+  }
+}
+
+/* Legal footer. */
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: var(--space-xs) var(--space-2xl);
+  width: 100%;
+  font-size: var(--type-legal-size);
+  font-weight: 400;
+  line-height: var(--type-legal-leading);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.legal-links__nav {
+  display: flex;
+  gap: var(--space-xs) var(--space-2xl);
+}
+.legal-links__nav a {
+  position: relative;
+}
+.legal-links__nav a:hover {
+  text-decoration: underline 1px var(--color-task-underline);
+  text-underline-offset: 3px;
+}
+.legal-links__note {
+  flex-basis: 100%;
+  color: var(--color-soot-200);
+  white-space: normal;
+}
+
+/* Reveal: staggered fade/slide once fonts are ready (see layout.tsx). */
+.js-reveal:not(.is-revealed) :is(.site-header, .home__intro > *, .legal-links, .page > *) {
+  opacity: 0;
+}
+.js-reveal.is-revealed :is(.site-header, .home__intro > *, .legal-links, .page > *) {
+  animation: home-reveal var(--motion-reveal-duration) var(--motion-ease-reveal)
+    calc(var(--reveal, 0) * var(--motion-reveal-stagger)) both;
+}
+.home__intro > :nth-child(1),
+.page > :nth-child(1) {
+  --reveal: 1;
+}
+.home__intro > :nth-child(2),
+.page > :nth-child(2) {
+  --reveal: 2;
+}
+.home__intro > :nth-child(3),
+.page > :nth-child(3) {
+  --reveal: 3;
+}
+.home__intro > :nth-child(4),
+.page > :nth-child(4) {
+  --reveal: 4;
+}
+.home__intro > :nth-child(5),
+.page > :nth-child(n + 5) {
+  --reveal: 5;
+}
+.legal-links {
+  --reveal: 6;
+}
+@keyframes home-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes home-reveal-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .js-reveal.is-revealed :is(.site-header, .home__intro > *, .legal-links, .page > *) {
+    animation: home-reveal-fade 0.3s ease both;
+  }
+}

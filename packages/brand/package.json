@@ -1,0 +1,19 @@
+{
+  "name": "@agentic-bitcoin/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Agentic Bitcoin design tokens — the measured instinct.com structure, our own identity.",
+  "exports": {
+    ".": "./src/tokens.ts",
+    "./tokens.css": "./tokens.css"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/build.mjs --check"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

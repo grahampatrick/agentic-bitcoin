@@ -1,0 +1,164 @@
+/* The home page proper: one column, one type size, five underlined tasks, one CTA, a price line. */
+
+.marketing-site:has(.home) {
+  --text-default: 24px;
+  --leading-body: 130%;
+  --leading-button: 130%;
+  padding: var(--space-reg);
+  background-color: var(--color-paper);
+}
+
+.home {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1 1 0%;
+  padding: calc(var(--space-6xl) - 20px) var(--space-reg) 20px;
+  gap: var(--space-6xl);
+}
+@media (min-width: 80rem) {
+  .home {
+    padding-inline: var(--space-xl);
+    padding-top: var(--space-6xl);
+  }
+}
+
+.home__wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6xl);
+}
+
+.home__intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(var(--text-default) * 1.9);
+  max-width: var(--layout-intro-max-width);
+  margin-bottom: 20vh;
+}
+.home__intro > * {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  /* biome-ignore lint/correctness/noUnknownProperty: text-box is a 2025 CSS property */
+  text-box: cap alphabetic;
+}
+.home__intro strong,
+.home__intro .cta {
+  font-weight: 600;
+}
+
+/* Underlined example tasks with a hover "reaction" bubble. */
+.home__examples {
+  position: relative;
+}
+.home__task {
+  position: relative;
+  text-decoration: underline 1px var(--color-task-underline);
+  text-underline-offset: calc(0.1em + 1px);
+  -webkit-tap-highlight-color: transparent;
+}
+.reaction {
+  position: absolute;
+  bottom: 1.1em;
+  left: -0.2em;
+  display: grid;
+  place-items: center;
+  width: var(--layout-reaction-size);
+  height: var(--layout-reaction-size);
+  border-radius: 50%;
+  background: var(--color-sand-400);
+  pointer-events: none;
+  opacity: 0;
+  scale: var(--reaction-hidden-scale);
+  transform-origin: 0 100%;
+  transition: scale 0.15s, opacity 0.15s;
+}
+.reaction__icon {
+  width: var(--layout-reaction-icon);
+  height: var(--layout-reaction-icon);
+  color: var(--color-onyx-450);
+  scale: var(--reaction-hidden-scale);
+}
+.reaction__icon > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+@media (hover: hover) {
+  .home__task:hover .reaction {
+    opacity: 1;
+    scale: 1;
+    transition: scale 0.5s var(--motion-ease-pop), opacity 0.12s;
+  }
+  .home__task:hover .reaction__icon {
+    scale: 1;
+    transition: scale 0.43s 0.07s var(--motion-ease-pop);
+  }
+  .home__task:hover {
+    color: var(--color-onyx-450);
+    text-decoration-color: var(--color-onyx-450);
+  }
+}
+
+/* CTA: a highlighter-thick underline with an inline chevron. */
+.cta {
+  display: inline;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline 0.42em var(--color-sand-400);
+  text-underline-offset: -0.2em;
+  text-decoration-skip-ink: none;
+  transition: text-decoration-color 0.15s;
+}
+@media (hover: hover) {
+  .cta:hover {
+    text-decoration-color: var(--color-sand-500);
+  }
+}
+.cta__chevron {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-left: 0.1em;
+  vertical-align: -0.18em;
+}
+.cta__chevron svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Live price: a quiet line under the CTA, in the sans face, tabular numerals. */
+.home__intro .price {
+  font-family: var(--font-sans);
+  font-size: var(--type-legal-size);
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--color-soot-400);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5em;
+}
+.price__num {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-onyx-450);
+  font-weight: 600;
+}
+.price__age {
+  color: var(--color-soot-200);
+}
+.price__sep {
+  color: var(--color-soot-200);
+}
+
+/* The legal row on the home page wraps and left-aligns, like the reference. */
+.home .legal-links {
+  flex-wrap: wrap;
+  font-size: var(--type-legal-size);
+}
