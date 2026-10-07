@@ -12,7 +12,7 @@ without us ever holding keys or money.
 
 ## Status
 
-M0: the landing page with a live price. The agent, wallet rail, exchange rail, goods rail and
+Live at **https://agentic-bitcoin.vercel.app**. M0 shipped: the landing page with a live price. The agent, wallet rail, exchange rail, goods rail and
 compute rail are planned milestones (see `plan.md`). Nothing here moves money yet.
 
 ## Prerequisites

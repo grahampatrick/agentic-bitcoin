@@ -28,17 +28,36 @@ simplicity of instinct.com and speaks in the words of the Bitcoin whitepaper.
 
 ## Current State
 
-Inventory of the repo as of 2026-10-07:
+Inventory as of 2026-10-07 (end of M0). Public repo: https://github.com/grahampatrick/agentic-bitcoin.
+Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, root directory `apps/web`).
 
-| File | Status |
+| Path | Status |
 |---|---|
-| `plan.md` (this file) | The only file. Nothing else exists. Not yet a git repo. |
+| `LICENSE` (MIT), `README.md`, `CONTRIBUTING.md`, `SECURITY.md` | Working |
+| `.github/workflows/ci.yml` | gitleaks → brand build → lint → typecheck → test → build |
+| `scripts/no-float-money.mjs` | Lint gate: float smell next to a money identifier fails the build |
+| `packages/brand` | Tokens measured from instinct.com → `tokens.css`; drift check in `pnpm test` |
+| `apps/web/app/page.tsx` + `home.css` + `globals.css` | Landing: 3 beats, 5 cursor-tracked reaction tasks, highlighter CTA, staggered reveal, reduced-motion |
+| `apps/web/app/fonts/` | Vendored Newsreader + Inter variable latin woff2 + OFL texts (ADR-0003) |
+| `apps/web/lib/price/*` | mempool.space → CoinGecko fallback, 60s cache, last-known-value on outage, integers only; 25 tests |
+| `apps/web/components/LivePrice.tsx` | SSR first paint, 60s refresh, "updated Ns ago" |
+| `apps/web/lib/copy.ts` + `copy.test.ts` | Verbatim whitepaper phrases + quote-drift and no-advice guards |
+| `apps/web/lib/waitlist/*`, `/api/waitlist`, `/text` | Email **or npub** waitlist, memory store with Supabase opt-in; 17 tests |
+| `/privacy`, `/terms` | Plain-language, non-custodial, no-advice |
+| `docs/adr/0001–0003` | Open-source/non-custodial, clone boundaries, fonts |
 
-- **Working:** nothing
-- **Scaffolded:** nothing
-- **Missing:** everything — repo init, licence, scaffold, landing, price feed, action contract,
-  policy engine, ledger, wallet adapter, merchant adapters, agent core, MCP server, chat surface,
-  tests, CI, deploy
+- **Working:** everything above; 46 tests; all gates green locally; deployed.
+- **Scaffolded:** nothing half-done.
+- **Missing (M1+):** action contract, policy engine, ledger, fixtures package, wallet/exchange/goods/compute rails, agent, MCP server, bot, scheduler.
+
+**M0 lessons (recorded so they are not re-learned):**
+- `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
+- A brand token that references a CSS variable of its *own name* on `:root` is a cycle; the browser drops the declaration (we shipped Times for ten minutes). next/font variables are `--font-newsreader` / `--font-inter`, tokens are `--font-serif` / `--font-sans`.
+- `.marketing-site h1` / `.marketing-site a` element resets have (0,1,1) specificity; utility classes must be scoped `.marketing-site .x` to win.
+- React 19 diffs even extra attributes on `<html>` at hydration; the reveal gate sets `data-reveal` plus `suppressHydrationWarning` on that one element.
+- Never run `next build` while `next dev` is running in the same app dir; they share `.next` and the dev server breaks.
+- Vercel refused Next 15.1.6 as vulnerable; we are on 15.5.27 (the `backport` tag). Monorepo deploys need the project's Root Directory set to `apps/web` (done via API; the CLI has no flag).
+- The Claude preview launcher cannot spawn processes under `~/Documents`; the launch config is attach-only on :3900 and the dev server is started by hand.
 
 Adjacent assets outside this repo (reuse, do not reinvent):
 
@@ -159,35 +178,37 @@ else is ours.
 
 ### M0 — Repo, licence, and the landing page with live price
 
+**Status: DONE 2026-10-07** (commits 2ac01b8…). 
+
 **Goal:** A public repo whose only product is a pixel-faithful Instinct-style landing page that
 shows a live bitcoin price, deployed to Vercel.
 
 **Deliverables**
-- [ ] `git init`, MIT `LICENSE`, `README.md` (how to run), `CONTRIBUTING.md`, `SECURITY.md`
+- [x] `git init`, MIT `LICENSE`, `README.md` (how to run), `CONTRIBUTING.md`, `SECURITY.md`
       (how to report a wallet-related bug privately), `.github/workflows/ci.yml`
-- [ ] pnpm workspace copied from tinysats: `apps/web` (Next 15, App Router), `packages/brand`
+- [x] pnpm workspace copied from tinysats: `apps/web` (Next 15, App Router), `packages/brand`
       (tokens → `tokens.css`), Biome, vitest, `tsc --noEmit`
-- [ ] `.claude/launch.json` → `agentic-bitcoin-web` on port 3900; `.env.example`; `.gitignore` covers `.env*`
-- [ ] `packages/brand/tokens.ts`: the measured Instinct values (`onyx-450 #1f2322`, `sand-100`, `sand-400`,
+- [x] `.claude/launch.json` → `agentic-bitcoin-web` on port 3900; `.env.example`; `.gitignore` covers `.env*`
+- [x] `packages/brand/tokens.ts`: the measured Instinct values (`onyx-450 #1f2322`, `sand-100`, `sand-400`,
       `ivory-500`, `accent-teal`, type scale 24/130%/−0.01em, spacing xs…8xl, `--ease-pop` curve)
-- [ ] `apps/web/app/page.tsx` + `home.css`: header logo, intro (h1/strong, 2 paragraphs, 5 `.home__task`
+- [x] `apps/web/app/page.tsx` + `home.css`: header logo, intro (h1/strong, 2 paragraphs, 5 `.home__task`
       spans with reaction bubbles), CTA with highlighter underline + chevron, legal links; staggered reveal;
       `prefers-reduced-motion` fade; mobile at 375px with 16px gutters, no horizontal scroll
-- [ ] Logo: a simple line-drawn mark in the spirit of Instinct's stickman (a stick figure holding a ₿ coin,
+- [x] Logo: a simple line-drawn mark in the spirit of Instinct's stickman (a stick figure holding a ₿ coin,
       hand-drawn SVG, 28/34px) — ours, not theirs
-- [ ] Fonts: self-hosted OFL substitutes (see OQ-1), `font-display: swap`
-- [ ] `apps/web/app/api/price/route.ts`: server-side fetch of `https://mempool.space/api/v1/prices`
+- [x] Fonts: self-hosted OFL substitutes (see OQ-1), `font-display: swap`
+- [x] `apps/web/app/api/price/route.ts`: server-side fetch of `https://mempool.space/api/v1/prices`
       (USD) with CoinGecko `simple/price` as fallback; **60s in-memory cache**; returns
       `{ usd: integer_cents, satsPerDollar: integer, asOf: iso, source }`; never exposes an upstream error to the page
-- [ ] `apps/web/components/LivePrice.tsx`: server-rendered first paint (no "loading…"), client refresh every 60s,
+- [x] `apps/web/components/LivePrice.tsx`: server-rendered first paint (no "loading…"), client refresh every 60s,
       tabular numerals, `updated Ns ago` ticks locally; degrades to last-known value if the route fails
-- [ ] `apps/web/app/privacy/page.tsx`, `apps/web/app/terms/page.tsx` (short, honest, non-custodial language)
-- [ ] `/text` route: until M7, the CTA opens a waitlist (email or Nostr npub) backed by the tinysats
+- [x] `apps/web/app/privacy/page.tsx`, `apps/web/app/terms/page.tsx` (short, honest, non-custodial language)
+- [x] `/text` route: until M7, the CTA opens a waitlist (email or Nostr npub) backed by the tinysats
       Supabase-or-memory waitlist pattern
-- [ ] Tests: `price.test.ts` (parsing, fallback, cache TTL, integer maths), `page.test.tsx` (copy
+- [x] Tests: `price.test.ts` (parsing, fallback, cache TTL, integer maths), `page.test.tsx` (copy
       contains the verbatim whitepaper phrases — a *quote-drift* guard), brand-token drift check
-- [ ] Deploy: Vercel project `agentic-bitcoin`, `vercel.json` cron-free; `NEXT_PUBLIC_SITE_URL` set
-- [ ] `docs/adr/0001-open-source-non-custodial.md`, `docs/adr/0002-landing-clone-boundaries.md`
+- [x] Deploy: Vercel project `agentic-bitcoin`, `vercel.json` cron-free; `NEXT_PUBLIC_SITE_URL` set
+- [x] `docs/adr/0001-open-source-non-custodial.md`, `docs/adr/0002-landing-clone-boundaries.md`
       (we copy structure, spacing and interaction; we do **not** copy Instinct's fonts, logo, or copy)
 
 **CE Principle:** The brand-token package and CI gates make every later UI (chat, dashboard) free
@@ -451,7 +472,7 @@ wallet's on-chain send. Deferred until M7 has users; captured so the Action unio
 
 | # | Question | Owner | Resolution Path |
 |---|---|---|---|
-| OQ-1 | Which OFL fonts stand in for Aime (serif, 24px body) and Melange (sans, legal)? | GM | M0: render the three beats in **Newsreader**, **Source Serif 4**, and **Instrument Serif** at 24px/130% side by side in the preview; pick one; sans = Inter. Record in `packages/brand`. |
+| OQ-1 | Which OFL fonts stand in for Aime (serif, 24px body) and Melange (sans, legal)? | GM | **Resolved 2026-10-07:** compared Newsreader, Source Serif 4, Instrument Serif, Fraunces at 24px; Newsreader + Inter, vendored (ADR-0003). GM can veto by swapping the files. |
 | OQ-2 | Price feed primary source: mempool.space `/api/v1/prices` vs CoinGecko `simple/price`? | Claude | M0: implement mempool.space primary (no key, bitcoin-native), CoinGecko fallback; add a third fallback (Coinbase spot) only if the price route logs >1 outage/week in Vercel. |
 | OQ-3 | Does Strike offer a sandbox, or do we test against a funded live account with $5 quotes? | GM | Before M5: check `docs.strike.me` for a sandbox/env flag; if none, create a dedicated Strike account with a $20 balance and a quote-only key for CI-adjacent manual runs. Fixtures cover CI either way. |
 | OQ-4 | Scheduler runtime: Vercel cron (stateless, minute granularity) vs a small always-on worker (Fly/Start9)? | GM + Claude | M5 ADR-0009: start on Vercel cron hitting `/api/schedules/run` with a shared secret; move to a worker if runs exceed 60s or need sub-minute cadence. |
@@ -460,7 +481,7 @@ wallet's on-chain send. Deferred until M7 has users; captured so the Action unio
 | OQ-7 | Where does the dogfood wallet live: Alby Hub on Start9, or Coinos/hosted? | GM | M2: Alby Hub on Start9 (self-custodial, Tor). If channel liquidity is a hassle, use Coinos for the demo and document both in `docs/testing.md`. |
 | OQ-8 | Is "buy bitcoin on behalf of a user via their own API key" a money-transmission or advisory concern in the US? | GM (counsel) | Before public M7: one hour with counsel on the non-custodial, user-key, no-advice design; ADR-0001 + Terms language updated with the outcome. Until then, M5 ships behind `EXCHANGE_RAIL_ENABLED=false` for the public instance. |
 | OQ-9 | Exact Bitrefill Personal API invoice/pay/poll endpoints and whether Lightning invoices are returned directly? | Claude | M6 first task: read `docs.bitrefill.com` and `bitrefill/agents` repo; encode the real shapes into `packages/fixtures` before writing the adapter. |
-| OQ-10 | Name/handle availability and the GitHub org? | GM | M0: create `grahampatrick/agentic-bitcoin` (public, MIT); check `agenticbitcoin.com` / `.xyz`; until a domain exists, deploy at `agentic-bitcoin.vercel.app`. |
+| OQ-10 | Name/handle availability and the GitHub org? | GM | **Partly resolved:** `grahampatrick/agentic-bitcoin` is public and `agentic-bitcoin.vercel.app` is live. Domain (`agenticbitcoin.com` / `.xyz`) still to check and buy; set `NEXT_PUBLIC_SITE_URL` in Vercel when it exists. |
 
 ---
 
