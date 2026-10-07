@@ -12,8 +12,8 @@
   --color-accent-teal: #73a89a;
   --color-bitcoin: #f7931a;
   --color-task-underline: rgba(31, 35, 34, 0.2);
-  --font-serif: var(--font-serif, ui-serif), Georgia, 'Times New Roman', serif;
-  --font-sans: var(--font-sans, ui-sans-serif), system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-newsreader, ui-serif), Georgia, 'Times New Roman', serif;
+  --font-sans: var(--font-inter, ui-sans-serif), system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --type-home-size: 24px;
   --type-home-leading: 130%;

@@ -54,15 +54,21 @@
   position: relative;
 }
 .home__task {
-  position: relative;
   text-decoration: underline 1px var(--color-task-underline);
   text-underline-offset: calc(0.1em + 1px);
   -webkit-tap-highlight-color: transparent;
 }
+.reaction-anchor {
+  position: absolute;
+  left: var(--reaction-x, 0);
+  top: var(--reaction-y, 0);
+  width: 0;
+  height: 0;
+}
 .reaction {
   position: absolute;
-  bottom: 1.1em;
-  left: -0.2em;
+  bottom: 6px;
+  left: 6px;
   display: grid;
   place-items: center;
   width: var(--layout-reaction-size);
@@ -100,38 +106,6 @@
     color: var(--color-onyx-450);
     text-decoration-color: var(--color-onyx-450);
   }
-}
-
-/* CTA: a highlighter-thick underline with an inline chevron. */
-.cta {
-  display: inline;
-  font: inherit;
-  font-weight: 600;
-  color: inherit;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  text-decoration: underline 0.42em var(--color-sand-400);
-  text-underline-offset: -0.2em;
-  text-decoration-skip-ink: none;
-  transition: text-decoration-color 0.15s;
-}
-@media (hover: hover) {
-  .cta:hover {
-    text-decoration-color: var(--color-sand-500);
-  }
-}
-.cta__chevron {
-  display: inline-block;
-  width: 0.9em;
-  height: 0.9em;
-  margin-left: 0.1em;
-  vertical-align: -0.18em;
-}
-.cta__chevron svg {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 /* Live price: a quiet line under the CTA, in the sans face, tabular numerals. */

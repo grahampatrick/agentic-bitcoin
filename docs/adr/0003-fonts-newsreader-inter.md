@@ -18,5 +18,7 @@ Both load through `next/font/google`, which downloads at build time and self-hos
 page makes no runtime request to Google.
 
 ## Consequences
-- `--font-serif` / `--font-sans` are set on `<html>`; brand tokens reference them with fallbacks.
+- next/font sets `--font-newsreader` / `--font-inter` on `<html>`; the brand tokens `--font-serif` /
+  `--font-sans` reference them with fallbacks. The two layers must keep different names: a token
+  that references a variable of its own name on `:root` is a cycle and the browser drops it.
 - Changing a face is a two-line edit in `app/layout.tsx` plus this ADR.

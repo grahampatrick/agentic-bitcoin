@@ -43,7 +43,7 @@ export const COPY = {
     quoteA: WHITEPAPER.proof,
     b: ", and it can transact with ",
     quoteB: WHITEPAPER.parties,
-    c: " over Lightning — including the machines it hires to think.",
+    c: " over Lightning.",
   },
   /** Beat 3, before the task list. */
   examplesLead: "It can help you ",

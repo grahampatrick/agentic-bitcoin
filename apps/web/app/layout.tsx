@@ -9,13 +9,13 @@ const serif = Newsreader({
   subsets: ["latin"],
   weight: ["400", "600"],
   style: ["normal"],
-  variable: "--font-serif",
+  variable: "--font-newsreader",
   display: "swap",
 })
 const sans = Inter({
   subsets: ["latin"],
   weight: ["400", "600"],
-  variable: "--font-sans",
+  variable: "--font-inter",
   display: "swap",
 })
 
@@ -35,12 +35,13 @@ export const viewport: Viewport = {
 }
 
 // Reveal gate: with JS, hide the intro until fonts are ready, then stagger it in. Without JS the
-// class is never added and everything is simply visible.
-const revealScript = `document.documentElement.classList.add('js-reveal');(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(function(){requestAnimationFrame(function(){document.documentElement.classList.add('is-revealed')})});`
+// attribute is never set and everything is simply visible. The script mutates <html> before React
+// hydrates; React 19 diffs even extra attributes there, hence suppressHydrationWarning on <html>.
+const revealScript = `document.documentElement.dataset.reveal='pending';(document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(function(){requestAnimationFrame(function(){document.documentElement.dataset.reveal='done'})});`
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${serif.variable} ${sans.variable}`}>
+    <html lang="en" className={`${serif.variable} ${sans.variable}`} suppressHydrationWarning>
       <head>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static, no user input */}
         <script dangerouslySetInnerHTML={{ __html: revealScript }} />

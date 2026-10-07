@@ -26,7 +26,7 @@
   font-weight: 600;
   margin-top: var(--space-reg);
 }
-.page a {
+.marketing-site .page a {
   text-decoration: underline 1px var(--color-task-underline);
   text-underline-offset: calc(0.1em + 1px);
 }

@@ -80,16 +80,16 @@ body {
   text-shadow: none;
 }
 
-.body-reg,
-.body-semi {
+.marketing-site .body-reg,
+.marketing-site .body-semi {
   font-size: var(--text-default);
   line-height: var(--leading-body);
   letter-spacing: -0.01em;
 }
-.body-reg {
+.marketing-site .body-reg {
   font-weight: 400;
 }
-.body-semi {
+.marketing-site .body-semi {
   font-weight: 600;
 }
 
@@ -145,11 +145,44 @@ body {
   white-space: normal;
 }
 
+/* CTA (shared by / and /text): a highlighter-thick underline with an inline chevron.
+   Scoped to beat `.marketing-site a`. Works on <a> and <button>. */
+.marketing-site .cta {
+  display: inline;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline 0.42em var(--color-sand-400);
+  text-underline-offset: -0.2em;
+  text-decoration-skip-ink: none;
+  transition: text-decoration-color 0.15s;
+}
+@media (hover: hover) {
+  .marketing-site .cta:hover {
+    text-decoration-color: var(--color-sand-500);
+  }
+}
+.cta__chevron {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  margin-left: 0.1em;
+  vertical-align: -0.18em;
+}
+.cta__chevron svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* Reveal: staggered fade/slide once fonts are ready (see layout.tsx). */
-.js-reveal:not(.is-revealed) :is(.site-header, .home__intro > *, .legal-links, .page > *) {
+html[data-reveal="pending"] :is(.site-header, .home__intro > *, .legal-links, .page > *) {
   opacity: 0;
 }
-.js-reveal.is-revealed :is(.site-header, .home__intro > *, .legal-links, .page > *) {
+html[data-reveal="done"] :is(.site-header, .home__intro > *, .legal-links, .page > *) {
   animation: home-reveal var(--motion-reveal-duration) var(--motion-ease-reveal)
     calc(var(--reveal, 0) * var(--motion-reveal-stagger)) both;
 }
@@ -195,7 +228,7 @@ body {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .js-reveal.is-revealed :is(.site-header, .home__intro > *, .legal-links, .page > *) {
+  html[data-reveal="done"] :is(.site-header, .home__intro > *, .legal-links, .page > *) {
     animation: home-reveal-fade 0.3s ease both;
   }
 }

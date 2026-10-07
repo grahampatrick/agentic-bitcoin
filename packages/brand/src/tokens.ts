@@ -32,9 +32,11 @@ export const tokens = {
     taskUnderline: "rgba(31, 35, 34, 0.2)",
   },
   font: {
-    // --font-serif / --font-sans are injected by next/font in the app layout (ADR-0003).
-    serif: "var(--font-serif, ui-serif), Georgia, 'Times New Roman', serif",
-    sans: "var(--font-sans, ui-sans-serif), system-ui, -apple-system, sans-serif",
+    // --font-newsreader / --font-inter are injected by next/font in the app layout (ADR-0003).
+    // They must NOT share a name with these tokens: both land on :root, and a self-reference
+    // makes the whole declaration invalid (we shipped Times for ten minutes that way).
+    serif: "var(--font-newsreader, ui-serif), Georgia, 'Times New Roman', serif",
+    sans: "var(--font-inter, ui-sans-serif), system-ui, -apple-system, sans-serif",
     mono: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
   },
   type: {

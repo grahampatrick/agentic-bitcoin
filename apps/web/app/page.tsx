@@ -1,5 +1,6 @@
 import { LivePrice } from "@/components/LivePrice"
 import { ReactionIcon } from "@/components/ReactionIcon"
+import { ReactionTracker } from "@/components/ReactionTracker"
 import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
 import { Chevron } from "@/components/WaitlistForm"
 import { COPY, TASKS } from "@/lib/copy"
@@ -41,15 +42,18 @@ export default async function Home() {
               {i.c}
             </p>
             <p className="body-reg home__examples">
+              <ReactionTracker />
               {COPY.examplesLead}
               {TASKS.map((t, idx) => (
                 <span key={t.icon}>
                   {idx === TASKS.length - 1 ? "or " : ""}
                   <span className="home__task">
                     {t.text}
-                    <span className="reaction" aria-hidden="true">
-                      <span className="reaction__icon">
-                        <ReactionIcon icon={t.icon} />
+                    <span className="reaction-anchor" aria-hidden="true">
+                      <span className="reaction">
+                        <span className="reaction__icon">
+                          <ReactionIcon icon={t.icon} />
+                        </span>
                       </span>
                     </span>
                   </span>
