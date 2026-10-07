@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { randomUUID } from "node:crypto"
 /**
  * agentic-bitcoin-mcp — stdio by default, `--http <port>` for Streamable HTTP.
