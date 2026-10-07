@@ -36,7 +36,8 @@ describe("secrets at rest", () => {
     expect(() => parseKey("short")).toThrow(SecretsError)
   })
   it("masks for display", () => {
-    expect(maskSecret("sk_live_1234567890")).toBe("sk_l…7890")
+    // deliberately NOT shaped like a vendor key: the gitleaks CI gate flags realistic fakes too
+    expect(maskSecret("example-key-1234567890")).toBe("exam…7890")
     expect(maskSecret("tiny")).toBe("••••")
   })
 })
