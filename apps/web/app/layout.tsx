@@ -1,20 +1,22 @@
 import type { Metadata, Viewport } from "next"
-import { Inter, Newsreader } from "next/font/google"
+import localFont from "next/font/local"
 import "@agentic-bitcoin/brand/tokens.css"
 import "./globals.css"
 import { COPY } from "@/lib/copy"
 
-// OFL fonts, self-hosted at build time by next/font (ADR-0003). No requests to Google at runtime.
-const serif = Newsreader({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  style: ["normal"],
+// OFL fonts vendored in ./fonts (ADR-0003): variable latin subsets, licences alongside. No network
+// at build time, so Vercel/CI builds are reproducible and contributors need nothing external.
+const serif = localFont({
+  src: "./fonts/Newsreader-latin-var.woff2",
+  weight: "200 800",
+  style: "normal",
   variable: "--font-newsreader",
   display: "swap",
 })
-const sans = Inter({
-  subsets: ["latin"],
-  weight: ["400", "600"],
+const sans = localFont({
+  src: "./fonts/Inter-latin-var.woff2",
+  weight: "100 900",
+  style: "normal",
   variable: "--font-inter",
   display: "swap",
 })

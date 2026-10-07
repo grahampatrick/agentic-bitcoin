@@ -14,8 +14,11 @@ Source Serif reads cooler and wider; Fraunces is too mannered.
 
 Inter for the sans: unremarkable on purpose, with tabular numerals for the price line.
 
-Both load through `next/font/google`, which downloads at build time and self-hosts the subset, so the
-page makes no runtime request to Google.
+Both are **vendored** as variable latin-subset woff2 files in `apps/web/app/fonts/` with their OFL
+licence texts alongside, and loaded through `next/font/local`. We first used `next/font/google`;
+it fetches Google at build time and its CSS parser crashed on Vercel (`Cannot read properties of
+null` in the loader), so builds depended on a third party. Vendoring makes every build reproducible
+and lets contributors build offline. Updating a font is a file swap plus this ADR.
 
 ## Consequences
 - next/font sets `--font-newsreader` / `--font-inter` on `<html>`; the brand tokens `--font-serif` /
