@@ -28,6 +28,17 @@ export const ADDRESSES = {
   scammer: "free-money@evil.example",
 } as const
 
+/**
+ * A REAL, decodable mainnet BOLT11 from the BOLT11 spec test vectors (250,000 sats, no expiry).
+ * Nobody holds its preimage, so it can never be paid; it exists to exercise decoders.
+ */
+export const SPEC_INVOICE = {
+  bolt11:
+    "lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpuaztrnwngzn3kdzw5hydlzf03qdgm2hdq27cqv3agm2awhz5se903vruatfhq77w3ls4evs3ch9zw97j25emudupq63nyw24cg27h2rspfj9srp",
+  amountSats: 250_000n,
+  paymentHash: "0001020304050607080900010203040506070809000102030405060708090102",
+} as const
+
 /** Synthetic BOLT11s. Fakes pay anything starting with lnbc; `fail`/`nofunds` trigger errors. */
 export const INVOICES = {
   small: { bolt11: "lnbc210n1fixturesmall", amountSats: 21n, paymentHash: `${"0".repeat(63)}1` },
@@ -53,6 +64,8 @@ export const L402 = {
   macaroon: "AgEEbHNhdAJCAADFixture",
   invoice: "lnbc100n1fixturel402",
   amountSats: 10n,
+  /** A challenge whose invoice really decodes (to 250,000 sats): for adapter tests. */
+  decodableHeader: `L402 macaroon="AgEEbHNhdAJCAADFixture", invoice="${SPEC_INVOICE.bolt11}"`,
   /** The retry header once paid: `Authorization: L402 <macaroon>:<preimage>` */
   authorization: (macaroon: string, preimage: string) => `L402 ${macaroon}:${preimage}`,
 } as const

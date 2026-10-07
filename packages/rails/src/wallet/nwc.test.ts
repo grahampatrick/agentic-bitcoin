@@ -1,4 +1,5 @@
 import { RailError } from "@agentic-bitcoin/core"
+import { SPEC_INVOICE } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
 import {
   type NwcClientLike,
@@ -11,12 +12,9 @@ import {
   validateConnectionString,
 } from "./nwc"
 
-// A real, decodable mainnet bolt11 (BOLT11 spec test vector; 250,000,000 msats = 250,000 sats).
-// Never paid by tests: the client below is a fake.
-const REAL_BOLT11 =
-  "lnbc2500u1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5xysxxatsyp3k7enxv4jsxqzpuaztrnwngzn3kdzw5hydlzf03qdgm2hdq27cqv3agm2awhz5se903vruatfhq77w3ls4evs3ch9zw97j25emudupq63nyw24cg27h2rspfj9srp"
-const REAL_HASH = "0001020304050607080900010203040506070809000102030405060708090102"
-const REAL_SATS = 250_000n
+const REAL_BOLT11 = SPEC_INVOICE.bolt11
+const REAL_HASH = SPEC_INVOICE.paymentHash
+const REAL_SATS = SPEC_INVOICE.amountSats
 const PK = "a".repeat(64)
 const SECRET = "b".repeat(64)
 const NWC_URL = `nostr+walletconnect://${PK}?relay=wss://relay.example.com&secret=${SECRET}`

@@ -83,7 +83,13 @@ export interface PayL402 extends Base {
   url: string
   /** Host of the URL, kept explicit so allow/deny lists are cheap to apply. */
   host: string
+  /** Ceiling: the challenge's invoice must be at or under this. */
   amountSats: Sats
+  method?: "GET" | "POST"
+  /** Request body for POST, already serialised. */
+  body?: string
+  /** Extra request headers (never Authorization — the rail owns that). */
+  headers?: Record<string, string>
 }
 
 export type Action =

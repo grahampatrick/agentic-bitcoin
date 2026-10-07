@@ -31,3 +31,15 @@ touches money.
 - the connection string parses and has a relay and a secret (it is never printed);
 - the wallet reports a **budget**; if it is unlimited the demo warns loudly;
 - the invoice decodes to exactly the approved amount.
+
+## Compute rail (M4): buy inference with sats
+
+```bash
+export NWC_URL='nostr+walletconnect://…'
+pnpm --filter @agentic-bitcoin/rails demo:compute          # POSTs a one-line question to llm402.ai, ceiling 100 sats
+L402_URL=https://other.example/v1/x L402_MAX_SATS=50 pnpm --filter @agentic-bitcoin/rails demo:compute
+```
+
+The demo refuses to pay if the 402 challenge asks for more than `L402_MAX_SATS`, and prints the
+ledger entry (`paid N sats, HTTP 200`). The unit suite covers the full handshake against a local
+402 server with the fake wallet, so `pnpm test` needs no network.

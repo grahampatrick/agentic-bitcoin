@@ -94,10 +94,31 @@ describe("toolToAction", () => {
   })
   it("fetch_l402 requires https and extracts the host", () => {
     expect(
-      toolToAction("fetch_l402", { url: "https://LLM402.ai/v1/x", max_sats: 50 }, ctx),
-    ).toMatchObject({ kind: "pay_l402", host: "llm402.ai", amountSats: 50n })
+      toolToAction(
+        "fetch_l402",
+        { url: "https://LLM402.ai/v1/x", max_sats: 50, method: "GET", body: "" },
+        ctx,
+      ),
+    ).toMatchObject({
+      kind: "pay_l402",
+      host: "llm402.ai",
+      amountSats: 50n,
+      method: "GET",
+      body: undefined,
+    })
+    expect(
+      toolToAction(
+        "fetch_l402",
+        { url: "https://llm402.ai/v1/x", max_sats: 50, method: "POST", body: "{}" },
+        ctx,
+      ),
+    ).toMatchObject({ method: "POST", body: "{}", headers: { "content-type": "application/json" } })
     expect(() =>
-      toolToAction("fetch_l402", { url: "http://llm402.ai/v1/x", max_sats: 50 }, ctx),
+      toolToAction(
+        "fetch_l402",
+        { url: "http://llm402.ai/v1/x", max_sats: 50, method: "GET", body: "" },
+        ctx,
+      ),
     ).toThrow(/https/)
   })
   it("confirm_action is not an action; unknown tools throw", () => {
@@ -134,7 +155,7 @@ function sampleInput(name: string): Record<string, unknown> {
     case "buy_product":
       return { merchant: "bitrefill", product_id: "p", description: "d", usd_cents: 100 }
     case "fetch_l402":
-      return { url: "https://x.ai/", max_sats: 1 }
+      return { url: "https://x.ai/", max_sats: 1, method: "GET", body: "" }
     default:
       throw new Error(name)
   }

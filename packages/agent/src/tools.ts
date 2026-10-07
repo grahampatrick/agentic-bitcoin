@@ -162,8 +162,10 @@ export const TOOLS: readonly ToolSpec[] = [
       properties: {
         url: str("The https URL"),
         max_sats: int("Maximum sats you are allowed to pay for this request"),
+        method: { type: "string", description: "HTTP method", enum: ["GET", "POST"] },
+        body: str("JSON request body for POST, or an empty string for GET"),
       },
-      required: ["url", "max_sats"],
+      required: ["url", "max_sats", "method", "body"],
       additionalProperties: false,
     },
     strict: true,
@@ -325,12 +327,17 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       } catch {
         throw new ToolInputError("fetch_l402: url must be https")
       }
+      const method = (input.method as "GET" | "POST") ?? "GET"
+      const body = (input.body as string) || undefined
       return {
         kind: "pay_l402",
         ...base,
         url: input.url as string,
         host,
         amountSats: BigInt(input.max_sats as number),
+        method,
+        body: method === "POST" ? body : undefined,
+        headers: method === "POST" && body ? { "content-type": "application/json" } : undefined,
       }
     }
     case "confirm_action":

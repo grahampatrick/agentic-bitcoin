@@ -56,10 +56,12 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `packages/mcp` (M3) | MCP server over stdio + Streamable HTTP, `confirm_action` protocol, tsup-bundled bin; 4 tests incl. in-memory client round trip |
 | `apps/bot` (M3) | `ChatSurface` + Telegram (buttons) and Signal (signal-cli SSE/JSON-RPC) adapters, dispatcher with /budget /kill /resume /ledger and yes/no binding, memory + Supabase stores; 8 tests |
 | `supabase/migrations/0002_agent.sql`, `docs/adr/0007–0008` | Per-user ledger/policy/secrets/history tables; MCP-first; no advice |
+| `packages/rails/src/compute/l402.ts` (M4) | L402/LSAT challenge parsing with decoded amount, per-host credential cache, bounded bodies, no-redirect-with-credential; 11 tests incl. local 402 server handshake; `demo:compute` |
+| `docs/adr/0009` | L402 over x402 |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M4+):** L402, Strike and Bitrefill rails; scheduler; per-user wallet pairing (M7). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number).
+- **Missing (M5+):** Strike and Bitrefill rails; scheduler; per-user wallet pairing (M7). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string).
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -365,17 +367,21 @@ pnpm --filter @agentic-bitcoin/mcp build && npx @modelcontextprotocol/inspector 
 
 ### M4 — Compute rail: L402 client (the agent pays for its own thinking)
 
+**Status: CODE DONE 2026-10-07; live demo pending an NWC string.** `L402ComputeRail` + 11 tests including a full
+policy → fake wallet → local 402 server handshake; credential cache per host; `PayL402` gained `method`/`body`/`headers`
+(POST endpoints); `demo:compute` wired and env-gated.
+
 **Goal:** The assistant can call any L402-gated API, paying per request from the user's wallet, and we
 demo it by buying inference from a Lightning-paid LLM endpoint.
 
 **Deliverables**
-- [ ] `packages/rails/src/compute/l402.ts`: `fetchL402(url, init, {wallet, policy})` — parse `WWW-Authenticate: L402
+- [x] `packages/rails/src/compute/l402.ts`: `fetchL402(url, init, {wallet, policy})` — parse `WWW-Authenticate: L402
       macaroon="…", invoice="…"`, policy check on invoice amount, pay via wallet rail, retry with
       `Authorization: L402 <macaroon>:<preimage>`; token cache keyed by host; fixtures from M1
-- [ ] Price guard: refuse any 402 above `perActionCapSats` without confirmation; log sats/request in ledger
-- [ ] `scripts/demo-compute.ts` against `llm402.ai` (and LightningProx if reachable); record cost per call
-- [ ] MCP tool `fetch_l402` + agent skill: "ask the sats-paid model to summarise X"
-- [ ] `docs/adr/0009-l402-over-x402.md` (why Lightning/L402, not Coinbase's USDC-on-Base x402, for a bitcoin product)
+- [x] Price guard: refuse any 402 above `perActionCapSats` without confirmation; log sats/request in ledger
+- [x] (written) / [ ] (run live) `packages/rails/scripts/demo-compute.ts` against `llm402.ai` (and LightningProx if reachable); record cost per call
+- [x] MCP tool `fetch_l402` (now with method/body) + agent skill: "ask the sats-paid model to summarise X"
+- [x] `docs/adr/0009-l402-over-x402.md` (why Lightning/L402, not Coinbase's USDC-on-Base x402, for a bitcoin product)
 
 **CE Principle:** `fetchL402` is a generic paid-HTTP primitive; any future "buy data / buy API /
 buy GPU seconds" is just a URL.

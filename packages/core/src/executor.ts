@@ -202,7 +202,8 @@ async function dispatch(
     case "pay_l402": {
       const c = need(rails.compute, "compute")
       const w = need(rails.wallet, "wallet")
-      const first = await c.request(action.url)
+      const init = { method: action.method ?? "GET", headers: action.headers, body: action.body }
+      const first = await c.request(action.url, init)
       if (first.status !== 402)
         return { result: first, detail: `no payment needed (${first.status})` }
       if (!("challenge" in first))
@@ -219,10 +220,11 @@ async function dispatch(
         amountSats: first.challenge.amountSats,
         idempotencyKey: action.idempotencyKey,
       })
-      const res = await c.requestWithToken(action.url, {
-        macaroon: first.challenge.macaroon,
-        preimage: p.preimage,
-      })
+      const res = await c.requestWithToken(
+        action.url,
+        { macaroon: first.challenge.macaroon, preimage: p.preimage },
+        init,
+      )
       return {
         result: res,
         preimage: p.preimage,

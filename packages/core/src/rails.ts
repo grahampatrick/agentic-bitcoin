@@ -132,22 +132,27 @@ export interface L402Challenge {
   amountSats: Sats
 }
 
+export interface ComputeRequestInit {
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}
+
+export type ComputeResponse = { status: number; body: string; headers: Record<string, string> }
+
 export interface ComputeRail {
   readonly kind: string
   /** Do the request; if it 402s, return the challenge instead of a body. */
   request(
     url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ): Promise<
-    | { status: 402; challenge: L402Challenge }
-    | { status: number; body: string; headers: Record<string, string> }
-  >
+    init?: ComputeRequestInit,
+  ): Promise<{ status: 402; challenge: L402Challenge } | ComputeResponse>
   /** Retry with proof of payment. */
   requestWithToken(
     url: string,
     token: { macaroon: string; preimage: string },
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ): Promise<{ status: number; body: string; headers: Record<string, string> }>
+    init?: ComputeRequestInit,
+  ): Promise<ComputeResponse>
 }
 
 export interface Rails {

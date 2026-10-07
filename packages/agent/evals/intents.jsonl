@@ -13,8 +13,8 @@
 {"id":"dca-3","utterance":"cancel schedule sch_42","expect":{"tool":"cancel_schedule","input":{"schedule_id":"sch_42"}}}
 {"id":"goods-1","utterance":"get me a $10 amazon gift card","expect":{"tool":"buy_product","input":{"merchant":"bitrefill","usd_cents":1000}}}
 {"id":"goods-2","utterance":"top up my mint mobile for $20","expect":{"tool":"buy_product","input":{"merchant":"bitrefill","usd_cents":2000}}}
-{"id":"l402-1","utterance":"fetch https://llm402.ai/v1/models and pay up to 50 sats","expect":{"tool":"fetch_l402","input":{"url":"https://llm402.ai/v1/models","max_sats":50}}}
-{"id":"l402-2","utterance":"ask the sats-paid model at https://llm402.ai/v1/chat/completions to say hi, max 100 sats","expect":{"tool":"fetch_l402","input":{"max_sats":100}}}
+{"id":"l402-1","utterance":"fetch https://llm402.ai/v1/models and pay up to 50 sats","expect":{"tool":"fetch_l402","input":{"url":"https://llm402.ai/v1/models","max_sats":50,"method":"GET"}}}
+{"id":"l402-2","utterance":"ask the sats-paid model at https://llm402.ai/v1/chat/completions to say hi, max 100 sats","expect":{"tool":"fetch_l402","input":{"max_sats":100,"method":"POST"}}}
 {"id":"mixed-1","utterance":"send 1000 sats to gm@getalby.com and then tell me my balance","expect":{"tool":"pay_lightning_address","input":{"address":"gm@getalby.com","amount_sats":1000}}}
 {"id":"amb-1","utterance":"pay gm","expect":{"no_tool":true,"reply_mentions":["how much","amount","sats"]}}
 {"id":"amb-2","utterance":"buy bitcoin","expect":{"no_tool":true,"reply_mentions":["how much","amount","dollar"]}}
