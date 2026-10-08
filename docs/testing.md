@@ -36,8 +36,8 @@ touches money.
 
 ```bash
 export NWC_URL='nostr+walletconnect://…'
-pnpm --filter @agentic-bitcoin/rails demo:compute          # POSTs a one-line question to llm402.ai, ceiling 100 sats
-L402_URL=https://other.example/v1/x L402_MAX_SATS=50 pnpm --filter @agentic-bitcoin/rails demo:compute
+L402_URL=https://<l402-endpoint> L402_MAX_SATS=50 pnpm --filter @agentic-bitcoin/rails demo:compute   # POSTs a one-line question, ceiling in sats
+# L402_URL is required. llm402.ai (named in early research) does not resolve; LightningProx (lightningprox.com) or an Aperture route works.
 ```
 
 The demo refuses to pay if the 402 challenge asks for more than `L402_MAX_SATS`, and prints the

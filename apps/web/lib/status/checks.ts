@@ -36,9 +36,10 @@ export const CHECKS: readonly CheckDef[] = [
   },
   { name: "Strike API", url: "https://api.strike.me/v1/rates/ticker", okStatuses: [200, 401, 403] },
   { name: "Bitrefill API", url: "https://api.bitrefill.com/v2/ping", okStatuses: [200, 401, 403] },
+  // llm402.ai (from early research) does not resolve; LightningProx is a live L402 gateway. Override with L402_STATUS_URL.
   {
-    name: "L402 demo endpoint (llm402.ai)",
-    url: "https://llm402.ai/",
+    name: "L402 provider (lightningprox.com)",
+    url: process.env.L402_STATUS_URL ?? "https://lightningprox.com/",
     okStatuses: [200, 402, 404, 405],
   },
 ]

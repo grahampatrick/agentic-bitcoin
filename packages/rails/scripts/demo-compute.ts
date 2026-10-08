@@ -2,7 +2,7 @@
  * Demo: buy inference with sats. Policy → wallet (NWC) → L402 against a Lightning-paid LLM endpoint.
  *
  *   NWC_URL='nostr+walletconnect://…' pnpm --filter @agentic-bitcoin/rails demo:compute
- *   L402_URL (default https://llm402.ai/v1/chat/completions), L402_MAX_SATS (default 100), L402_BODY (JSON)
+ *   L402_URL is REQUIRED (llm402.ai from early research does not resolve; LightningProx or an Aperture route works). L402_MAX_SATS (default 100), L402_BODY (JSON)
  */
 import {
   type Action,
@@ -19,7 +19,13 @@ if (!nwcUrl) {
   console.error("Set NWC_URL to a budgeted nostr+walletconnect:// string (see docs/testing.md)")
   process.exit(2)
 }
-const url = process.env.L402_URL ?? "https://llm402.ai/v1/chat/completions"
+const url = process.env.L402_URL
+if (!url) {
+  console.error(
+    "Set L402_URL to a Lightning-paid (L402) endpoint, e.g. a LightningProx or Aperture route",
+  )
+  process.exit(2)
+}
 const maxSats = BigInt(process.env.L402_MAX_SATS ?? "100")
 const body =
   process.env.L402_BODY ??
