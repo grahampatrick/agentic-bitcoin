@@ -78,6 +78,12 @@ export interface BuyProduct extends Base {
   amountSats: Sats
 }
 
+export interface SearchProducts extends Base {
+  kind: "search_products"
+  merchant: MerchantName
+  query: string
+}
+
 export interface PayL402 extends Base {
   kind: "pay_l402"
   url: string
@@ -101,6 +107,7 @@ export type Action =
   | ScheduleBuy
   | CancelSchedule
   | BuyProduct
+  | SearchProducts
   | PayL402
 
 export type ActionKind = Action["kind"]
@@ -114,6 +121,7 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   schedule_buy: "exchange",
   cancel_schedule: "exchange",
   buy_product: "goods",
+  search_products: "goods",
   pay_l402: "compute",
 }
 
@@ -136,6 +144,7 @@ export function spendSats(action: Action): Sats {
     case "make_invoice":
     case "get_balance":
     case "cancel_schedule":
+    case "search_products":
       return 0n
   }
 }
@@ -157,6 +166,7 @@ export function destinationOf(action: Action): string | null {
     case "make_invoice":
     case "get_balance":
     case "cancel_schedule":
+    case "search_products":
       return null
   }
 }
@@ -185,6 +195,8 @@ export function describeAction(action: Action): string {
       return `Cancel schedule ${action.scheduleId}`
     case "buy_product":
       return `Buy "${action.description}" from ${action.merchant}`
+    case "search_products":
+      return `Search ${action.merchant} for "${action.query}"`
     case "pay_l402":
       return `Pay ${action.host} for an API request`
   }

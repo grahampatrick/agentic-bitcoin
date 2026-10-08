@@ -34,6 +34,13 @@ export interface ExecuteInput {
   newId?: () => string
   confirmation?: Confirmation
   context?: EvaluateContext
+  /**
+   * Seals bearer data (gift-card codes) before it is written to the ledger. Without it nothing is
+   * stored: the code is returned once to the caller and never persisted.
+   */
+  seal?: (plain: string) => string
+  /** How to wait for merchant delivery after paying (payment is not delivery, ADR-0011). */
+  delivery?: { pollMs: number; maxPolls: number; sleep?: (ms: number) => Promise<void> }
   /** M5: the scheduler's persistence hook. Required for schedule_* actions. */
   schedules?: {
     create(a: Extract<Action, { kind: "schedule_buy" }>): Promise<string>
@@ -107,8 +114,15 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
 
   // 4. The rail.
   try {
-    const { result, preimage, detail } = await dispatch(action, rails, input.schedules)
-    await ledger.append({ type: "succeeded", id, at: now().toISOString(), preimage, detail })
+    const { result, preimage, detail, sealed } = await dispatch(action, rails, input)
+    await ledger.append({
+      type: "succeeded",
+      id,
+      at: now().toISOString(),
+      preimage,
+      detail,
+      sealed,
+    })
     return { status: "succeeded", id, decision, result }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -134,8 +148,9 @@ function need<T>(rail: T | undefined, name: string): T {
 async function dispatch(
   action: Action,
   rails: Rails,
-  schedules: ExecuteInput["schedules"],
-): Promise<{ result: unknown; preimage?: string; detail?: string }> {
+  input: ExecuteInput,
+): Promise<{ result: unknown; preimage?: string; detail?: string; sealed?: string }> {
+  const schedules = input.schedules
   switch (action.kind) {
     case "get_balance": {
       const r = await need(rails.wallet, "wallet").getBalance()
@@ -191,13 +206,30 @@ async function dispatch(
         amountSats: order.amountSats,
         idempotencyKey: action.idempotencyKey,
       })
-      // Payment is not delivery (ADR-0011): report the order, caller polls `getOrder`.
-      const after: Order = await g.getOrder(order.orderId)
+      // Payment is not delivery (ADR-0011): poll the merchant until delivered (bounded).
+      const d = input.delivery ?? { pollMs: 2000, maxPolls: 30 }
+      const sleep = d.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
+      let after: Order = await g.getOrder(order.orderId)
+      for (
+        let i = 0;
+        i < d.maxPolls && after.state !== "delivered" && after.state !== "failed";
+        i++
+      ) {
+        await sleep(d.pollMs)
+        after = await g.getOrder(order.orderId)
+      }
+      const redemption = after.state === "delivered" ? after.redemption : undefined
       return {
         result: { order: after, payment: p },
         preimage: p.preimage,
         detail: `${after.orderId} ${after.state}`,
+        sealed: redemption && input.seal ? input.seal(redemption) : undefined,
       }
+    }
+    case "search_products": {
+      const g = need(rails.goods, "goods")
+      const products = await g.searchProducts(action.query)
+      return { result: { products }, detail: `${products.length} results` }
     }
     case "pay_l402": {
       const c = need(rails.compute, "compute")

@@ -12,6 +12,7 @@
 {"id":"dca-2","utterance":"set up a weekly $100 buy on strike, mondays","expect":{"tool":"schedule_buy","input":{"exchange":"strike","usd_cents":10000}}}
 {"id":"dca-3","utterance":"cancel schedule sch_42","expect":{"tool":"cancel_schedule","input":{"schedule_id":"sch_42"}}}
 {"id":"goods-1","utterance":"get me a $10 amazon gift card","expect":{"tool":"buy_product","input":{"merchant":"bitrefill","usd_cents":1000}}}
+{"id":"goods-0","utterance":"what amazon gift cards does bitrefill have?","expect":{"tool":"search_products","input":{"merchant":"bitrefill"}}}
 {"id":"goods-2","utterance":"top up my mint mobile for $20","expect":{"tool":"buy_product","input":{"merchant":"bitrefill","usd_cents":2000}}}
 {"id":"l402-1","utterance":"fetch https://llm402.ai/v1/models and pay up to 50 sats","expect":{"tool":"fetch_l402","input":{"url":"https://llm402.ai/v1/models","max_sats":50,"method":"GET"}}}
 {"id":"l402-2","utterance":"ask the sats-paid model at https://llm402.ai/v1/chat/completions to say hi, max 100 sats","expect":{"tool":"fetch_l402","input":{"max_sats":100,"method":"POST"}}}

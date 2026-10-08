@@ -14,7 +14,7 @@ import {
   type Policy,
   type PriceSnapshot,
 } from "@agentic-bitcoin/core"
-import { NwcWalletRail, StrikeExchangeRail } from "@agentic-bitcoin/rails"
+import { BitrefillGoodsRail, NwcWalletRail, StrikeExchangeRail } from "@agentic-bitcoin/rails"
 import { InMemoryScheduleStore, schedulesHook } from "@agentic-bitcoin/scheduler"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
@@ -55,6 +55,9 @@ const ctx: UserContext = {
       : new FakeWalletRail(),
     exchange: process.env.STRIKE_API_KEY
       ? new StrikeExchangeRail({ apiKey: process.env.STRIKE_API_KEY })
+      : undefined,
+    goods: process.env.BITREFILL_API_KEY
+      ? new BitrefillGoodsRail({ apiKey: process.env.BITREFILL_API_KEY })
       : undefined,
   },
   pending: new InMemoryPendingStore(),

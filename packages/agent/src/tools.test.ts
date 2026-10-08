@@ -152,6 +152,8 @@ function sampleInput(name: string): Record<string, unknown> {
       return { exchange: "strike", usd_cents: 100, cron: "0 14 * * 5" }
     case "cancel_schedule":
       return { schedule_id: "s" }
+    case "search_products":
+      return { merchant: "bitrefill", query: "amazon" }
     case "buy_product":
       return { merchant: "bitrefill", product_id: "p", description: "d", usd_cents: 100 }
     case "fetch_l402":

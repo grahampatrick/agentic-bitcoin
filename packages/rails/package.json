@@ -9,7 +9,8 @@
     "./wallet/nwc": "./src/wallet/nwc.ts",
     "./secrets": "./src/secrets/index.ts",
     "./compute/l402": "./src/compute/l402.ts",
-    "./exchange/strike": "./src/exchange/strike.ts"
+    "./exchange/strike": "./src/exchange/strike.ts",
+    "./goods/bitrefill": "./src/goods/bitrefill.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -17,7 +18,8 @@
     "test:wallet": "RUN_WALLET_CONTRACT=1 vitest run test/wallet-live.test.ts",
     "demo:pay": "tsx scripts/demo-pay.ts",
     "demo:compute": "tsx scripts/demo-compute.ts",
-    "demo:dca": "tsx scripts/demo-dca.ts"
+    "demo:dca": "tsx scripts/demo-dca.ts",
+    "demo:goods": "tsx scripts/demo-goods.ts"
   },
   "dependencies": {
     "@agentic-bitcoin/core": "workspace:*",

@@ -209,6 +209,13 @@ export const ACTIONS = {
     usdCents: 10_00n,
     amountSats: 12_100n,
   },
+  search: {
+    kind: "search_products",
+    idempotencyKey: "k-search-1",
+    requestedBy: "agent",
+    merchant: "bitrefill",
+    query: "amazon",
+  },
   compute: {
     kind: "pay_l402",
     idempotencyKey: "k-l402-1",

@@ -137,6 +137,21 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "search_products",
+    description:
+      "Search a merchant's catalogue (gift cards, phone top-ups, eSIMs). Read-only; use it to find a product_id before buy_product.",
+    input_schema: {
+      type: "object",
+      properties: {
+        merchant: { type: "string", description: "Merchant", enum: ["bitrefill"] },
+        query: str("Search words, e.g. 'amazon' or 'mint mobile'"),
+      },
+      required: ["merchant", "query"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "buy_product",
     description:
       "Buy a product (gift card, phone top-up, eSIM) from a merchant, paid in sats from the wallet. Always requires the user's confirmation.",
@@ -306,6 +321,13 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
     }
     case "cancel_schedule":
       return { kind: "cancel_schedule", ...base, scheduleId: input.schedule_id as string }
+    case "search_products":
+      return {
+        kind: "search_products",
+        ...base,
+        merchant: "bitrefill",
+        query: input.query as string,
+      }
     case "buy_product": {
       const usdCents: Cents = BigInt(input.usd_cents as number)
       return {

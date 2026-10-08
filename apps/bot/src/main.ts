@@ -17,7 +17,14 @@ import {
   type PriceSnapshot,
   type WalletRail,
 } from "@agentic-bitcoin/core"
-import { NwcWalletRail, StrikeExchangeRail, decryptSecret, parseKey } from "@agentic-bitcoin/rails"
+import {
+  BitrefillGoodsRail,
+  NwcWalletRail,
+  StrikeExchangeRail,
+  decryptSecret,
+  encryptSecret,
+  parseKey,
+} from "@agentic-bitcoin/rails"
 import {
   InMemoryScheduleStore,
   SupabaseScheduleStore,
@@ -69,6 +76,10 @@ const strike = env.STRIKE_API_KEY
   ? new StrikeExchangeRail({ apiKey: env.STRIKE_API_KEY })
   : undefined
 if (!strike) console.warn("[bot] STRIKE_API_KEY not set — exchange rail unavailable")
+const bitrefill = env.BITREFILL_API_KEY
+  ? new BitrefillGoodsRail({ apiKey: env.BITREFILL_API_KEY })
+  : undefined
+if (!bitrefill) console.warn("[bot] BITREFILL_API_KEY not set — goods rail unavailable")
 const wallets = new Map<string, WalletRail>()
 const secretsKey = env.SECRETS_KEY ? parseKey(env.SECRETS_KEY) : null
 if (!durable) console.warn("[bot] no SUPABASE env — in-memory stores (non-durable)")
@@ -92,7 +103,9 @@ async function resolveContext(userId: string): Promise<UserContext> {
     userId,
     policy: (await policies.get(userId)) ?? DEFAULT_POLICY,
     ledger: ledgers.forUser(userId),
-    rails: { wallet: await walletFor(userId), exchange: strike },
+    rails: { wallet: await walletFor(userId), exchange: strike, goods: bitrefill },
+    // gift-card codes are sealed into the ledger only when SECRETS_KEY exists; otherwise never stored
+    seal: secretsKey ? (s: string) => encryptSecret(s, secretsKey) : undefined,
     pending,
     schedules: schedulesHook(schedules, { sweepToWallet: env.SWEEP_TO_WALLET === "1" }),
   }

@@ -54,6 +54,8 @@ export interface UserContext {
   rails: Rails
   pending: PendingStore
   schedules?: Parameters<typeof execute>[0]["schedules"]
+  /** Seals bearer data before it reaches the ledger (ADR-0011). */
+  seal?: (plain: string) => string
 }
 
 export interface AgentDeps {
@@ -71,6 +73,8 @@ export interface TurnResult {
   /** Set when the turn ended with an action parked for confirmation. */
   pending?: { actionHash: string; summary: string }
   toolCalls: { name: string; status: string }[]
+  /** Bearer data (gift-card codes) to hand to the human directly. Never in history or the model's view. */
+  deliveries: string[]
 }
 
 const LLM_TOOLS: LlmTool[] = TOOLS.map((t) => ({
@@ -96,6 +100,7 @@ export async function runTurn(
   const price = await deps.price()
   const messages: LlmMessage[] = [...history, { role: "user", content: text }]
   const toolCalls: TurnResult["toolCalls"] = []
+  const deliveries: string[] = []
   let pending: TurnResult["pending"]
   const max = deps.maxIterations ?? 6
 
@@ -105,13 +110,19 @@ export async function runTurn(
     messages.push({ role: "assistant", content: assistantContent })
 
     if (res.stop_reason === "refusal") {
-      return { reply: "I can't help with that request.", history: messages, toolCalls, pending }
+      return {
+        reply: "I can't help with that request.",
+        history: messages,
+        toolCalls,
+        pending,
+        deliveries,
+      }
     }
     const uses = assistantContent.filter(
       (b): b is Extract<LlmContentBlock, { type: "tool_use" }> => b.type === "tool_use",
     )
     if (res.stop_reason !== "tool_use" || uses.length === 0) {
-      return { reply: textOf(assistantContent), history: messages, toolCalls, pending }
+      return { reply: textOf(assistantContent), history: messages, toolCalls, pending, deliveries }
     }
 
     const results: Extract<LlmMessage["content"], unknown[]>[number][] = []
@@ -123,6 +134,7 @@ export async function runTurn(
       })
       toolCalls.push({ name: use.name, status: r.status })
       if ("actionHash" in r) pending = { actionHash: r.actionHash, summary: r.summary }
+      if (r.deliverToUser) deliveries.push(r.deliverToUser)
       results.push({
         type: "tool_result",
         tool_use_id: use.id,
@@ -137,6 +149,7 @@ export async function runTurn(
     history: messages,
     toolCalls,
     pending,
+    deliveries,
   }
 }
 
@@ -155,8 +168,9 @@ type ToolOutcome =
       summary: string
       content: string
       isError: false
+      deliverToUser?: undefined
     }
-  | { status: string; content: string; isError: boolean }
+  | { status: string; content: string; isError: boolean; deliverToUser?: string }
 
 /** Execute one tool call through policy; the result is what the model sees. */
 export async function handleToolCall(
@@ -199,6 +213,7 @@ export async function handleToolCall(
     ledger: ctx.ledger,
     rails: ctx.rails,
     schedules: ctx.schedules,
+    seal: ctx.seal,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -233,6 +248,7 @@ export async function confirmPending(
     ledger: ctx.ledger,
     rails: ctx.rails,
     schedules: ctx.schedules,
+    seal: ctx.seal,
     now: opts.now,
     context: { price: opts.price },
     confirmation,
@@ -279,8 +295,16 @@ async function outcomeOf(
         content: toToolJson({ status: "failed", code: result.code, error: result.error }),
         isError: true,
       }
-    case "succeeded":
+    case "succeeded": {
+      const order = (
+        result.result as { order?: { state?: string; redemption?: string } } | undefined
+      )?.order
+      const deliverToUser =
+        order?.state === "delivered" && order.redemption
+          ? `Your purchase is delivered. ${order.redemption}\nTreat this like cash: store it safely, redeem it soon, do not share it.`
+          : undefined
       return {
+        deliverToUser,
         status: "succeeded",
         content: toToolJson({
           status: "succeeded",
@@ -290,6 +314,7 @@ async function outcomeOf(
         }),
         isError: false,
       }
+    }
   }
 }
 

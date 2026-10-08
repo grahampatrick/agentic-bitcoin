@@ -61,10 +61,13 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `packages/rails/src/exchange/strike.ts` (M5) | Strike quote→execute, ticker, balances, Lightning sweep payer; typed errors incl. region block; 8 tests + contract suite; `demo:dca` |
 | `packages/scheduler` (M5) | Cron parser (no deps), `Schedule` + memory/Supabase stores, `runDue` with slot claiming, `schedulesHook`, `makeSweep`; 21 tests; dev `worker` |
 | `supabase/migrations/0003_schedules.sql`, `docs/adr/0010` | Schedules table; schedules are actions |
+| `packages/rails/src/goods/bitrefill.ts` (M6) | Bitrefill search/invoice/poll/redemption, decoded-bolt11 amounts, typed errors; 7 tests + contract suite + executor e2e; `demo:goods` |
+| core `seal`/`delivery`, `search_products`; agent `deliveries` (M6) | Sealed redemption in the ledger, bounded delivery polling, read-only catalogue search, once-only code hand-off |
+| `docs/adr/0011` | Payment is not delivery; codes are bearer secrets |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M6+):** Bitrefill rail; per-user wallet/key pairing and onboarding (M7); Vercel cron route for the runner (OQ-4, optional). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account).
+- **Missing (M7+):** per-user wallet/key pairing, policy wizard, Signal onboarding, status page (M7); on-chain sweep (M8). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account), M6 `demo:goods` (needs a Bitrefill key + NWC string).
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -445,18 +448,24 @@ STRIKE_API_KEY=... pnpm tsx scripts/demo-dca.ts
 
 ### M6 — Goods rail: buy products with bitcoin (Bitrefill)
 
+**Status: CODE DONE 2026-10-07; live buy pending a Bitrefill key + NWC string.** `BitrefillGoodsRail` (search,
+lightning invoice, amount from the decoded BOLT11, invoice-then-order polling, redemption as one string) + executor
+delivery polling and **sealed** redemption in the ledger (`seal` option; nothing stored without it) + `search_products`
+read Action/tool + once-only code delivery to the human via the surface (never to the model or history).
+Bitrefill's reference omits the lightning field and the status enum; the adapter is tolerant and `demo:goods` verifies.
+
 **Goal:** "Get me a $50 Amazon gift card" or "top up my phone" is fulfilled from the user's Lightning
 wallet, and the agent only reports success once the code is actually delivered.
 
 **Deliverables**
-- [ ] `packages/rails/src/goods/bitrefill.ts`: product search, `createInvoice(products[])`, pay the
+- [x] `packages/rails/src/goods/bitrefill.ts`: product search, `createInvoice(products[])`, pay the
       returned BOLT11 through the wallet rail, poll invoice/order until `delivered`, return redemption data
       **encrypted into the ledger entry** (not into chat logs by default)
-- [ ] Policy: `BuyProduct` is **always** `NeedsConfirmation` (Bitrefill's own guidance), with product, price in
+- [x] Policy: `BuyProduct` is **always** `NeedsConfirmation` (Bitrefill's own guidance), with product, price in
       sats and fiat, and merchant in the confirm card
-- [ ] `scripts/demo-goods.ts`: smallest purchasable item (a $1–5 top-up or gift card)
-- [ ] Agent: `search_products`, `buy_product`; refuses unknown merchants; MCP exposes the same
-- [ ] `docs/adr/0011-payment-is-not-delivery.md`
+- [x] (written) / [ ] (run live) `packages/rails/scripts/demo-goods.ts`: smallest purchasable item (a $1–5 top-up or gift card)
+- [x] Agent: `search_products`, `buy_product`; refuses unknown merchants; MCP exposes the same
+- [x] `docs/adr/0011-payment-is-not-delivery.md`
 
 **CE Principle:** The "invoice → pay → poll → deliver" state machine is the template for every
 future merchant (domains, eSIMs, Fold, Oshi, Nostr marketplaces).
@@ -522,7 +531,7 @@ wallet's on-chain send. Deferred until M7 has users; captured so the Action unio
 | OQ-6 | How do we run Signal? | GM | **Decided: Signal is the user surface.** M3: run `signal-cli` in daemon/JSON-RPC mode on a dedicated number (a prepaid SIM or a VoIP number that accepts the Signal registration SMS; captcha on first register), link it as the bot identity, store the data dir encrypted on the Start9 or a small VPS. Telegram remains the dev surface. SMS dropped. |
 | OQ-7 | Where does the dogfood wallet live: Alby Hub on Start9, or Coinos/hosted? | GM | M2: Alby Hub on Start9 (self-custodial, Tor). If channel liquidity is a hassle, use Coinos for the demo and document both in `docs/testing.md`. |
 | OQ-8 | Is "buy bitcoin on behalf of a user via their own API key" a money-transmission or advisory concern in the US? | GM (counsel) | Before public M7: one hour with counsel on the non-custodial, user-key, no-advice design; ADR-0001 + Terms language updated with the outcome. Until then, M5 ships behind `EXCHANGE_RAIL_ENABLED=false` for the public instance. |
-| OQ-9 | Exact Bitrefill Personal API invoice/pay/poll endpoints and whether Lightning invoices are returned directly? | Claude | M6 first task: read `docs.bitrefill.com` and `bitrefill/agents` repo; encode the real shapes into `packages/fixtures` before writing the adapter. |
+| OQ-9 | Exact Bitrefill Personal API invoice/pay/poll endpoints and whether Lightning invoices are returned directly? | Claude | **Mostly resolved 2026-10-07:** base `/v2`, Bearer auth, `POST /invoices` with `payment_method: "lightning"`, poll `GET /invoices/{id}` to `complete`, `GET /orders/{id}` → `redemption_info {code,link,pin,instructions}` (from the bitrefill/agents repo + OpenAPI). Still unverified: the exact lightning field name (`payment.address` vs `payment.lightning_invoice`) and the status enum — adapter accepts both; `demo:goods` confirms. |
 | OQ-10 | Name/handle availability and the GitHub org? | GM | **Partly resolved:** `grahampatrick/agentic-bitcoin` is public and `agentic-bitcoin.vercel.app` is live. Domain (`agenticbitcoin.com` / `.xyz`) still to check and buy; set `NEXT_PUBLIC_SITE_URL` in Vercel when it exists. |
 
 ---

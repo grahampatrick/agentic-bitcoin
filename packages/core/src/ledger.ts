@@ -13,7 +13,15 @@ export type Outcome = "awaiting_confirmation" | "denied" | "pending" | "succeede
 export type LedgerEvent =
   | { type: "requested"; id: string; at: string; action: Action; decision: Decision }
   | { type: "started"; id: string; at: string }
-  | { type: "succeeded"; id: string; at: string; preimage?: string; detail?: string }
+  | {
+      type: "succeeded"
+      id: string
+      at: string
+      preimage?: string
+      detail?: string
+      /** Encrypted bearer data (gift-card code) — only ever stored sealed. */
+      sealed?: string
+    }
   | { type: "failed"; id: string; at: string; error: string }
 
 export interface LedgerEntry {
@@ -25,6 +33,7 @@ export interface LedgerEntry {
   outcome: Outcome
   preimage?: string
   detail?: string
+  sealed?: string
   error?: string
   /** When the final outcome was recorded, if any. */
   resolvedAt?: string
@@ -63,6 +72,7 @@ export function foldEntries(events: readonly LedgerEvent[]): LedgerEntry[] {
       e.outcome = "succeeded"
       e.preimage = ev.preimage
       e.detail = ev.detail
+      e.sealed = ev.sealed
       e.resolvedAt = ev.at
     }
     if (ev.type === "failed") {

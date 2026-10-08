@@ -20,7 +20,10 @@ function setup(policy: Policy = POLICIES.open, rails: Partial<Rails> = {}) {
     goods: new FakeGoodsRail(),
     ...rails,
   }
-  const run = (action: Action, extra: { confirmation?: Confirmation; policy?: Policy } = {}) =>
+  const run = (
+    action: Action,
+    extra: { confirmation?: Confirmation; policy?: Policy; seal?: (s: string) => string } = {},
+  ) =>
     execute({
       action,
       policy: extra.policy ?? policy,
@@ -30,6 +33,8 @@ function setup(policy: Policy = POLICIES.open, rails: Partial<Rails> = {}) {
       newId,
       confirmation: extra.confirmation,
       context: { price: PRICE },
+      seal: extra.seal,
+      delivery: { pollMs: 0, maxPolls: 3, sleep: async () => {} },
     })
   return { ledger, wallet, rails: r, run }
 }
@@ -99,7 +104,7 @@ describe("execute: confirmation binding", () => {
     })
     expect(res.status).toBe("succeeded")
     const result = (res as { result: { order: { state: string } } }).result
-    expect(result.order.state).toBe("unpaid") // payment is not delivery; the fake hasn't observed it yet
+    expect(result.order.state).toBe("unpaid") // payment is not delivery; the fake never observed it (no autoProgress) and polling is bounded
     expect(rails.goods).toBeDefined()
   })
   it("rejects a confirmation for a different action (tampered amount)", async () => {
@@ -186,6 +191,58 @@ describe("execute: daily cap from the ledger window", () => {
       newId,
     })
     expect(b.status).toBe("succeeded")
+  })
+})
+
+describe("execute: goods delivery and sealing (ADR-0011)", () => {
+  it("polls until delivered, returns the code once, and stores only the sealed form in the ledger", async () => {
+    const goods = new FakeGoodsRail()
+    goods.autoProgress = true
+    const { run, ledger } = setup(POLICIES.open, { goods })
+    const first = await run(ACTIONS.giftCard)
+    if (first.status !== "awaiting_confirmation") throw new Error()
+    const res = await run(ACTIONS.giftCard, {
+      confirmation: { actionHash: first.decision.actionHash, confirmedBy: "gm", at: "t" },
+      seal: (s) => `sealed(${s.length})`,
+    })
+    expect(res.status).toBe("succeeded")
+    const order = (res as { result: { order: { state: string; redemption?: string } } }).result
+      .order
+    expect(order.state).toBe("delivered")
+    expect(order.redemption).toMatch(/^FAKE-CODE-/)
+    const entry = (await readEntries(ledger)).find((e) => e.outcome === "succeeded")
+    expect(entry?.detail).toMatch(/delivered$/)
+    expect(entry?.sealed).toBe(`sealed(${order.redemption?.length})`)
+    expect(
+      JSON.stringify(entry, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    ).not.toContain("FAKE-CODE")
+  })
+  it("without a sealer, nothing about the code reaches the ledger", async () => {
+    const goods = new FakeGoodsRail()
+    goods.autoProgress = true
+    const { run, ledger } = setup(POLICIES.open, { goods })
+    const first = await run(ACTIONS.giftCard)
+    if (first.status !== "awaiting_confirmation") throw new Error()
+    await run(ACTIONS.giftCard, {
+      confirmation: { actionHash: first.decision.actionHash, confirmedBy: "gm", at: "t" },
+    })
+    const entry = (await readEntries(ledger)).find((e) => e.outcome === "succeeded")
+    expect(entry?.sealed).toBeUndefined()
+    expect(
+      JSON.stringify(entry, (_k, v) => (typeof v === "bigint" ? v.toString() : v)),
+    ).not.toContain("FAKE-CODE")
+  })
+  it("search_products is a read on the goods rail: no spend, no confirmation", async () => {
+    const { run } = setup()
+    const res = await run({
+      kind: "search_products",
+      merchant: "bitrefill",
+      query: "amazon",
+      idempotencyKey: "s1",
+      requestedBy: "agent",
+    })
+    expect(res.status).toBe("succeeded")
+    expect((res as { result: { products: unknown[] } }).result.products).toHaveLength(1)
   })
 })
 

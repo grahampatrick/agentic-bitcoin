@@ -64,6 +64,7 @@ export class Dispatcher {
         result.reply || "(no reply)",
         result.pending ? { actionHash: result.pending.actionHash } : undefined,
       )
+      for (const d of result.deliveries) await reply(d)
     } catch (err) {
       console.error("[dispatcher]", err)
       await reply("Something went wrong on my side. Nothing was sent. Try again in a moment.")
@@ -90,10 +91,13 @@ export class Dispatcher {
       code?: string
       result?: { preimage?: string }
     }
-    if (parsed.status === "succeeded")
-      return reply(
+    if (parsed.status === "succeeded") {
+      await reply(
         `Done. ${parsed.summary ?? ""}${parsed.result?.preimage ? ` Preimage ${parsed.result.preimage}` : ""}`.trim(),
       )
+      if (out.deliverToUser) await reply(out.deliverToUser)
+      return
+    }
     if (parsed.status === "no_pending_action")
       return reply("That approval has expired or was already used.")
     return reply(

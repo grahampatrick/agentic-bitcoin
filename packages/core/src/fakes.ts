@@ -201,6 +201,10 @@ export class FakeGoodsRail implements GoodsRail {
     { id: "topup-mint-10", name: "Mint Mobile top-up $10", usdCents: 10_00n },
   ]
 
+  /** When set, each `getOrder` after payment advances unpaid→paid→delivered automatically. */
+  autoProgress = false
+  private readonly polls = new Map<string, number>()
+
   constructor(private readonly usdCentsPerBtc: Cents = 8_316_900n) {}
 
   searchProducts(query: string): Promise<Product[]> {
@@ -229,6 +233,12 @@ export class FakeGoodsRail implements GoodsRail {
   getOrder(orderId: string): Promise<Order> {
     const o = this.orders.get(orderId)
     if (!o) return Promise.reject(new RailError(this.kind, "NOT_FOUND", orderId))
+    if (this.autoProgress) {
+      const n = (this.polls.get(orderId) ?? 0) + 1
+      this.polls.set(orderId, n)
+      if (n >= 1 && o.state === "unpaid") this.markPaid(orderId)
+      if (n >= 2 && o.state === "paid") this.deliver(orderId)
+    }
     return Promise.resolve({ ...o })
   }
 

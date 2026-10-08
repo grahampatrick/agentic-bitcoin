@@ -53,3 +53,15 @@ pnpm --filter @agentic-bitcoin/scheduler worker                       # no creds
 
 The Strike key needs the currency-exchange quote create/execute, rates and balances scopes. Add the
 Lightning payment-quote scopes ONLY if you turn on the sweep (`SWEEP_TO_WALLET=1` in the bot).
+
+## Goods rail (M6): buy a product with sats
+
+```bash
+BITREFILL_API_KEY=… NWC_URL=… SECRETS_KEY=… pnpm --filter @agentic-bitcoin/rails demo:goods
+GOODS_QUERY=mint GOODS_USD_CENTS=500 … demo:goods     # smallest sensible top-up
+```
+
+Bitrefill's no-charge test products need a Business key, so the Personal-key demo buys a real
+$5 item. The demo prints the confirmation summary, waits 5 s, pays, polls until delivered, and
+prints a masked code. With `SECRETS_KEY` the code is sealed into the ledger entry; without it,
+nothing about the code is stored.
