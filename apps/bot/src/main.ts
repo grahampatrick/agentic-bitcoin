@@ -17,7 +17,14 @@ import {
   type PriceSnapshot,
   type WalletRail,
 } from "@agentic-bitcoin/core"
-import { NwcWalletRail, decryptSecret, parseKey } from "@agentic-bitcoin/rails"
+import { NwcWalletRail, StrikeExchangeRail, decryptSecret, parseKey } from "@agentic-bitcoin/rails"
+import {
+  InMemoryScheduleStore,
+  SupabaseScheduleStore,
+  makeSweep,
+  runDue,
+  schedulesHook,
+} from "@agentic-bitcoin/scheduler"
 import { Dispatcher } from "./dispatcher"
 import {
   InMemoryHistoryStore,
@@ -56,6 +63,12 @@ const ledgers: LedgerStoreFactory = db
       },
     }
 const pending: PendingStore = new InMemoryPendingStore()
+const schedules = db ? new SupabaseScheduleStore(db) : new InMemoryScheduleStore()
+// Until per-user key entry (M7), one STRIKE_API_KEY serves the dev operator; absent → exchange rail off.
+const strike = env.STRIKE_API_KEY
+  ? new StrikeExchangeRail({ apiKey: env.STRIKE_API_KEY })
+  : undefined
+if (!strike) console.warn("[bot] STRIKE_API_KEY not set — exchange rail unavailable")
 const wallets = new Map<string, WalletRail>()
 const secretsKey = env.SECRETS_KEY ? parseKey(env.SECRETS_KEY) : null
 if (!durable) console.warn("[bot] no SUPABASE env — in-memory stores (non-durable)")
@@ -79,8 +92,9 @@ async function resolveContext(userId: string): Promise<UserContext> {
     userId,
     policy: (await policies.get(userId)) ?? DEFAULT_POLICY,
     ledger: ledgers.forUser(userId),
-    rails: { wallet: await walletFor(userId) },
+    rails: { wallet: await walletFor(userId), exchange: strike },
     pending,
+    schedules: schedulesHook(schedules, { sweepToWallet: env.SWEEP_TO_WALLET === "1" }),
   }
 }
 
@@ -121,4 +135,32 @@ const dispatcher = new Dispatcher({
   history,
 })
 await dispatcher.start()
+
+// Scheduler: once a minute, fire due recurring buys through the same policy + ledger (ADR-0010).
+const sweep = makeSweep((rails) =>
+  rails.exchange instanceof StrikeExchangeRail ? rails.exchange : null,
+)
+const runSchedules = async () => {
+  try {
+    const r = await runDue({
+      schedules,
+      resolve: async (userId) => {
+        const c = await resolveContext(userId)
+        return { policy: c.policy, ledger: c.ledger, rails: c.rails }
+      },
+      price,
+      sweep,
+      log: (l) => console.error(`[scheduler] ${l}`),
+    })
+    for (const f of r.fired) {
+      await surface.send(f.userId, {
+        text: `Scheduled buy ${f.status}${f.detail ? `: ${f.detail}` : ""}.`,
+      })
+    }
+  } catch (err) {
+    console.error("[scheduler] run failed", err)
+  }
+}
+setInterval(runSchedules, 60_000)
+void runSchedules()
 console.error(`[bot] ${surface.kind} surface up · ${durable ? "supabase" : "memory"} stores`)

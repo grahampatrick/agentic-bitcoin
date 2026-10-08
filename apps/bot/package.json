@@ -13,6 +13,7 @@
     "@agentic-bitcoin/agent": "workspace:*",
     "@agentic-bitcoin/core": "workspace:*",
     "@agentic-bitcoin/rails": "workspace:*",
+    "@agentic-bitcoin/scheduler": "workspace:*",
     "@supabase/supabase-js": "2.47.10",
     "grammy": "1.46.0"
   },

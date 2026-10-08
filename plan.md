@@ -58,10 +58,13 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `supabase/migrations/0002_agent.sql`, `docs/adr/0007–0008` | Per-user ledger/policy/secrets/history tables; MCP-first; no advice |
 | `packages/rails/src/compute/l402.ts` (M4) | L402/LSAT challenge parsing with decoded amount, per-host credential cache, bounded bodies, no-redirect-with-credential; 11 tests incl. local 402 server handshake; `demo:compute` |
 | `docs/adr/0009` | L402 over x402 |
+| `packages/rails/src/exchange/strike.ts` (M5) | Strike quote→execute, ticker, balances, Lightning sweep payer; typed errors incl. region block; 8 tests + contract suite; `demo:dca` |
+| `packages/scheduler` (M5) | Cron parser (no deps), `Schedule` + memory/Supabase stores, `runDue` with slot claiming, `schedulesHook`, `makeSweep`; 21 tests; dev `worker` |
+| `supabase/migrations/0003_schedules.sql`, `docs/adr/0010` | Schedules table; schedules are actions |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M5+):** Strike and Bitrefill rails; scheduler; per-user wallet pairing (M7). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string).
+- **Missing (M6+):** Bitrefill rail; per-user wallet/key pairing and onboarding (M7); Vercel cron route for the runner (OQ-4, optional). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account).
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -401,21 +404,28 @@ NWC_URL=... pnpm tsx scripts/demo-compute.ts # prints model answer + sats paid +
 
 ### M5 — Exchange rail: buy bitcoin and DCA (Strike)
 
+**Status: CODE DONE 2026-10-07; live buy pending a Strike key.** `StrikeExchangeRail` (quote→execute in one call,
+typed 422/401/404/451 mapping, decimal↔integer boundary, optional Lightning sweep) + `@agentic-bitcoin/scheduler`
+(dependency-free 5-field cron, memory + Supabase stores, slot-claiming minute runner, `schedulesHook` for the executor);
+31 new tests incl. the Strike contract suite on a scripted API. The bot fires due schedules once a minute and messages
+the user; the MCP CLI accepts `STRIKE_API_KEY`. Worker demo (`$1 every minute`, fired twice in consecutive minutes,
+cancelled, zero after) verified on fakes 2026-10-08.
+
 **Goal:** "Buy $25 of bitcoin every Friday" works on the user's own Strike account with their
 scoped API key, and the schedule survives restarts.
 
 **Deliverables**
-- [ ] `packages/rails/src/exchange/strike.ts`: `getRate`, `createExchangeQuote(USD→BTC, amountCents)`,
+- [x] `packages/rails/src/exchange/strike.ts`: `getRate`, `createExchangeQuote(USD→BTC, amountCents)`,
       `executeQuote(id)` before expiry; map 422 `BALANCE_TOO_LOW` / `EXCHANGE_RATE_NOT_AVAILABLE` to typed errors;
       required scopes documented
-- [ ] `packages/rails/src/exchange/coinbase.ts` **interface-only stub** (second adapter proves the interface)
-- [ ] `packages/scheduler`: durable schedules (`cron` expr + amount + rail + policy snapshot) in Supabase; runner
+- [x] `packages/rails/src/exchange/coinbase.ts` **interface-only stub** (second adapter proves the interface)
+- [x] `packages/scheduler`: durable schedules (`cron` expr + amount + rail + policy snapshot) in Supabase; runner
       as a Vercel cron **or** a tiny long-running worker (decide per OQ-4); each run is an `Action` with
       `requestedBy: 'schedule'` so caps and the ledger apply
-- [ ] Optional "withdraw to Lightning" step after a buy (Strike → user's NWC wallet) so bought sats leave the exchange
-- [ ] `scripts/demo-dca.ts`: create a $5 quote → execute → ledger entry (needs a funded Strike account; see OQ-3)
-- [ ] Agent: `buy_bitcoin`, `schedule_buy`, `cancel_schedule` with explicit no-advice guardrails in the prompt
-- [ ] `docs/adr/0010-schedules-are-actions.md`
+- [x] Optional "withdraw to Lightning" step after a buy (Strike → user's NWC wallet) so bought sats leave the exchange
+- [x] (written) / [ ] (run live) `packages/rails/scripts/demo-dca.ts`: create a $5 quote → execute → ledger entry (needs a funded Strike account; see OQ-3)
+- [x] Agent: `buy_bitcoin`, `schedule_buy`, `cancel_schedule` with explicit no-advice guardrails in the prompt
+- [x] `docs/adr/0010-schedules-are-actions.md`
 
 **CE Principle:** Schedules reuse policy + ledger unchanged; a second exchange adapter is a one-file PR.
 
@@ -506,8 +516,8 @@ wallet's on-chain send. Deferred until M7 has users; captured so the Action unio
 |---|---|---|---|
 | OQ-1 | Which OFL fonts stand in for Aime (serif, 24px body) and Melange (sans, legal)? | GM | **Resolved 2026-10-07:** compared Newsreader, Source Serif 4, Instrument Serif, Fraunces at 24px; Newsreader + Inter, vendored (ADR-0003). GM can veto by swapping the files. |
 | OQ-2 | Price feed primary source: mempool.space `/api/v1/prices` vs CoinGecko `simple/price`? | Claude | M0: implement mempool.space primary (no key, bitcoin-native), CoinGecko fallback; add a third fallback (Coinbase spot) only if the price route logs >1 outage/week in Vercel. |
-| OQ-3 | Does Strike offer a sandbox, or do we test against a funded live account with $5 quotes? | GM | Before M5: check `docs.strike.me` for a sandbox/env flag; if none, create a dedicated Strike account with a $20 balance and a quote-only key for CI-adjacent manual runs. Fixtures cover CI either way. |
-| OQ-4 | Scheduler runtime: Vercel cron (stateless, minute granularity) vs a small always-on worker (Fly/Start9)? | GM + Claude | M5 ADR-0010: start on Vercel cron hitting `/api/schedules/run` with a shared secret; move to a worker if runs exceed 60s or need sub-minute cadence. |
+| OQ-3 | Does Strike offer a sandbox, or do we test against a funded live account with $5 quotes? | GM | **Checked 2026-10-07: docs.strike.me shows no sandbox.** CI runs the Strike contract suite on a scripted API. GM: create a dedicated Strike account with ~$20 and a key scoped to quote create/execute + rates + balances, then run `demo:dca` ($5). |
+| OQ-4 | Scheduler runtime: Vercel cron (stateless, minute granularity) vs a small always-on worker (Fly/Start9)? | GM + Claude | **Resolved 2026-10-07 (ADR-0010):** the runner is a plain function; the bot process calls it every minute (it already runs as a worker for Signal). Slot claiming makes a second runner safe, so a Vercel cron route can be added later without redesign. |
 | OQ-5 | Which Claude model/params for the agent loop and evals? | Claude | **Resolved 2026-10-07:** Claude Opus 5.5 (`claude-opus-5-5`), adaptive thinking, effort `medium`, max_tokens 4096, server-side refusal fallback `"default"`; pinned in `packages/agent/src/model.ts`, noted in ADR-0007. Re-tune effort once the evals run. |
 | OQ-6 | How do we run Signal? | GM | **Decided: Signal is the user surface.** M3: run `signal-cli` in daemon/JSON-RPC mode on a dedicated number (a prepaid SIM or a VoIP number that accepts the Signal registration SMS; captcha on first register), link it as the bot identity, store the data dir encrypted on the Start9 or a small VPS. Telegram remains the dev surface. SMS dropped. |
 | OQ-7 | Where does the dogfood wallet live: Alby Hub on Start9, or Coinos/hosted? | GM | M2: Alby Hub on Start9 (self-custodial, Tor). If channel liquidity is a hassle, use Coinos for the demo and document both in `docs/testing.md`. |

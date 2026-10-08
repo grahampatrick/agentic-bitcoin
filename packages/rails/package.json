@@ -8,14 +8,16 @@
     ".": "./src/index.ts",
     "./wallet/nwc": "./src/wallet/nwc.ts",
     "./secrets": "./src/secrets/index.ts",
-    "./compute/l402": "./src/compute/l402.ts"
+    "./compute/l402": "./src/compute/l402.ts",
+    "./exchange/strike": "./src/exchange/strike.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:wallet": "RUN_WALLET_CONTRACT=1 vitest run test/wallet-live.test.ts",
     "demo:pay": "tsx scripts/demo-pay.ts",
-    "demo:compute": "tsx scripts/demo-compute.ts"
+    "demo:compute": "tsx scripts/demo-compute.ts",
+    "demo:dca": "tsx scripts/demo-dca.ts"
   },
   "dependencies": {
     "@agentic-bitcoin/core": "workspace:*",

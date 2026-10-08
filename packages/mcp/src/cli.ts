@@ -14,7 +14,8 @@ import {
   type Policy,
   type PriceSnapshot,
 } from "@agentic-bitcoin/core"
-import { NwcWalletRail } from "@agentic-bitcoin/rails"
+import { NwcWalletRail, StrikeExchangeRail } from "@agentic-bitcoin/rails"
+import { InMemoryScheduleStore, schedulesHook } from "@agentic-bitcoin/scheduler"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
 import { createServer } from "./server.js"
@@ -52,8 +53,13 @@ const ctx: UserContext = {
     wallet: process.env.NWC_URL
       ? new NwcWalletRail({ connectionString: process.env.NWC_URL })
       : new FakeWalletRail(),
+    exchange: process.env.STRIKE_API_KEY
+      ? new StrikeExchangeRail({ apiKey: process.env.STRIKE_API_KEY })
+      : undefined,
   },
   pending: new InMemoryPendingStore(),
+  // schedules are created through policy; firing them needs the bot/worker runner (ADR-0010)
+  schedules: schedulesHook(new InMemoryScheduleStore()),
 }
 if (!process.env.NWC_URL)
   console.error("[agentic-bitcoin-mcp] NWC_URL not set — using the FAKE wallet (no real sats)")

@@ -52,6 +52,11 @@ pnpm build       # next build
 ```
 apps/web            Next 15 landing: /, /text, /privacy, /terms, /api/price, /api/waitlist
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
+packages/rails      NWC wallet, L402 compute, Strike exchange (+ Breez/Coinbase stubs), secrets
+packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)
+packages/agent      tool defs from the Action union, prompt, Claude loop, evals
+packages/mcp        MCP server (stdio + HTTP) over the same tools
+apps/bot            Telegram (dev) + Signal (users) chat surfaces, dispatcher, stores
 packages/fixtures   shared test data for every package
 packages/brand      design tokens → tokens.css
 docs/adr            architecture decision records

@@ -43,3 +43,13 @@ L402_URL=https://other.example/v1/x L402_MAX_SATS=50 pnpm --filter @agentic-bitc
 The demo refuses to pay if the 402 challenge asks for more than `L402_MAX_SATS`, and prints the
 ledger entry (`paid N sats, HTTP 200`). The unit suite covers the full handshake against a local
 402 server with the fake wallet, so `pnpm test` needs no network.
+
+## Exchange rail and scheduler (M5)
+
+```bash
+STRIKE_API_KEY=… pnpm --filter @agentic-bitcoin/rails demo:dca        # one $5 buy on your own Strike account
+pnpm --filter @agentic-bitcoin/scheduler worker                       # no creds: "$1 every minute" on fakes, fires twice, cancels
+```
+
+The Strike key needs the currency-exchange quote create/execute, rates and balances scopes. Add the
+Lightning payment-quote scopes ONLY if you turn on the sweep (`SWEEP_TO_WALLET=1` in the bot).

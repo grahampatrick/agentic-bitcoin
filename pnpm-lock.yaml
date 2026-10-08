@@ -26,6 +26,9 @@ importers:
       '@agentic-bitcoin/rails':
         specifier: workspace:*
         version: link:../../packages/rails
+      '@agentic-bitcoin/scheduler':
+        specifier: workspace:*
+        version: link:../../packages/scheduler
       '@supabase/supabase-js':
         specifier: 2.47.10
         version: 2.47.10
@@ -155,6 +158,9 @@ importers:
       '@agentic-bitcoin/rails':
         specifier: workspace:*
         version: link:../rails
+      '@agentic-bitcoin/scheduler':
+        specifier: workspace:*
+        version: link:../scheduler
       '@anthropic-ai/sdk':
         specifier: 0.132.0
         version: 0.132.0(zod@4.6.5)
@@ -208,6 +214,34 @@ importers:
       '@vitest/coverage-v8':
         specifier: 2.1.8
         version: 2.1.8(vitest@2.1.8(@types/node@22.10.7))
+      tsx:
+        specifier: 4.19.2
+        version: 4.19.2
+      typescript:
+        specifier: 5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.7)
+
+  packages/scheduler:
+    dependencies:
+      '@agentic-bitcoin/core':
+        specifier: workspace:*
+        version: link:../core
+      '@supabase/supabase-js':
+        specifier: 2.47.10
+        version: 2.47.10
+    devDependencies:
+      '@agentic-bitcoin/fixtures':
+        specifier: workspace:*
+        version: link:../fixtures
+      '@agentic-bitcoin/rails':
+        specifier: workspace:*
+        version: link:../rails
+      '@types/node':
+        specifier: 22.10.7
+        version: 22.10.7
       tsx:
         specifier: 4.19.2
         version: 4.19.2
