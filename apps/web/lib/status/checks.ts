@@ -40,7 +40,8 @@ export const CHECKS: readonly CheckDef[] = [
   {
     name: "L402 provider (lightningprox.com)",
     url: process.env.L402_STATUS_URL ?? "https://lightningprox.com/",
-    okStatuses: [200, 402, 404, 405],
+    // 403 = the site's bot protection answering a datacenter IP: reachable, which is all this probe asks
+    okStatuses: [200, 402, 403, 404, 405],
   },
 ]
 
