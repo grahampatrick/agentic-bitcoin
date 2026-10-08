@@ -11,7 +11,13 @@ import {
   serializeAction,
 } from "@agentic-bitcoin/core"
 import { type SupabaseClient, createClient } from "@supabase/supabase-js"
-import type { HistoryStore, LedgerStoreFactory, PolicyStore, SecretStore } from "./stores"
+import type {
+  HistoryStore,
+  LedgerStoreFactory,
+  PolicyStore,
+  SecretName,
+  SecretStore,
+} from "./stores"
 
 export function supabaseClient(url: string, serviceKey: string): SupabaseClient {
   return createClient(url, serviceKey, { auth: { persistSession: false } })
@@ -88,7 +94,7 @@ export class SupabasePolicyStore implements PolicyStore {
 
 export class SupabaseSecretStore implements SecretStore {
   constructor(private readonly db: SupabaseClient) {}
-  async get(userId: string, name: "nwc"): Promise<string | null> {
+  async get(userId: string, name: SecretName): Promise<string | null> {
     const { data, error } = await this.db
       .from("user_secrets")
       .select("blob")
@@ -98,11 +104,19 @@ export class SupabaseSecretStore implements SecretStore {
     if (error) throw new Error(`secret read failed: ${error.message}`)
     return data ? (data.blob as string) : null
   }
-  async set(userId: string, name: "nwc", blob: string): Promise<void> {
+  async set(userId: string, name: SecretName, blob: string): Promise<void> {
     const { error } = await this.db
       .from("user_secrets")
       .upsert({ user_id: userId, name, blob, updated_at: new Date().toISOString() })
     if (error) throw new Error(`secret write failed: ${error.message}`)
+  }
+  async delete(userId: string, name: SecretName): Promise<void> {
+    const { error } = await this.db
+      .from("user_secrets")
+      .delete()
+      .eq("user_id", userId)
+      .eq("name", name)
+    if (error) throw new Error(`secret delete failed: ${error.message}`)
   }
 }
 

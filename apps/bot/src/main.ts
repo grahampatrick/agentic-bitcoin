@@ -38,6 +38,7 @@ import {
   InMemoryPolicyStore,
   InMemorySecretStore,
   type LedgerStoreFactory,
+  type SecretName,
 } from "./store/stores"
 import {
   SupabaseHistoryStore,
@@ -71,39 +72,58 @@ const ledgers: LedgerStoreFactory = db
     }
 const pending: PendingStore = new InMemoryPendingStore()
 const schedules = db ? new SupabaseScheduleStore(db) : new InMemoryScheduleStore()
-// Until per-user key entry (M7), one STRIKE_API_KEY serves the dev operator; absent → exchange rail off.
-const strike = env.STRIKE_API_KEY
-  ? new StrikeExchangeRail({ apiKey: env.STRIKE_API_KEY })
-  : undefined
-if (!strike) console.warn("[bot] STRIKE_API_KEY not set — exchange rail unavailable")
-const bitrefill = env.BITREFILL_API_KEY
-  ? new BitrefillGoodsRail({ apiKey: env.BITREFILL_API_KEY })
-  : undefined
-if (!bitrefill) console.warn("[bot] BITREFILL_API_KEY not set — goods rail unavailable")
-const wallets = new Map<string, WalletRail>()
 const secretsKey = env.SECRETS_KEY ? parseKey(env.SECRETS_KEY) : null
 if (!durable) console.warn("[bot] no SUPABASE env — in-memory stores (non-durable)")
-if (!env.NWC_URL) console.warn("[bot] NWC_URL not set — FAKE wallet, no real sats")
+if (!secretsKey)
+  console.warn(
+    "[bot] SECRETS_KEY not set — /pair and /key are disabled; using env credentials only",
+  )
+if (!env.NWC_URL) console.warn("[bot] NWC_URL not set — users without /pair get the FAKE wallet")
 
-async function walletFor(userId: string): Promise<WalletRail> {
-  const cached = wallets.get(userId)
+/** Per-user credential → rail cache, rebuilt when /pair or /key changes something. */
+const railCache = new Map<
+  string,
+  { wallet: WalletRail; exchange?: StrikeExchangeRail; goods?: BitrefillGoodsRail }
+>()
+async function secret(userId: string, name: SecretName): Promise<string | null> {
+  if (!secretsKey) return null
+  const blob = await secrets.get(userId, name)
+  return blob ? decryptSecret(blob, secretsKey) : null
+}
+async function railsFor(userId: string) {
+  const cached = railCache.get(userId)
   if (cached) return cached
-  let rail: WalletRail
-  const blob = secretsKey ? await secrets.get(userId, "nwc") : null
-  if (blob && secretsKey)
-    rail = new NwcWalletRail({ connectionString: decryptSecret(blob, secretsKey) })
-  else if (env.NWC_URL) rail = new NwcWalletRail({ connectionString: env.NWC_URL })
-  else rail = new FakeWalletRail()
-  wallets.set(userId, rail)
-  return rail
+  const nwc = (await secret(userId, "nwc")) ?? env.NWC_URL
+  const strikeKey = (await secret(userId, "strike")) ?? env.STRIKE_API_KEY
+  const bitrefillKey = (await secret(userId, "bitrefill")) ?? env.BITREFILL_API_KEY
+  const built = {
+    wallet: nwc ? new NwcWalletRail({ connectionString: nwc }) : new FakeWalletRail(),
+    exchange: strikeKey ? new StrikeExchangeRail({ apiKey: strikeKey }) : undefined,
+    goods: bitrefillKey ? new BitrefillGoodsRail({ apiKey: bitrefillKey }) : undefined,
+  }
+  railCache.set(userId, built)
+  return built
+}
+function onCredentialsChanged(userId: string): void {
+  railCache.get(userId)?.wallet && (railCache.get(userId)?.wallet as NwcWalletRail).close?.()
+  railCache.delete(userId)
+}
+async function probeWallet(connectionString: string) {
+  const rail = new NwcWalletRail({ connectionString })
+  try {
+    return await rail.describeConnection()
+  } finally {
+    rail.close()
+  }
 }
 
 async function resolveContext(userId: string): Promise<UserContext> {
+  const rails = await railsFor(userId)
   return {
     userId,
     policy: (await policies.get(userId)) ?? DEFAULT_POLICY,
     ledger: ledgers.forUser(userId),
-    rails: { wallet: await walletFor(userId), exchange: strike, goods: bitrefill },
+    rails,
     // gift-card codes are sealed into the ledger only when SECRETS_KEY exists; otherwise never stored
     seal: secretsKey ? (s: string) => encryptSecret(s, secretsKey) : undefined,
     pending,
@@ -146,6 +166,10 @@ const dispatcher = new Dispatcher({
   resolveContext,
   policies,
   history,
+  secrets,
+  secretsKey,
+  probeWallet,
+  onCredentialsChanged,
 })
 await dispatcher.start()
 

@@ -38,6 +38,22 @@ waitlist works out of the box with a non-durable in-memory store; for durable st
 `apps/web/.env.example` → `apps/web/.env.local`, fill in the Supabase values, and apply
 `supabase/migrations/0001_waitlist.sql`.
 
+## Run the chat bot
+
+```bash
+cp apps/bot/.env.example apps/bot/.env    # fill in a Telegram token + ANTHROPIC_API_KEY to start
+pnpm --filter @agentic-bitcoin/bot start   # in-memory stores, fake wallet until you /pair
+```
+
+In chat: `/start` (three-question limits wizard) → `/pair <nostr+walletconnect://…>` (budgeted
+strings only) → “what's my balance?” → `/key strike …` / `/key bitrefill …` for the other rails.
+
+### Self-host with Docker
+
+```bash
+docker compose up -d        # bot + signal-cli daemon; see docker-compose.yml and docs/launch-checklist.md
+```
+
 ## Quality gates (what CI runs)
 
 ```bash

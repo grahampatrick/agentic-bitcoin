@@ -10,10 +10,13 @@ export interface PolicyStore {
   set(userId: string, policy: Policy): Promise<void>
 }
 
+export type SecretName = "nwc" | "strike" | "bitrefill"
+
 export interface SecretStore {
   /** Returns the encrypted blob; the caller decrypts with SECRETS_KEY. */
-  get(userId: string, name: "nwc"): Promise<string | null>
-  set(userId: string, name: "nwc", blob: string): Promise<void>
+  get(userId: string, name: SecretName): Promise<string | null>
+  set(userId: string, name: SecretName, blob: string): Promise<void>
+  delete(userId: string, name: SecretName): Promise<void>
 }
 
 export interface HistoryStore {
@@ -37,11 +40,14 @@ export class InMemoryPolicyStore implements PolicyStore {
 
 export class InMemorySecretStore implements SecretStore {
   private readonly m = new Map<string, string>()
-  async get(u: string, n: string) {
+  async get(u: string, n: SecretName) {
     return this.m.get(`${u}:${n}`) ?? null
   }
-  async set(u: string, n: string, b: string) {
+  async set(u: string, n: SecretName, b: string) {
     this.m.set(`${u}:${n}`, b)
+  }
+  async delete(u: string, n: SecretName) {
+    this.m.delete(`${u}:${n}`)
   }
 }
 

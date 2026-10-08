@@ -8,7 +8,12 @@ import { FakeWalletRail, InMemoryLedgerStore, readEntries } from "@agentic-bitco
 import { POLICIES, PRICE, clockAt } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
 import { Dispatcher, applyBudgetArgs, describePolicy } from "./dispatcher"
-import { InMemoryHistoryStore, InMemoryPolicyStore, trimHistory } from "./store/stores"
+import {
+  InMemoryHistoryStore,
+  InMemoryPolicyStore,
+  InMemorySecretStore,
+  trimHistory,
+} from "./store/stores"
 import { FakeSurface } from "./surfaces/surface"
 
 /** A scripted model: first call emits a tool_use for pay_lightning_address, second call summarises. */
@@ -57,6 +62,9 @@ function setup(amount = 21) {
     resolveContext,
     policies,
     history: new InMemoryHistoryStore(),
+    secrets: new InMemorySecretStore(),
+    secretsKey: null,
+    probeWallet: async () => ({}),
     now: clockAt(),
   })
   return { surface, d, ledger, wallet, policies }

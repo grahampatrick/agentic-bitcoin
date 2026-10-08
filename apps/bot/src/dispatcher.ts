@@ -1,7 +1,8 @@
 /**
- * The dispatcher: turns inbound chat messages into agent turns, commands, or confirmation
- * decisions. Surface-agnostic. Commands never go through the model (they change policy, which the
- * model is not allowed to touch — ADR-0008).
+ * The dispatcher: turns inbound chat messages into agent turns, commands, confirmation decisions,
+ * or onboarding steps. Surface-agnostic. Commands never go through the model (they change policy
+ * and credentials, which the model is not allowed to touch — ADR-0008). Secrets never reach the
+ * model or the history: a message that looks like one is intercepted before `runTurn`.
  */
 import { type AgentDeps, type UserContext, confirmPending, runTurn } from "@agentic-bitcoin/agent"
 import {
@@ -14,7 +15,30 @@ import {
   spentSince,
   windowStart,
 } from "@agentic-bitcoin/core"
-import { type HistoryStore, type PolicyStore, trimHistory } from "./store/stores"
+import {
+  decryptSecret,
+  encryptSecret,
+  maskSecret,
+  validateConnectionString,
+} from "@agentic-bitcoin/rails"
+import {
+  KEY_HELP,
+  PAIR_HELP,
+  type WalletProbe,
+  type WizardState,
+  assessPairing,
+  looksLikeSecret,
+  parseKeyCommand,
+  startWizard,
+  wizardStep,
+} from "./onboarding"
+import {
+  type HistoryStore,
+  type PolicyStore,
+  type SecretName,
+  type SecretStore,
+  trimHistory,
+} from "./store/stores"
 import type { ChatSurface, InboundMessage } from "./surfaces/surface"
 
 export interface DispatcherDeps {
@@ -23,6 +47,13 @@ export interface DispatcherDeps {
   resolveContext(userId: string): Promise<UserContext>
   policies: PolicyStore
   history: HistoryStore
+  secrets: SecretStore
+  /** 32-byte key; without it pairing and key entry are disabled (nothing is stored in plaintext). */
+  secretsKey: Buffer | null
+  /** Connects to a wallet string and reports what it can do. Injected so tests never touch a relay. */
+  probeWallet(connectionString: string): Promise<WalletProbe>
+  /** Called after a pairing/key change so cached rails for the user are rebuilt. */
+  onCredentialsChanged?(userId: string): void
   now?: () => Date
 }
 
@@ -31,6 +62,7 @@ const NO = /^(n|no|nope|cancel|stop|deny)[.!]?$/i
 
 export class Dispatcher {
   private readonly now: () => Date
+  private readonly wizards = new Map<string, WizardState>()
   constructor(private readonly deps: DispatcherDeps) {
     this.now = deps.now ?? (() => new Date())
   }
@@ -46,7 +78,15 @@ export class Dispatcher {
     try {
       if (m.decision)
         return await this.decide(m.userId, m.decision.actionHash, m.decision.approve, reply)
-      if (text.startsWith("/")) return await this.command(m.userId, text, reply)
+      if (text.startsWith("/")) return await this.command(m, text, reply)
+      const wizard = this.wizards.get(m.userId)
+      if (wizard) return await this.wizard(m.userId, wizard, text, reply)
+      if (looksLikeSecret(text)) {
+        await this.redact(m)
+        return reply(
+          "That looks like a wallet connection string or an API key. I never pass those to the model. Use /pair <string> or /key <strike|bitrefill> <key> instead, and delete that message.",
+        )
+      }
       if (YES.test(text) || NO.test(text)) {
         const ctx = await this.deps.resolveContext(m.userId)
         const latest = await ctx.pending.latest(m.userId)
@@ -66,9 +106,14 @@ export class Dispatcher {
       )
       for (const d of result.deliveries) await reply(d)
     } catch (err) {
-      console.error("[dispatcher]", err)
+      console.error("[dispatcher]", err instanceof Error ? err.message : err)
       await reply("Something went wrong on my side. Nothing was sent. Try again in a moment.")
     }
+  }
+
+  private async redact(m: InboundMessage): Promise<void> {
+    if (m.messageId && this.deps.surface.redact)
+      await this.deps.surface.redact(m.userId, m.messageId)
   }
 
   private async decide(
@@ -105,20 +150,56 @@ export class Dispatcher {
     )
   }
 
-  private async command(
+  private async wizard(
     userId: string,
+    state: WizardState,
     text: string,
     reply: (t: string) => Promise<void>,
   ): Promise<void> {
+    const next = wizardStep(state, text)
+    if (next.state) this.wizards.set(userId, next.state)
+    else this.wizards.delete(userId)
+    if (next.policy) await this.deps.policies.set(userId, next.policy)
+    return reply(next.prompt)
+  }
+
+  private async command(
+    m: InboundMessage,
+    text: string,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const userId = m.userId
     const [cmd, ...args] = text.split(/\s+/)
     const ctx = await this.deps.resolveContext(userId)
     switch (cmd?.toLowerCase()) {
-      case "/start":
+      case "/start": {
+        if ((await this.deps.policies.get(userId)) === null) {
+          const w = startWizard()
+          this.wizards.set(userId, w.state)
+          return reply(
+            `Hi. I run bitcoin actions through your own wallet, within limits you set.\n${w.prompt}`,
+          )
+        }
+        return reply(HELP)
+      }
       case "/help":
-        return reply(
-          "I run bitcoin actions through your own wallet. Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions",
-        )
+        return reply(HELP)
+      case "/setup": {
+        const w = startWizard(ctx.policy)
+        this.wizards.set(userId, w.state)
+        return reply(w.prompt)
+      }
+      case "/pair":
+        return this.pair(m, args, reply)
+      case "/unpair": {
+        await this.deps.secrets.delete(userId, "nwc")
+        this.deps.onCredentialsChanged?.(userId)
+        return reply("Wallet unpaired. Also revoke the connection in your wallet app.")
+      }
+      case "/key":
+        return this.key(m, args, reply)
       case "/kill": {
+        this.wizards.delete(userId)
         await this.deps.policies.set(userId, { ...ctx.policy, killSwitch: true })
         return reply("Kill switch ON. Nothing moves until you send /resume.")
       }
@@ -153,7 +234,79 @@ export class Dispatcher {
         return reply("Unknown command. /help lists them.")
     }
   }
+
+  private async pair(
+    m: InboundMessage,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const allowUnbudgeted = args[0]?.toLowerCase() === "unbudgeted"
+    const url = allowUnbudgeted ? args[1] : args[0]
+    if (!url) return reply(PAIR_HELP)
+    await this.redact(m) // the message holds a secret: remove it first, whatever happens next
+    if (!this.deps.secretsKey)
+      return reply("Pairing is disabled on this server (no SECRETS_KEY). Ask the operator.")
+    try {
+      validateConnectionString(url)
+    } catch (err) {
+      return reply(`Not a usable connection string: ${(err as Error).message}\n${PAIR_HELP}`)
+    }
+    let probe: WalletProbe
+    try {
+      probe = await this.deps.probeWallet(url)
+    } catch (err) {
+      return reply(`I could not reach that wallet: ${(err as Error).message}`)
+    }
+    const verdict = assessPairing(probe, { allowUnbudgeted })
+    if (!verdict.ok) return reply(verdict.error)
+    await this.deps.secrets.set(m.userId, "nwc", encryptSecret(url, this.deps.secretsKey))
+    this.deps.onCredentialsChanged?.(m.userId)
+    return reply(
+      `${verdict.description}\nI have deleted your message if I could; delete it yourself otherwise. Try: what's my balance?`,
+    )
+  }
+
+  private async key(
+    m: InboundMessage,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const cmd = parseKeyCommand(args)
+    if (cmd.kind === "error") return reply(`${cmd.error}\n${KEY_HELP}`)
+    if (cmd.kind === "show") {
+      if (!this.deps.secretsKey)
+        return reply("Key storage is disabled on this server (no SECRETS_KEY).")
+      const lines: string[] = []
+      for (const name of ["strike", "bitrefill"] as SecretName[]) {
+        const blob = await this.deps.secrets.get(m.userId, name)
+        lines.push(
+          `${name}: ${blob ? maskSecret(decryptSecret(blob, this.deps.secretsKey)) : "not set"}`,
+        )
+      }
+      const nwc = await this.deps.secrets.get(m.userId, "nwc")
+      lines.push(`wallet: ${nwc ? "paired" : "not paired (/pair)"}`)
+      return reply(`${lines.join("\n")}\n\n${KEY_HELP}`)
+    }
+    await this.redact(m)
+    if (!this.deps.secretsKey)
+      return reply("Key storage is disabled on this server (no SECRETS_KEY).")
+    if (cmd.kind === "remove") {
+      await this.deps.secrets.delete(m.userId, cmd.name)
+      this.deps.onCredentialsChanged?.(m.userId)
+      return reply(`${cmd.name} key removed. Also revoke it on their site.`)
+    }
+    await this.deps.secrets.set(m.userId, cmd.name, encryptSecret(cmd.value, this.deps.secretsKey))
+    this.deps.onCredentialsChanged?.(m.userId)
+    const railFlag = cmd.name === "strike" ? "exchange" : "goods"
+    const on = this.deps.policies.get(m.userId).then((p) => (p ?? DEFAULT_POLICY).rails[railFlag])
+    return reply(
+      `${cmd.name} key stored (${maskSecret(cmd.value)}). I deleted your message if I could; delete it yourself otherwise.${(await on) ? "" : `\nThe ${railFlag} rail is off in your limits: /budget rail ${railFlag} on`}`,
+    )
+  }
 }
+
+const HELP =
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

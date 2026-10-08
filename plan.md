@@ -64,10 +64,13 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `packages/rails/src/goods/bitrefill.ts` (M6) | Bitrefill search/invoice/poll/redemption, decoded-bolt11 amounts, typed errors; 7 tests + contract suite + executor e2e; `demo:goods` |
 | core `seal`/`delivery`, `search_products`; agent `deliveries` (M6) | Sealed redemption in the ledger, bounded delivery polling, read-only catalogue search, once-only code hand-off |
 | `docs/adr/0011` | Payment is not delivery; codes are bearer secrets |
+| `apps/bot/src/onboarding.ts`, dispatcher (M7) | Limits wizard, budgeted-only `/pair` with probe + redaction, `/key` entry (encrypted, masked), secret interception; 17 tests |
+| `apps/web/app/text`, `app/status`, `lib/status` (M7) | Onboarding page with QR + steps (or waitlist), status page + JSON with 60 s cache; 5 tests |
+| `docker-compose.yml`, `apps/bot/Dockerfile`, `docs/launch-checklist.md` (M7) | Self-host; launch gate |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing (M7+):** per-user wallet/key pairing, policy wizard, Signal onboarding, status page (M7); on-chain sweep (M8). **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account), M6 `demo:goods` (needs a Bitrefill key + NWC string).
+- **Missing:** on-chain sweep (M8, deferred). **Everything else is code-complete**; launch is gated on `docs/launch-checklist.md`. **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account), M6 `demo:goods` (needs a Bitrefill key + NWC string).
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -485,18 +488,27 @@ BITREFILL_API_KEY=... NWC_URL=... pnpm tsx scripts/demo-goods.ts   # prints mask
 
 ### M7 — "Text Agentic Bitcoin" goes live: onboarding, wallet pairing, SMS
 
+**Status: CODE DONE 2026-10-07; launch pending the credentials in docs/launch-checklist.md.** Onboarding lives in chat
+(where the user already is): `/start` runs a three-question limits wizard when no policy exists; `/pair` accepts only
+budgeted NWC strings (probe → refuse unbudgeted unless `/pair unbudgeted …`), encrypts per user, deletes the message on
+Telegram; `/key strike|bitrefill` stores per-user API keys encrypted and shown masked; a bare secret in chat is
+intercepted before the model. The web `/text` page shows Signal/Telegram links + a QR and the four steps once
+`NEXT_PUBLIC_SIGNAL_NUMBER` / `NEXT_PUBLIC_TELEGRAM_BOT` are set (waitlist otherwise); `/status` + `/api/status`
+probe the five dependencies with a 60 s cache. Docker self-host (`docker-compose.yml`, bot Dockerfile), launch
+checklist. **Web chat on the landing was skipped** (optional in the plan; the chat surfaces are the product).
+
 **Goal:** A stranger lands on the page, taps the CTA, pairs their wallet by scanning a QR, sets a
 budget, and performs their first action within five minutes.
 
 **Deliverables**
-- [ ] `/text` becomes a real onboarding flow: a Signal link (`https://signal.me/#p/+1…`) with a QR, Telegram deep link as the fallback (OQ-6)
-- [ ] Wallet pairing: NWC URI paste **or** QR; guided creation of a *budgeted, expiring* connection
-      (Alby Hub / Coinos walkthroughs with screenshots); refuse unbudgeted strings without an explicit override
-- [ ] First-run policy wizard: daily cap, confirm threshold, which rails to enable
-- [ ] Self-serve key entry for Strike and Bitrefill (encrypted per user, revocable, shown masked)
-- [ ] Web chat on the landing (optional, same agent) behind a flag
-- [ ] Status page `/status`: price feed, wallet relay, Strike, Bitrefill, L402 demo endpoint — green/red
-- [ ] Public launch checklist `docs/launch-checklist.md`; README quickstart for self-hosters (`docker compose up`)
+- [x] `/text` becomes a real onboarding flow: a Signal link (`https://signal.me/#p/+1…`) with a QR, Telegram deep link as the fallback (OQ-6)
+- [x] Wallet pairing: NWC URI paste **or** QR; guided creation of a *budgeted, expiring* connection
+      (Alby Hub / Coinos walkthroughs as text; no screenshots); refuse unbudgeted strings without an explicit override
+- [x] First-run policy wizard: daily cap, confirm threshold, which rails to enable
+- [x] Self-serve key entry for Strike and Bitrefill (encrypted per user, revocable, shown masked)
+- [ ] (skipped, optional) Web chat on the landing behind a flag
+- [x] Status page `/status`: price feed, wallet relay, Strike, Bitrefill, L402 demo endpoint — green/red
+- [x] Public launch checklist `docs/launch-checklist.md`; README quickstart for self-hosters (`docker compose up`)
 
 **CE Principle:** Self-host docs + status page turn every external dependency into a monitored, swappable thing.
 

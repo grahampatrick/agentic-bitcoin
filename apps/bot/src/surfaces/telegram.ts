@@ -10,7 +10,11 @@ export class TelegramSurface implements ChatSurface {
   }
   async start(onMessage: (m: InboundMessage) => Promise<void>) {
     this.bot.on("message:text", async (ctx) => {
-      await onMessage({ userId: `tg:${ctx.from.id}`, text: ctx.message.text })
+      await onMessage({
+        userId: `tg:${ctx.from.id}`,
+        text: ctx.message.text,
+        messageId: String(ctx.message.message_id),
+      })
     })
     this.bot.on("callback_query:data", async (ctx) => {
       const [verb, hash] = ctx.callbackQuery.data.split(":")
@@ -37,6 +41,13 @@ export class TelegramSurface implements ChatSurface {
       m.text,
       keyboard ? { reply_markup: keyboard } : undefined,
     )
+  }
+  async redact(userId: string, messageId: string) {
+    try {
+      await this.bot.api.deleteMessage(Number(userId.replace(/^tg:/, "")), Number(messageId))
+    } catch {
+      /* bots can only delete recent messages; the reply tells the user to delete it themselves */
+    }
   }
   async stop() {
     await this.bot.stop()

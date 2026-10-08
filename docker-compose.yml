@@ -1,0 +1,20 @@
+# Self-host the chat bot (and, for Signal, the signal-cli daemon). Copy apps/bot/.env.example to
+# apps/bot/.env first. `docker compose up -d`.
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: apps/bot/Dockerfile
+    env_file: apps/bot/.env
+    restart: unless-stopped
+    depends_on:
+      - signal
+  signal:
+    # Register the number once: docker compose run --rm signal signal-cli -a +1... register  (then verify)
+    image: registry.gitlab.com/packaging/signal-cli/signal-cli-native:latest
+    command: ["-a", "${SIGNAL_ACCOUNT:-+10000000000}", "daemon", "--http", "0.0.0.0:8080"]
+    volumes:
+      - signal-data:/var/lib/signal-cli
+    restart: unless-stopped
+volumes:
+  signal-data:
