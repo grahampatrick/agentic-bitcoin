@@ -159,11 +159,24 @@ const surface =
     ? new SignalSurface({
         daemonUrl: env.SIGNAL_DAEMON_URL ?? "http://localhost:8080",
         account: env.SIGNAL_ACCOUNT ?? "",
+        multiAccount: env.SIGNAL_MULTI_ACCOUNT === "1",
       })
     : new TelegramSurface(env.TELEGRAM_BOT_TOKEN ?? "")
 if (surface.kind === "telegram" && !env.TELEGRAM_BOT_TOKEN) {
   console.error("Set TELEGRAM_BOT_TOKEN (or SURFACE=signal with SIGNAL_ACCOUNT)")
   process.exit(2)
+}
+if (surface instanceof SignalSurface) {
+  if (!env.SIGNAL_ACCOUNT) {
+    console.error("Set SIGNAL_ACCOUNT to the bot's registered number (docs/signal.md)")
+    process.exit(2)
+  }
+  if (!(await surface.check())) {
+    console.error(
+      `signal-cli daemon not reachable at ${env.SIGNAL_DAEMON_URL ?? "http://localhost:8080"} — start it: signal-cli -a ${env.SIGNAL_ACCOUNT} daemon --http localhost:8080 --no-receive-stdout`,
+    )
+    process.exit(2)
+  }
 }
 
 const dispatcher = new Dispatcher({

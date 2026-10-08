@@ -7,12 +7,15 @@ services:
       dockerfile: apps/bot/Dockerfile
     env_file: apps/bot/.env
     restart: unless-stopped
+    # signal-cli pins the HTTP Host header to localhost, so the bot shares the daemon's network
+    # namespace and talks to http://localhost:8080 (SIGNAL_DAEMON_URL in apps/bot/.env).
+    network_mode: "service:signal"
     depends_on:
       - signal
   signal:
     # Register the number once: docker compose run --rm signal signal-cli -a +1... register  (then verify)
     image: registry.gitlab.com/packaging/signal-cli/signal-cli-native:latest
-    command: ["-a", "${SIGNAL_ACCOUNT:-+10000000000}", "daemon", "--http", "0.0.0.0:8080"]
+    command: ["-a", "${SIGNAL_ACCOUNT:-+10000000000}", "daemon", "--http", "localhost:8080", "--no-receive-stdout"]
     volumes:
       - signal-data:/var/lib/signal-cli
     restart: unless-stopped
