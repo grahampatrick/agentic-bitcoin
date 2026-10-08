@@ -67,10 +67,13 @@ Live: **https://agentic-bitcoin.vercel.app** (Vercel project `agentic-bitcoin`, 
 | `apps/bot/src/onboarding.ts`, dispatcher (M7) | Limits wizard, budgeted-only `/pair` with probe + redaction, `/key` entry (encrypted, masked), secret interception; 17 tests |
 | `apps/web/app/text`, `app/status`, `lib/status` (M7) | Onboarding page with QR + steps (or waitlist), status page + JSON with 60 s cache; 5 tests |
 | `docker-compose.yml`, `apps/bot/Dockerfile`, `docs/launch-checklist.md` (M7) | Self-host; launch gate |
+| core `address.ts`, `sweep_to_cold`, `OnChainRail`; `rails/onchain/lnd.ts`; scheduler sweeps; bot `/cold` (M8) | Cold-storage sweeps to registered addresses only, always confirmed; LND REST adapter; monthly sweeps |
+| `docs/adr/0012` | Cold-storage sweep rules |
+| `packages/agent/src/{scripted,sandbox}.ts`, `apps/web/app/demo`, `pnpm demo` (showcase, 2026-10-08) | Stateless sandbox (fake rails, real policy/executor/ledger/confirmations) behind `/demo` with live ledger + limits panels; scripted model when no API key; terminal transcript demo |
 
 - **Working:** everything above; 46 tests; all gates green locally; deployed.
 - **Scaffolded:** nothing half-done.
-- **Missing:** on-chain sweep (M8, deferred). **Everything else is code-complete**; launch is gated on `docs/launch-checklist.md`. **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account), M6 `demo:goods` (needs a Bitrefill key + NWC string).
+- **All eight milestones are code-complete.** Remaining: live verification with GM's credentials and the launch checklist; later: xpub/fresh-address sweeps, per-user node credentials, web chat. **Live verification still to run:** M2 wallet contract (needs an NWC string), M3 evals (needs `ANTHROPIC_API_KEY`), M3 chat demo (needs a Telegram token or Signal number), M4 `demo:compute` (needs the NWC string), M5 `demo:dca` (needs a Strike key on a funded account), M6 `demo:goods` (needs a Bitrefill key + NWC string).
 
 **M0 lessons (recorded so they are not re-learned):**
 - `next/font/google` crashed inside Vercel's build (`Cannot read properties of null` in its CSS parser). Fonts are vendored; builds make no network calls.
@@ -524,10 +527,32 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm test:evals && pnpm build
 
 ---
 
-### M8 — On-chain + cold storage (later)
+### M8 — On-chain + cold storage
 
-**Goal:** "Move everything above 200k sats to my cold wallet monthly" works via watch-only xpub and the
-wallet's on-chain send. Deferred until M7 has users; captured so the Action union reserves the variant.
+**Status: CODE DONE 2026-10-08.** `sweep_to_cold` / `schedule_sweep` Actions on a new `onchain` rail; dependency-free
+address validation (bech32/bech32m/base58check); policy denies any sweep to an address the user did not register with
+`/cold` (allow list, even when otherwise empty) and always asks; executor computes min(balance − keep, max), skips
+dust, re-validates the address; `LndOnChainRail` (REST, onchain-only macaroon, fee from balance delta); scheduler
+fires monthly sweeps as pre-approved actions and re-checks the allow list at fire time; agent/MCP tools; bot `/cold`.
+Not implemented: watch-only xpub / fresh address per sweep (single registered address, reuse accepted — ADR-0012).
+No live run: needs an LND node with an onchain-only macaroon.
+
+**Goal:** "Move everything above 200k sats to my cold wallet monthly" works via the user's registered cold address
+and their node's on-chain send.
+
+**Deliverables**
+- [x] core: `sweep_to_cold`, `schedule_sweep`, `OnChainRail`, `FakeOnChainRail`, `parseAddress`, policy rule, executor dispatch
+- [x] `packages/rails/src/onchain/lnd.ts` + tests on a scripted LND
+- [x] scheduler: `kind: "buy" | "sweep"` schedules, migration columns, pre-approved firings
+- [x] agent tools `sweep_to_cold`, `schedule_sweep`; MCP exposes them; bot `/cold <address>` registers, `/cold remove`
+- [x] `docs/adr/0012-cold-storage-sweep.md`
+- [ ] (later) watch-only xpub with fresh addresses; per-user LND credentials
+
+**Definition of Done**
+```bash
+pnpm test     # address vectors, policy denial, executor sweep maths, LND adapter, scheduled sweep
+# live (needs LND_REST_URL + onchain-only LND_MACAROON_HEX): /cold <addr> → "sweep everything above 200000 sats" → confirm → txid in /ledger
+```
 
 ---
 

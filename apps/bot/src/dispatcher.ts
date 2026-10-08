@@ -10,6 +10,7 @@ import {
   type Policy,
   formatCents,
   formatSats,
+  parseAddress,
   readEntries,
   satsToCents,
   spentSince,
@@ -198,6 +199,8 @@ export class Dispatcher {
       }
       case "/key":
         return this.key(m, args, reply)
+      case "/cold":
+        return this.cold(userId, args, ctx.policy, reply)
       case "/kill": {
         this.wizards.delete(userId)
         await this.deps.policies.set(userId, { ...ctx.policy, killSwitch: true })
@@ -266,6 +269,46 @@ export class Dispatcher {
     )
   }
 
+  /** Register (or show) the cold-storage address sweeps may go to. Only allow-listed addresses can receive a sweep. */
+  private async cold(
+    userId: string,
+    args: string[],
+    policy: Policy,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const addr = args[0]?.trim()
+    const current = policy.coldStorageAddresses
+    if (!addr) {
+      return reply(
+        current.length
+          ? `Cold storage: ${current.join(", ")}\nAsk me to “sweep everything above 200000 sats to cold storage” or “sweep monthly”. Remove with /cold remove <address>.`
+          : "No cold-storage address yet. Send: /cold <bitcoin address> (one from your hardware wallet). Sweeps can only go to addresses you register here.",
+      )
+    }
+    if (addr.toLowerCase() === "remove") {
+      const target = args[1]?.trim()
+      if (!target) return reply("Usage: /cold remove <address>")
+      await this.deps.policies.set(userId, {
+        ...policy,
+        coldStorageAddresses: policy.coldStorageAddresses.filter((d) => d !== target.toLowerCase()),
+      })
+      return reply("Removed.")
+    }
+    try {
+      const parsed = await parseAddress(addr)
+      const next = {
+        ...policy,
+        coldStorageAddresses: [...new Set([...policy.coldStorageAddresses, addr.toLowerCase()])],
+      }
+      await this.deps.policies.set(userId, next)
+      return reply(
+        `Registered ${parsed.kind} address on ${parsed.network}: ${addr.slice(0, 10)}…${addr.slice(-6)}.${next.rails.onchain ? "" : " The on-chain rail is off: /budget rail onchain on"}\nEvery sweep still asks you to confirm.`,
+      )
+    } catch (err) {
+      return reply(`That is not a valid bitcoin address (${(err as Error).message}).`)
+    }
+  }
+
   private async key(
     m: InboundMessage,
     args: string[],
@@ -306,7 +349,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)
@@ -320,6 +363,7 @@ export function describePolicy(p: Policy): string {
       ? `Allow: ${p.allowDestinations.join(", ")}`
       : "Allow: anyone not denied",
     p.denyDestinations.length ? `Deny: ${p.denyDestinations.join(", ")}` : "",
+    p.coldStorageAddresses.length ? `Cold storage: ${p.coldStorageAddresses.join(", ")}` : "",
     "Set with: /budget daily 50000 · /budget action 20000 · /budget confirm 5000 · /budget allow name@domain · /budget deny *.evil.example · /budget rail exchange on",
   ]
     .filter(Boolean)
@@ -383,7 +427,10 @@ export function applyBudgetArgs(
       const rail = rest[0]?.toLowerCase() as keyof Policy["rails"] | undefined
       const on = rest[1]?.toLowerCase()
       if (!rail || !(rail in p.rails) || (on !== "on" && on !== "off"))
-        return { ok: false, error: "Usage: /budget rail <wallet|exchange|goods|compute> on|off" }
+        return {
+          ok: false,
+          error: "Usage: /budget rail <wallet|exchange|goods|compute|onchain> on|off",
+        }
       return { ok: true, policy: { ...p, rails: { ...p.rails, [rail]: on === "on" } } }
     }
     default:

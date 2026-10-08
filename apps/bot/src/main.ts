@@ -19,6 +19,7 @@ import {
 } from "@agentic-bitcoin/core"
 import {
   BitrefillGoodsRail,
+  LndOnChainRail,
   NwcWalletRail,
   StrikeExchangeRail,
   decryptSecret,
@@ -98,6 +99,11 @@ async function railsFor(userId: string) {
   const bitrefillKey = (await secret(userId, "bitrefill")) ?? env.BITREFILL_API_KEY
   const built = {
     wallet: nwc ? new NwcWalletRail({ connectionString: nwc }) : new FakeWalletRail(),
+    // On-chain (M8): operator-level LND for now; per-user node credentials are a later step.
+    onchain:
+      env.LND_REST_URL && env.LND_MACAROON_HEX
+        ? new LndOnChainRail({ baseUrl: env.LND_REST_URL, macaroonHex: env.LND_MACAROON_HEX })
+        : undefined,
     exchange: strikeKey ? new StrikeExchangeRail({ apiKey: strikeKey }) : undefined,
     goods: bitrefillKey ? new BitrefillGoodsRail({ apiKey: bitrefillKey }) : undefined,
   }

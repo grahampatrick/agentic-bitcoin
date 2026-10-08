@@ -154,6 +154,19 @@ function sampleInput(name: string): Record<string, unknown> {
       return { schedule_id: "s" }
     case "search_products":
       return { merchant: "bitrefill", query: "amazon" }
+    case "sweep_to_cold":
+      return {
+        address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+        keep_sats: 200000,
+        max_sats: 500000,
+      }
+    case "schedule_sweep":
+      return {
+        address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+        keep_sats: 200000,
+        max_sats: 500000,
+        cron: "0 3 1 * *",
+      }
     case "buy_product":
       return { merchant: "bitrefill", product_id: "p", description: "d", usd_cents: 100 }
     case "fetch_l402":

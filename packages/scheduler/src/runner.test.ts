@@ -37,6 +37,7 @@ describe("runDue", () => {
     const { store, ledger, deps, exchange } = setup()
     await store.create({
       userId: "u",
+      kind: "buy",
       exchange: "strike",
       usdCents: 25_00n,
       cron: "0 14 * * 5",
@@ -63,6 +64,7 @@ describe("runDue", () => {
     const { store, deps } = setup()
     const s = await store.create({
       userId: "u",
+      kind: "buy",
       exchange: "strike",
       usdCents: 25_00n,
       cron: "0 14 * * 5",
@@ -79,6 +81,7 @@ describe("runDue", () => {
     })
     await store.create({
       userId: "u",
+      kind: "buy",
       exchange: "strike",
       usdCents: 25_00n,
       cron: "* * * * *",
@@ -95,6 +98,7 @@ describe("runDue", () => {
     const { store, ledger, deps } = setup({ exchange })
     await store.create({
       userId: "u",
+      kind: "buy",
       exchange: "strike",
       usdCents: 25_00n,
       cron: "* * * * *",
@@ -109,6 +113,7 @@ describe("runDue", () => {
     const { store, deps, log } = setup()
     const s = await store.create({
       userId: "u",
+      kind: "buy",
       exchange: "strike",
       usdCents: 1n,
       cron: "nope",
@@ -123,6 +128,7 @@ describe("runDue", () => {
     const { store, deps, wallet } = setup()
     await store.create({
       userId: "u",
+      kind: "buy",
       exchange: "strike",
       usdCents: 25_00n,
       cron: "* * * * *",
@@ -141,6 +147,75 @@ describe("runDue", () => {
     expect(paid).toHaveLength(1)
     expect(paid[0]).toMatch(/^lnbc30059n1fake/)
     expect(wallet).toBeDefined()
+  })
+})
+
+describe("scheduled sweeps (M8)", () => {
+  it("fires a sweep as a pre-approved schedule action and ledgers the txid", async () => {
+    const { FakeOnChainRail } = await import("@agentic-bitcoin/core")
+    const { COLD_ADDRESS } = await import("@agentic-bitcoin/fixtures")
+    const store = new InMemoryScheduleStore()
+    const ledger = new InMemoryLedgerStore()
+    const onchain = new FakeOnChainRail({ confirmedSats: 1_000_000n })
+    await store.create({
+      userId: "u",
+      kind: "sweep",
+      exchange: "strike",
+      usdCents: 0n,
+      address: COLD_ADDRESS,
+      keepSats: 200_000n,
+      maxSats: 500_000n,
+      cron: "0 3 1 * *",
+      estimatedSats: 1n,
+      sweepToWallet: false,
+    })
+    const r = await runDue({
+      schedules: store,
+      resolve: async () => ({
+        policy: { ...policy, coldStorageAddresses: [COLD_ADDRESS] },
+        ledger,
+        rails: { onchain },
+      }),
+      price: async () => PRICE,
+      now: () => new Date("2026-11-01T03:00:10.000Z"),
+    })
+    expect(r.fired[0]).toMatchObject({
+      status: "succeeded",
+      detail: expect.stringMatching(/^swept 500000 sats, tx/),
+    })
+    expect(onchain.broadcasts[0]?.amountSats).toBe(500_000n)
+    expect((await readEntries(ledger))[0]?.action).toMatchObject({
+      kind: "sweep_to_cold",
+      requestedBy: "schedule",
+    })
+  })
+  it("a sweep to an address that is no longer allow-listed is denied at fire time", async () => {
+    const { FakeOnChainRail } = await import("@agentic-bitcoin/core")
+    const { COLD_ADDRESS } = await import("@agentic-bitcoin/fixtures")
+    const store = new InMemoryScheduleStore()
+    await store.create({
+      userId: "u",
+      kind: "sweep",
+      exchange: "strike",
+      usdCents: 0n,
+      address: COLD_ADDRESS,
+      keepSats: 0n,
+      maxSats: 1n,
+      cron: "* * * * *",
+      estimatedSats: 1n,
+      sweepToWallet: false,
+    })
+    const r = await runDue({
+      schedules: store,
+      resolve: async () => ({
+        policy,
+        ledger: new InMemoryLedgerStore(),
+        rails: { onchain: new FakeOnChainRail({ confirmedSats: 10n }) },
+      }),
+      price: async () => PRICE,
+      now: () => new Date("2026-11-01T03:00:10.000Z"),
+    })
+    expect(r.fired[0]).toMatchObject({ status: "denied", detail: "DESTINATION_NOT_ALLOWED" })
   })
 })
 

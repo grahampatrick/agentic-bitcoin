@@ -4,11 +4,14 @@
   "private": true,
   "type": "module",
   "description": "The agent core: tool definitions generated from the Action union, the system prompt, the tool loop over the Claude API, and the eval set.",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:evals": "tsx evals/run.ts"
+    "test:evals": "tsx evals/run.ts",
+    "demo": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "@agentic-bitcoin/core": "workspace:*",

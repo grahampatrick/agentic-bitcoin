@@ -82,7 +82,14 @@ export class SupabasePolicyStore implements PolicyStore {
       .eq("user_id", userId)
       .maybeSingle()
     if (error) throw new Error(`policy read failed: ${error.message}`)
-    return data ? decode<Policy>(data.policy as string) : null
+    if (!data) return null
+    const p = decode<Policy>(data.policy as string)
+    // rows written before M8 lack these fields
+    return {
+      ...p,
+      coldStorageAddresses: p.coldStorageAddresses ?? [],
+      rails: { ...p.rails, onchain: p.rails.onchain ?? false },
+    }
   }
   async set(userId: string, policy: Policy): Promise<void> {
     const { error } = await this.db

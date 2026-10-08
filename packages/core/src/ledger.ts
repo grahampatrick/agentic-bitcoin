@@ -105,6 +105,9 @@ function spendOf(action: Action): bigint {
     case "buy_bitcoin":
     case "schedule_buy":
       return action.estimatedSats
+    case "sweep_to_cold":
+    case "schedule_sweep":
+      return action.maxSats
     default:
       return 0n
   }

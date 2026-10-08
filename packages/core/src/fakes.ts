@@ -10,6 +10,7 @@ import {
   type GoodsRail,
   type Invoice,
   type InvoiceLookup,
+  type OnChainRail,
   type Order,
   type Payment,
   type Product,
@@ -254,5 +255,40 @@ export class FakeGoodsRail implements GoodsRail {
       o.state = "delivered"
       o.redemption = `FAKE-CODE-${sha(orderId).slice(0, 8).toUpperCase()}`
     }
+  }
+}
+
+/** Fake on-chain wallet: confirmed balance, flat fee, deterministic txids, idempotent per key. */
+export class FakeOnChainRail implements OnChainRail {
+  readonly kind = "fake-onchain"
+  private confirmed: Sats
+  private readonly sent = new Map<string, { txid: string; feeSats: Sats }>()
+  readonly broadcasts: { address: string; amountSats: Sats; txid: string }[] = []
+  constructor(
+    opts: { confirmedSats?: Sats; feeSats?: Sats } = {},
+    private readonly feeSats: Sats = opts.feeSats ?? 500n,
+  ) {
+    this.confirmed = opts.confirmedSats ?? 0n
+  }
+  async getBalance() {
+    return { confirmedSats: this.confirmed, unconfirmedSats: 0n }
+  }
+  async send(input: {
+    address: string
+    amountSats: Sats
+    satPerVbyte?: number
+    idempotencyKey: string
+  }) {
+    const prior = this.sent.get(input.idempotencyKey)
+    if (prior) return prior
+    if (input.amountSats <= 0n)
+      throw new RailError(this.kind, "AMOUNT_OUT_OF_RANGE", "amount must be > 0")
+    if (input.amountSats + this.feeSats > this.confirmed)
+      throw new RailError(this.kind, "INSUFFICIENT_FUNDS", "balance too low")
+    this.confirmed -= input.amountSats + this.feeSats
+    const r = { txid: sha(`tx-${input.idempotencyKey}`), feeSats: this.feeSats }
+    this.sent.set(input.idempotencyKey, r)
+    this.broadcasts.push({ address: input.address, amountSats: input.amountSats, txid: r.txid })
+    return r
   }
 }

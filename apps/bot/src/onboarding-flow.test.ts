@@ -48,8 +48,9 @@ function setup(opts: { probe?: WalletProbe | Error; secretsKey?: Buffer | null }
         confirmAboveSats: 1n,
         allowDestinations: [],
         denyDestinations: [],
+        coldStorageAddresses: [],
         killSwitch: false,
-        rails: { wallet: true, exchange: false, goods: false, compute: false },
+        rails: { wallet: true, exchange: false, goods: false, compute: false, onchain: false },
       },
       ledger: new InMemoryLedgerStore(),
       rails: { wallet: new FakeWalletRail() },
@@ -142,6 +143,28 @@ describe("/pair", () => {
     await d.start()
     await surface.receive({ userId: "u", text: `/pair ${NWC}` })
     expect(last()).toContain("disabled")
+  })
+})
+
+describe("/cold", () => {
+  it("registers a valid address into the allow list and rejects junk", async () => {
+    const { surface, policies, d, last } = setup()
+    await d.start()
+    await surface.receive({ userId: "u", text: "/cold" })
+    expect(last()).toContain("No cold-storage address yet")
+    await surface.receive({ userId: "u", text: "/cold bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" })
+    expect(last()).toContain("Registered p2wpkh address on mainnet")
+    expect(last()).toContain("/budget rail onchain on")
+    expect((await policies.get("u"))?.allowDestinations).toEqual([
+      "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    ])
+    await surface.receive({ userId: "u", text: "/cold bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5" })
+    expect(last()).toContain("not a valid bitcoin address")
+    await surface.receive({
+      userId: "u",
+      text: "/cold remove bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    })
+    expect((await policies.get("u"))?.coldStorageAddresses).toEqual([])
   })
 })
 

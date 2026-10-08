@@ -21,6 +21,7 @@ export function LegalLinks() {
       <nav className="legal-links__nav" aria-label="Legal">
         <Link href="/privacy">{f.privacy}</Link>
         <Link href="/terms">{f.terms}</Link>
+        <Link href="/demo">{f.demo}</Link>
         <a href={f.sourceUrl} rel="noopener">
           {f.source}
         </a>

@@ -9,7 +9,7 @@ import { createHash } from "node:crypto"
 import type { Cents, Sats } from "./money"
 
 export type Requester = "user" | "schedule" | "agent"
-export type RailName = "wallet" | "exchange" | "goods" | "compute"
+export type RailName = "wallet" | "exchange" | "goods" | "compute" | "onchain"
 export type ExchangeName = "strike" | "coinbase"
 export type MerchantName = "bitrefill"
 
@@ -84,6 +84,28 @@ export interface SearchProducts extends Base {
   query: string
 }
 
+/**
+ * Move Lightning/on-chain balance above `keepSats` to a cold-storage address the user registered.
+ * `maxSats` is the ceiling for this run (budgeted like any spend); the actual amount is
+ * min(balance − keepSats, maxSats), computed at execution.
+ */
+export interface SweepToCold extends Base {
+  kind: "sweep_to_cold"
+  address: string
+  keepSats: Sats
+  maxSats: Sats
+  /** Fee rate; adapters default sensibly when omitted. */
+  satPerVbyte?: number
+}
+
+export interface ScheduleSweep extends Base {
+  kind: "schedule_sweep"
+  address: string
+  keepSats: Sats
+  maxSats: Sats
+  cron: string
+}
+
 export interface PayL402 extends Base {
   kind: "pay_l402"
   url: string
@@ -109,6 +131,8 @@ export type Action =
   | BuyProduct
   | SearchProducts
   | PayL402
+  | SweepToCold
+  | ScheduleSweep
 
 export type ActionKind = Action["kind"]
 
@@ -123,6 +147,8 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   buy_product: "goods",
   search_products: "goods",
   pay_l402: "compute",
+  sweep_to_cold: "onchain",
+  schedule_sweep: "onchain",
 }
 
 export function railOf(action: Action): RailName {
@@ -141,6 +167,10 @@ export function spendSats(action: Action): Sats {
     case "schedule_buy":
       // Fiat leaves the exchange balance; we budget it in sats at the quoted estimate.
       return action.estimatedSats
+    case "sweep_to_cold":
+    case "schedule_sweep":
+      // Sats move to the user's own cold storage, but still leave the hot wallet: budget the ceiling.
+      return action.maxSats
     case "make_invoice":
     case "get_balance":
     case "cancel_schedule":
@@ -163,6 +193,9 @@ export function destinationOf(action: Action): string | null {
     case "buy_bitcoin":
     case "schedule_buy":
       return action.exchange
+    case "sweep_to_cold":
+    case "schedule_sweep":
+      return action.address
     case "make_invoice":
     case "get_balance":
     case "cancel_schedule":
@@ -197,6 +230,10 @@ export function describeAction(action: Action): string {
       return `Buy "${action.description}" from ${action.merchant}`
     case "search_products":
       return `Search ${action.merchant} for "${action.query}"`
+    case "sweep_to_cold":
+      return `Sweep to cold storage ${action.address.slice(0, 8)}…${action.address.slice(-4)}, keeping ${action.keepSats} sats hot`
+    case "schedule_sweep":
+      return `Schedule a sweep to ${action.address.slice(0, 8)}…${action.address.slice(-4)} (${action.cron})`
     case "pay_l402":
       return `Pay ${action.host} for an API request`
   }

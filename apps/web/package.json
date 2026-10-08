@@ -10,7 +10,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@agentic-bitcoin/agent": "workspace:*",
     "@agentic-bitcoin/brand": "workspace:*",
+    "@agentic-bitcoin/core": "workspace:*",
     "@supabase/supabase-js": "2.47.10",
     "next": "15.5.27",
     "qrcode": "1.5.4",

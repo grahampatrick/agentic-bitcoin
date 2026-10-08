@@ -186,6 +186,39 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "sweep_to_cold",
+    description:
+      "Move on-chain balance above keep_sats to the user's registered cold-storage address (set with /cold). Always requires confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        address: str("The cold-storage bitcoin address the user registered"),
+        keep_sats: int("How many sats to leave in the hot wallet", 0),
+        max_sats: int("Ceiling for this sweep, in sats"),
+      },
+      required: ["address", "keep_sats", "max_sats"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "schedule_sweep",
+    description:
+      "Create a recurring sweep to cold storage (e.g. monthly). cron is a five-field UTC expression. Always requires confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        address: str("The cold-storage bitcoin address the user registered"),
+        keep_sats: int("How many sats to leave in the hot wallet", 0),
+        max_sats: int("Ceiling per run, in sats"),
+        cron: str("Five-field cron in UTC, e.g. '0 3 1 * *' for the 1st of each month at 03:00"),
+      },
+      required: ["address", "keep_sats", "max_sats", "cron"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "confirm_action",
     description:
       "Execute an action the user has explicitly approved after seeing its summary. Only valid with an action_hash returned earlier in this conversation.",
@@ -327,6 +360,23 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         ...base,
         merchant: "bitrefill",
         query: input.query as string,
+      }
+    case "sweep_to_cold":
+      return {
+        kind: "sweep_to_cold",
+        ...base,
+        address: (input.address as string).trim(),
+        keepSats: BigInt(input.keep_sats as number),
+        maxSats: BigInt(input.max_sats as number),
+      }
+    case "schedule_sweep":
+      return {
+        kind: "schedule_sweep",
+        ...base,
+        address: (input.address as string).trim(),
+        keepSats: BigInt(input.keep_sats as number),
+        maxSats: BigInt(input.max_sats as number),
+        cron: input.cron as string,
       }
     case "buy_product": {
       const usdCents: Cents = BigInt(input.usd_cents as number)

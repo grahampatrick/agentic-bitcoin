@@ -129,6 +129,7 @@ export function wizardStep(
         exchange: want.includes("exchange"),
         goods: want.includes("goods"),
         compute: want.includes("compute"),
+        onchain: state.draft.rails.onchain,
       }
       const policy = { ...state.draft, rails }
       return {

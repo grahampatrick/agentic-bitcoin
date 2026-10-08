@@ -56,6 +56,8 @@ export interface UserContext {
   schedules?: Parameters<typeof execute>[0]["schedules"]
   /** Seals bearer data before it reaches the ledger (ADR-0011). */
   seal?: (plain: string) => string
+  /** Delivery polling for merchant orders; defaults to 2 s × 30. */
+  delivery?: { pollMs: number; maxPolls: number; sleep?: (ms: number) => Promise<void> }
 }
 
 export interface AgentDeps {
@@ -214,6 +216,7 @@ export async function handleToolCall(
     rails: ctx.rails,
     schedules: ctx.schedules,
     seal: ctx.seal,
+    delivery: ctx.delivery,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -249,6 +252,7 @@ export async function confirmPending(
     rails: ctx.rails,
     schedules: ctx.schedules,
     seal: ctx.seal,
+    delivery: ctx.delivery,
     now: opts.now,
     context: { price: opts.price },
     confirmation,

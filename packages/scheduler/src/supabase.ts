@@ -5,7 +5,11 @@ import type { Schedule, ScheduleStore } from "./schedule"
 type Row = {
   id: string
   user_id: string
+  kind: string
   exchange: string
+  address: string | null
+  keep_sats: string | null
+  max_sats: string | null
   usd_cents: string
   cron: string
   estimated_sats: string
@@ -18,7 +22,11 @@ type Row = {
 const toRow = (s: Schedule): Row => ({
   id: s.id,
   user_id: s.userId,
+  kind: s.kind,
   exchange: s.exchange,
+  address: s.address ?? null,
+  keep_sats: s.keepSats?.toString() ?? null,
+  max_sats: s.maxSats?.toString() ?? null,
   usd_cents: s.usdCents.toString(),
   cron: s.cron,
   estimated_sats: s.estimatedSats.toString(),
@@ -30,7 +38,11 @@ const toRow = (s: Schedule): Row => ({
 const fromRow = (r: Row): Schedule => ({
   id: r.id,
   userId: r.user_id,
+  kind: (r.kind as Schedule["kind"]) ?? "buy",
   exchange: r.exchange as Schedule["exchange"],
+  address: r.address ?? undefined,
+  keepSats: r.keep_sats ? BigInt(r.keep_sats) : undefined,
+  maxSats: r.max_sats ? BigInt(r.max_sats) : undefined,
   usdCents: BigInt(r.usd_cents),
   cron: r.cron,
   estimatedSats: BigInt(r.estimated_sats),

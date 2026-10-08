@@ -28,9 +28,11 @@ export interface Policy {
   allowDestinations: readonly string[]
   /** These destinations never receive money, even if allowed. */
   denyDestinations: readonly string[]
+  /** Cold-storage addresses the user registered; the ONLY places a sweep may go (ADR-0012). */
+  coldStorageAddresses: readonly string[]
   /** When on, nothing moves — not even reads. */
   killSwitch: boolean
-  rails: { wallet: boolean; exchange: boolean; goods: boolean; compute: boolean }
+  rails: { wallet: boolean; exchange: boolean; goods: boolean; compute: boolean; onchain: boolean }
 }
 
 /** A sane starting policy: small caps, confirm anything over 10k sats, goods need a yes. */
@@ -40,8 +42,9 @@ export const DEFAULT_POLICY: Policy = {
   confirmAboveSats: 10_000n,
   allowDestinations: [],
   denyDestinations: [],
+  coldStorageAddresses: [],
   killSwitch: false,
-  rails: { wallet: true, exchange: false, goods: true, compute: true },
+  rails: { wallet: true, exchange: false, goods: true, compute: true, onchain: false },
 }
 
 export type DenyReason =
@@ -92,7 +95,12 @@ export function evaluate(
   if (!action.idempotencyKey.trim()) return deny("MISSING_IDEMPOTENCY_KEY", summary)
 
   const dest = destinationOf(action)
-  if (dest !== null) {
+  // Cold-storage sweeps go ONLY to an address the user registered with /cold (ADR-0012).
+  if (action.kind === "sweep_to_cold" || action.kind === "schedule_sweep") {
+    if (dest === null || !policy.coldStorageAddresses.some((a) => a.toLowerCase() === dest)) {
+      return deny("DESTINATION_NOT_ALLOWED", summary)
+    }
+  } else if (dest !== null) {
     if (policy.denyDestinations.some((p) => matches(p, dest))) {
       return deny("DESTINATION_DENIED", summary)
     }
@@ -107,8 +115,13 @@ export function evaluate(
   if (amount > policy.perActionCapSats) return deny("PER_ACTION_CAP", summary)
   if (window.spentSats + amount > policy.dailyCapSats) return deny("DAILY_CAP", summary)
 
-  // Purchases from a merchant always need a human yes (Bitrefill's own guidance; ADR-0011 later).
-  if (action.kind === "buy_product" || amount >= policy.confirmAboveSats) {
+  // Purchases from a merchant and cold-storage sweeps always need a human yes (ADR-0011, ADR-0012).
+  if (
+    action.kind === "buy_product" ||
+    action.kind === "sweep_to_cold" ||
+    action.kind === "schedule_sweep" ||
+    amount >= policy.confirmAboveSats
+  ) {
     return { type: "needs_confirmation", summary, actionHash: actionHash(action) }
   }
   return { type: "allow", summary }

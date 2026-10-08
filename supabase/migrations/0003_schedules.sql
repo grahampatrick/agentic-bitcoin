@@ -15,3 +15,9 @@ create index if not exists schedules_active on public.schedules (active) where a
 create index if not exists schedules_user on public.schedules (user_id);
 alter table public.schedules enable row level security;
 -- Written only by the server with the service-role key; no public policies.
+
+-- M8: a schedule is a recurring buy OR a recurring sweep to cold storage.
+alter table public.schedules add column if not exists kind text not null default 'buy' check (kind in ('buy','sweep'));
+alter table public.schedules add column if not exists address text;
+alter table public.schedules add column if not exists keep_sats text;
+alter table public.schedules add column if not exists max_sats text;

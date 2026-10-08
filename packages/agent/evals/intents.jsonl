@@ -16,6 +16,7 @@
 {"id":"goods-2","utterance":"top up my mint mobile for $20","expect":{"tool":"buy_product","input":{"merchant":"bitrefill","usd_cents":2000}}}
 {"id":"l402-1","utterance":"fetch https://llm402.ai/v1/models and pay up to 50 sats","expect":{"tool":"fetch_l402","input":{"url":"https://llm402.ai/v1/models","max_sats":50,"method":"GET"}}}
 {"id":"l402-2","utterance":"ask the sats-paid model at https://llm402.ai/v1/chat/completions to say hi, max 100 sats","expect":{"tool":"fetch_l402","input":{"max_sats":100,"method":"POST"}}}
+{"id":"sweep-1","utterance":"move everything above 200000 sats to my cold wallet bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4, max 1000000","expect":{"tool":"sweep_to_cold","input":{"address":"bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4","keep_sats":200000}}}
 {"id":"mixed-1","utterance":"send 1000 sats to gm@getalby.com and then tell me my balance","expect":{"tool":"pay_lightning_address","input":{"address":"gm@getalby.com","amount_sats":1000}}}
 {"id":"amb-1","utterance":"pay gm","expect":{"no_tool":true,"reply_mentions":["how much","amount","sats"]}}
 {"id":"amb-2","utterance":"buy bitcoin","expect":{"no_tool":true,"reply_mentions":["how much","amount","dollar"]}}

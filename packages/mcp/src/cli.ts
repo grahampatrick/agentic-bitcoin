@@ -14,7 +14,12 @@ import {
   type Policy,
   type PriceSnapshot,
 } from "@agentic-bitcoin/core"
-import { BitrefillGoodsRail, NwcWalletRail, StrikeExchangeRail } from "@agentic-bitcoin/rails"
+import {
+  BitrefillGoodsRail,
+  LndOnChainRail,
+  NwcWalletRail,
+  StrikeExchangeRail,
+} from "@agentic-bitcoin/rails"
 import { InMemoryScheduleStore, schedulesHook } from "@agentic-bitcoin/scheduler"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js"
@@ -59,6 +64,13 @@ const ctx: UserContext = {
     goods: process.env.BITREFILL_API_KEY
       ? new BitrefillGoodsRail({ apiKey: process.env.BITREFILL_API_KEY })
       : undefined,
+    onchain:
+      process.env.LND_REST_URL && process.env.LND_MACAROON_HEX
+        ? new LndOnChainRail({
+            baseUrl: process.env.LND_REST_URL,
+            macaroonHex: process.env.LND_MACAROON_HEX,
+          })
+        : undefined,
   },
   pending: new InMemoryPendingStore(),
   // schedules are created through policy; firing them needs the bot/worker runner (ADR-0010)

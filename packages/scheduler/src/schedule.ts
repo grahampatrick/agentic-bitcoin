@@ -5,11 +5,19 @@
  */
 import type { Cents, ExchangeName, Sats } from "@agentic-bitcoin/core"
 
+export type ScheduleKind = "buy" | "sweep"
+
 export interface Schedule {
   id: string
   userId: string
+  kind: ScheduleKind
+  /** buy */
   exchange: ExchangeName
   usdCents: Cents
+  /** sweep (M8): move balance above keepSats to the cold address, up to maxSats per run */
+  address?: string
+  keepSats?: Sats
+  maxSats?: Sats
   cron: string
   /** Sats estimate captured at creation, re-estimated at each run from the live price when available. */
   estimatedSats: Sats

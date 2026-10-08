@@ -17,7 +17,7 @@ const all = Object.values(ACTIONS) as Action[]
 describe("action metadata", () => {
   it("maps every kind to a rail", () => {
     const rails = all.map(railOf)
-    expect(new Set(rails)).toEqual(new Set(["wallet", "exchange", "goods", "compute"]))
+    expect(new Set(rails)).toEqual(new Set(["wallet", "exchange", "goods", "compute", "onchain"]))
   })
   it("spend amounts: reads and receives are zero, spends are their amount", () => {
     expect(spendSats(ACTIONS.balance)).toBe(0n)

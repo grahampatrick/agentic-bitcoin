@@ -6,6 +6,7 @@
  * both call `execute`.
  */
 import { type Action, actionHash, isSpend } from "./action"
+import { parseAddress } from "./address"
 import {
   type LedgerEntry,
   type LedgerStore,
@@ -43,7 +44,7 @@ export interface ExecuteInput {
   delivery?: { pollMs: number; maxPolls: number; sleep?: (ms: number) => Promise<void> }
   /** M5: the scheduler's persistence hook. Required for schedule_* actions. */
   schedules?: {
-    create(a: Extract<Action, { kind: "schedule_buy" }>): Promise<string>
+    create(a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" }>): Promise<string>
     cancel(id: string): Promise<void>
   }
 }
@@ -225,6 +226,44 @@ async function dispatch(
         detail: `${after.orderId} ${after.state}`,
         sealed: redemption && input.seal ? input.seal(redemption) : undefined,
       }
+    }
+    case "sweep_to_cold": {
+      const oc = need(rails.onchain, "onchain")
+      try {
+        await parseAddress(action.address)
+      } catch (err) {
+        throw new RailError(
+          oc.kind,
+          "REJECTED",
+          `not a valid bitcoin address: ${(err as Error).message}`,
+        )
+      }
+      const bal = await oc.getBalance()
+      const excess = bal.confirmedSats - action.keepSats
+      const amount = excess < action.maxSats ? excess : action.maxSats
+      const DUST = 10_000n
+      if (amount < DUST) {
+        return {
+          result: { skipped: true, confirmedSats: bal.confirmedSats, amount },
+          detail: `nothing to sweep (${amount} sats above the keep amount)`,
+        }
+      }
+      const tx = await oc.send({
+        address: action.address,
+        amountSats: amount,
+        satPerVbyte: action.satPerVbyte,
+        idempotencyKey: action.idempotencyKey,
+      })
+      return {
+        result: { ...tx, amountSats: amount },
+        detail: `swept ${amount} sats, fee ${tx.feeSats}, tx ${tx.txid.slice(0, 12)}…`,
+      }
+    }
+    case "schedule_sweep": {
+      const s = need(schedules, "schedules")
+      await parseAddress(action.address)
+      const scheduleId = await s.create(action)
+      return { result: { scheduleId }, detail: scheduleId }
     }
     case "search_products": {
       const g = need(rails.goods, "goods")

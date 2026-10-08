@@ -14,6 +14,7 @@ import {
   type Rails,
   type Sats,
   type WalletRail,
+  actionHash,
   centsToSats,
   execute,
 } from "@agentic-bitcoin/core"
@@ -77,15 +78,39 @@ export async function runDue(deps: RunnerDeps): Promise<RunReport> {
 async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteResult> {
   const { policy, ledger, rails } = await deps.resolve(s.userId)
   const price = await deps.price()
-  const action: Action = {
-    kind: "buy_bitcoin",
-    exchange: s.exchange,
-    usdCents: s.usdCents,
-    estimatedSats: price ? centsToSats(s.usdCents, price) : s.estimatedSats,
-    idempotencyKey: `${s.id}:${slotOf(at)}`,
-    requestedBy: "schedule",
-  }
-  const result = await execute({ action, policy, ledger, rails, now: () => at, context: { price } })
+  const key = `${s.id}:${slotOf(at)}`
+  const action: Action =
+    s.kind === "sweep"
+      ? {
+          kind: "sweep_to_cold",
+          address: s.address ?? "",
+          keepSats: s.keepSats ?? 0n,
+          maxSats: s.maxSats ?? 0n,
+          idempotencyKey: key,
+          requestedBy: "schedule",
+        }
+      : {
+          kind: "buy_bitcoin",
+          exchange: s.exchange,
+          usdCents: s.usdCents,
+          estimatedSats: price ? centsToSats(s.usdCents, price) : s.estimatedSats,
+          idempotencyKey: key,
+          requestedBy: "schedule",
+        }
+  // The user confirmed the schedule itself (schedule_* always needs a yes); each firing is pre-approved.
+  const result = await execute({
+    action,
+    policy,
+    ledger,
+    rails,
+    now: () => at,
+    context: { price },
+    confirmation: {
+      actionHash: actionHash(action),
+      confirmedBy: `schedule:${s.id}`,
+      at: at.toISOString(),
+    },
+  })
   if (result.status === "succeeded" && s.sweepToWallet && deps.sweep) {
     const bought = (result.result as { sats?: Sats })?.sats ?? 0n
     if (bought > 0n) {
@@ -102,7 +127,11 @@ async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteRes
 
 function detailOf(r: ExecuteResult): string | undefined {
   if (r.status === "succeeded") {
-    const x = r.result as { sats?: bigint; usdCents?: bigint } | undefined
+    const x = r.result as
+      | { sats?: bigint; usdCents?: bigint; txid?: string; amountSats?: bigint; skipped?: boolean }
+      | undefined
+    if (x?.txid) return `swept ${x.amountSats} sats, tx ${x.txid.slice(0, 12)}…`
+    if (x?.skipped) return "nothing to sweep"
     return x?.sats !== undefined ? `${x.sats} sats for ${x.usdCents} cents` : undefined
   }
   if (r.status === "failed") return `${r.code ?? ""} ${r.error}`.trim()
@@ -116,16 +145,32 @@ function detailOf(r: ExecuteResult): string | undefined {
  */
 export function schedulesHook(store: ScheduleStore, opts: { sweepToWallet?: boolean } = {}) {
   return {
-    async create(a: Extract<Action, { kind: "schedule_buy" }>): Promise<string> {
+    async create(a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" }>): Promise<string> {
       parseCron(a.cron) // reject bad expressions before persisting
-      const s = await store.create({
-        userId: a.idempotencyKey.split(":")[0] ?? "unknown",
-        exchange: a.exchange,
-        usdCents: a.usdCents,
-        cron: a.cron,
-        estimatedSats: a.estimatedSats,
-        sweepToWallet: opts.sweepToWallet ?? false,
-      })
+      const userId = a.idempotencyKey.split(":")[0] ?? "unknown"
+      const s =
+        a.kind === "schedule_sweep"
+          ? await store.create({
+              userId,
+              kind: "sweep",
+              exchange: "strike",
+              usdCents: 0n,
+              address: a.address,
+              keepSats: a.keepSats,
+              maxSats: a.maxSats,
+              cron: a.cron,
+              estimatedSats: a.maxSats,
+              sweepToWallet: false,
+            })
+          : await store.create({
+              userId,
+              kind: "buy",
+              exchange: a.exchange,
+              usdCents: a.usdCents,
+              cron: a.cron,
+              estimatedSats: a.estimatedSats,
+              sweepToWallet: opts.sweepToWallet ?? false,
+            })
       return s.id
     },
     async cancel(id: string): Promise<void> {

@@ -155,9 +155,24 @@ export interface ComputeRail {
   ): Promise<ComputeResponse>
 }
 
+// --- on-chain (M8) ----------------------------------------------------------------------------
+
+export interface OnChainRail {
+  readonly kind: string
+  getBalance(): Promise<{ confirmedSats: Sats; unconfirmedSats: Sats }>
+  /** Broadcast a payment. Adapters MUST be idempotent on `idempotencyKey`. */
+  send(input: {
+    address: string
+    amountSats: Sats
+    satPerVbyte?: number
+    idempotencyKey: string
+  }): Promise<{ txid: string; feeSats: Sats }>
+}
+
 export interface Rails {
   wallet?: WalletRail
   exchange?: ExchangeRail
   goods?: GoodsRail
   compute?: ComputeRail
+  onchain?: OnChainRail
 }

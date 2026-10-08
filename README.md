@@ -38,6 +38,16 @@ waitlist works out of the box with a non-durable in-memory store; for durable st
 `apps/web/.env.example` → `apps/web/.env.local`, fill in the Supabase values, and apply
 `supabase/migrations/0001_waitlist.sql`.
 
+## Try it in 30 seconds (no credentials)
+
+```bash
+pnpm demo        # a scripted conversation through the real policy engine, executor and ledger, with fake sats
+```
+
+Or open the live sandbox at https://agentic-bitcoin.vercel.app/demo — fake sats, real rules, with the ledger
+and limits updating beside the chat. With `ANTHROPIC_API_KEY` set (locally or on Vercel) the real model
+understands the messages; without it a scripted model does, and the page says so.
+
 ## Run the chat bot
 
 ```bash

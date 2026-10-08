@@ -49,7 +49,9 @@ describe("MCP server", () => {
       "pay_invoice",
       "pay_lightning_address",
       "schedule_buy",
+      "schedule_sweep",
       "search_products",
+      "sweep_to_cold",
     ])
     expect(tools.find((t) => t.name === "pay_lightning_address")?.inputSchema).toMatchObject({
       required: ["address", "amount_sats", "memo"],

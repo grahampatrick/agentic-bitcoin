@@ -53,6 +53,7 @@ export const COPY = {
     privacy: "Privacy policy",
     terms: "Terms of service",
     source: "Source",
+    demo: "Try the sandbox",
     sourceUrl: "https://github.com/grahampatrick/agentic-bitcoin",
     note: "Phrases from the Bitcoin whitepaper, 2008. Not financial advice. Non-custodial.",
   },

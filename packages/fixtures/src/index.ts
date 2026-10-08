@@ -22,6 +22,8 @@ export const PRICE = {
   source: "fixture",
 } as const
 
+export const COLD_ADDRESS = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+
 export const ADDRESSES = {
   gm: "gm@getalby.com",
   friend: "friend@walletofsatoshi.com",
@@ -106,8 +108,9 @@ export const POLICIES = {
     confirmAboveSats: 1_000_000n,
     allowDestinations: [] as string[],
     denyDestinations: [] as string[],
+    coldStorageAddresses: [] as string[],
     killSwitch: false,
-    rails: { wallet: true, exchange: true, goods: true, compute: true },
+    rails: { wallet: true, exchange: true, goods: true, compute: true, onchain: true },
   },
   strict: {
     dailyCapSats: 50_000n,
@@ -115,8 +118,9 @@ export const POLICIES = {
     confirmAboveSats: 5_000n,
     allowDestinations: ["*@getalby.com", "llm402.ai", "bitrefill", "strike"] as string[],
     denyDestinations: ["*.evil.example"] as string[],
+    coldStorageAddresses: [] as string[],
     killSwitch: false,
-    rails: { wallet: true, exchange: true, goods: true, compute: true },
+    rails: { wallet: true, exchange: true, goods: true, compute: true, onchain: true },
   },
   killed: {
     dailyCapSats: 1_000_000n,
@@ -124,8 +128,9 @@ export const POLICIES = {
     confirmAboveSats: 1_000_000n,
     allowDestinations: [] as string[],
     denyDestinations: [] as string[],
+    coldStorageAddresses: [] as string[],
     killSwitch: true,
-    rails: { wallet: true, exchange: true, goods: true, compute: true },
+    rails: { wallet: true, exchange: true, goods: true, compute: true, onchain: true },
   },
 } as const
 
@@ -215,6 +220,23 @@ export const ACTIONS = {
     requestedBy: "agent",
     merchant: "bitrefill",
     query: "amazon",
+  },
+  sweep: {
+    kind: "sweep_to_cold",
+    idempotencyKey: "k-sweep-1",
+    requestedBy: "user",
+    address: COLD_ADDRESS,
+    keepSats: 200_000n,
+    maxSats: 500_000n,
+  },
+  scheduleSweep: {
+    kind: "schedule_sweep",
+    idempotencyKey: "k-sweep-sched-1",
+    requestedBy: "user",
+    address: COLD_ADDRESS,
+    keepSats: 200_000n,
+    maxSats: 500_000n,
+    cron: "0 3 1 * *",
   },
   compute: {
     kind: "pay_l402",

@@ -54,9 +54,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@agentic-bitcoin/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@agentic-bitcoin/brand':
         specifier: workspace:*
         version: link:../../packages/brand
+      '@agentic-bitcoin/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@supabase/supabase-js':
         specifier: 2.47.10
         version: 2.47.10
