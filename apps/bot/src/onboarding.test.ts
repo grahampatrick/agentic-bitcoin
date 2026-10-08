@@ -75,12 +75,14 @@ describe("wizard", () => {
       exchange: true,
       goods: true,
       compute: true,
+      onchain: false,
     })
     expect(wizardStep(rails, "wallet only").policy?.rails).toEqual({
       wallet: true,
       exchange: false,
       goods: false,
       compute: false,
+      onchain: false,
     })
     expect(wizardStep(rails, "teleport").state?.step).toBe("rails")
   })

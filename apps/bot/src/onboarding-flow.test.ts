@@ -155,7 +155,7 @@ describe("/cold", () => {
     await surface.receive({ userId: "u", text: "/cold bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" })
     expect(last()).toContain("Registered p2wpkh address on mainnet")
     expect(last()).toContain("/budget rail onchain on")
-    expect((await policies.get("u"))?.allowDestinations).toEqual([
+    expect((await policies.get("u"))?.coldStorageAddresses).toEqual([
       "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
     ])
     await surface.receive({ userId: "u", text: "/cold bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5" })
