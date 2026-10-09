@@ -14,6 +14,7 @@ export const maxDuration = 60
 
 const live = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)
 const llm = live ? new AnthropicLlmClient() : new ScriptedLlmClient()
+const fallback = new ScriptedLlmClient()
 
 /**
  * POST { state?: string, text: string } → { reply, deliveries, pending, ledger, state, model }
@@ -38,8 +39,25 @@ export async function POST(req: Request): Promise<NextResponse> {
       state = initialSandbox()
     }
   }
+  let model = live ? "claude-opus-5-5" : "scripted"
+  let note: string | null = null
   try {
-    const t = await sandboxTurn(llm, state, text)
+    let t: Awaited<ReturnType<typeof sandboxTurn>>
+    try {
+      t = await sandboxTurn(llm, state, text)
+    } catch (err) {
+      if (!live) throw err
+      // The model is unavailable (billing, rate limit, outage): keep the demo alive on the scripted
+      // model and say so. Policy, executor and ledger are unaffected either way.
+      console.error(
+        "[demo] model call failed, falling back to scripted:",
+        err instanceof Error ? err.message.slice(0, 200) : err,
+      )
+      model = "scripted (model unavailable)"
+      note =
+        "The live model is unavailable right now; a scripted model is understanding your messages. The rules are still real."
+      t = await sandboxTurn(fallback, state, text)
+    }
     return NextResponse.json({
       reply: t.reply,
       deliveries: t.deliveries,
@@ -61,7 +79,8 @@ export async function POST(req: Request): Promise<NextResponse> {
         confirmAboveSats: t.state.policy.confirmAboveSats.toString(),
       },
       state: packState(t.state),
-      model: live ? "claude-opus-5-5" : "scripted",
+      model,
+      note,
     })
   } catch (err) {
     console.error("[demo]", err instanceof Error ? err.message : err)
