@@ -17,6 +17,7 @@ import {
   type LlmTool,
   SYSTEM_PROMPT,
   TOOLS,
+  apiSchema,
 } from "../src/index.ts"
 
 type Case = {
@@ -50,7 +51,7 @@ const llm: LlmClient = new AnthropicLlmClient()
 const tools: LlmTool[] = TOOLS.map((t) => ({
   name: t.name,
   description: t.description,
-  input_schema: t.input_schema,
+  input_schema: apiSchema(t.input_schema),
   strict: true,
 }))
 const preamble = `Current price: 1 BTC = $${(PRICE.usdCentsPerBtc / 100n).toString()}. Your wallet balance is 250,000 sats.` // money-ok: display

@@ -236,6 +236,20 @@ export const TOOL_BY_NAME: Record<string, ToolSpec> = Object.fromEntries(
   TOOLS.map((t) => [t.name, t]),
 )
 
+/**
+ * The schema as the Claude API accepts it for strict tools: no `minimum` (rejected with
+ * "For 'integer' type, property 'minimum' is not supported"). Our own `validateInput` still
+ * enforces minimums before any action is built.
+ */
+export function apiSchema(schema: JsonSchema): JsonSchema {
+  const properties: JsonSchema["properties"] = {}
+  for (const [k, v] of Object.entries(schema.properties)) {
+    const { minimum: _min, ...rest } = v
+    properties[k] = rest
+  }
+  return { ...schema, properties }
+}
+
 export class ToolInputError extends Error {
   readonly code = "TOOL_INPUT"
   constructor(message: string) {

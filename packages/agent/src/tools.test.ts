@@ -5,6 +5,7 @@ import {
   TOOLS,
   TOOL_BY_NAME,
   ToolInputError,
+  apiSchema,
   quoteUntrusted,
   toolToAction,
   validateInput,
@@ -30,6 +31,20 @@ describe("tool definitions", () => {
         expect(v.description.length).toBeGreaterThan(5)
       }
     }
+  })
+})
+
+describe("apiSchema", () => {
+  it("strips minimum for the API while our validator keeps enforcing it", () => {
+    const pay = TOOL_BY_NAME.pay_lightning_address as (typeof TOOLS)[number]
+    expect(pay.input_schema.properties.amount_sats?.minimum).toBe(1)
+    const api = apiSchema(pay.input_schema)
+    expect(api.properties.amount_sats).toEqual({
+      type: "integer",
+      description: pay.input_schema.properties.amount_sats?.description,
+    })
+    expect(JSON.stringify(TOOLS.map((t) => apiSchema(t.input_schema)))).not.toContain("minimum")
+    expect(() => validateInput(pay, { address: "a@b.co", amount_sats: 0, memo: "" })).toThrow(/≥ 1/)
   })
 })
 

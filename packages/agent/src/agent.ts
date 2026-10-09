@@ -18,7 +18,7 @@ import {
 } from "@agentic-bitcoin/core"
 import type { LlmClient, LlmContentBlock, LlmMessage, LlmTool } from "./llm"
 import { SYSTEM_PROMPT } from "./prompt"
-import { TOOLS, ToolInputError, quoteUntrusted, toolToAction } from "./tools"
+import { TOOLS, ToolInputError, apiSchema, quoteUntrusted, toolToAction } from "./tools"
 
 export interface PendingStore {
   set(userId: string, actionHash: string, action: Action): Promise<void>
@@ -82,7 +82,7 @@ export interface TurnResult {
 const LLM_TOOLS: LlmTool[] = TOOLS.map((t) => ({
   name: t.name,
   description: t.description,
-  input_schema: t.input_schema,
+  input_schema: apiSchema(t.input_schema),
   strict: true,
 }))
 
