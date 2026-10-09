@@ -46,6 +46,8 @@ function scriptedLlm(amount: number): LlmClient {
 function setup(amount = 21) {
   const surface = new FakeSurface()
   const policies = new InMemoryPolicyStore()
+  // "u" is a known user (first contact is tested in onboarding-flow.test.ts)
+  void policies.set("u", { ...POLICIES.open, confirmAboveSats: 1_000n })
   const ledger = new InMemoryLedgerStore()
   const pending = new InMemoryPendingStore()
   const wallet = new FakeWalletRail({ balanceSats: 100_000n })
