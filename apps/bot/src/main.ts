@@ -52,6 +52,18 @@ import {
 import { SignalSurface } from "./surfaces/signal"
 import { TelegramSurface } from "./surfaces/telegram"
 
+// Load apps/bot/.env (KEY=value lines) without a dependency; real env wins over the file.
+import { existsSync, readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+const envFile = join(dirname(fileURLToPath(import.meta.url)), "..", ".env")
+if (existsSync(envFile)) {
+  for (const line of readFileSync(envFile, "utf8").split("\n")) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*(?:#.*)?$/.exec(line)
+    if (m?.[1] && process.env[m[1]] === undefined && m[2] !== undefined && m[2] !== "")
+      process.env[m[1]] = m[2]
+  }
+}
 const env = process.env
 const liveModel = !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN)
 if (!liveModel)
