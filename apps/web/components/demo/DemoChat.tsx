@@ -82,6 +82,9 @@ export function DemoChat() {
       setModel(d.model)
       setMsgs((m) => [
         ...m,
+        ...(d.note && !m.some((x) => x.text === d.note)
+          ? [{ who: "sys" as const, text: d.note as string }]
+          : []),
         { who: "bot", text: d.reply, confirm: d.pending?.actionHash ?? undefined },
         ...(d.deliveries as string[]).map((x) => ({ who: "bot" as const, text: x })),
       ])
