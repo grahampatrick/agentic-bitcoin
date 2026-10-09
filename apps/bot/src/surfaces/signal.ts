@@ -22,6 +22,12 @@ export interface SignalOptions {
   fetchImpl?: typeof fetch
   /** Reconnect delay after the event stream drops. */
   reconnectMs?: number
+  /**
+   * Linked-device test mode: when the daemon is a LINKED device on the operator's own account,
+   * "Note to Self" on the phone arrives as a sync message. Treat those as inbound from the own
+   * number and reply into Note to Self. Off by default (a real deployment has its own number).
+   */
+  noteToSelf?: boolean
 }
 
 export class SignalSurface implements ChatSurface {
@@ -29,6 +35,8 @@ export class SignalSurface implements ChatSurface {
   private abort: AbortController | null = null
   private readonly fetchImpl: typeof fetch
   private rpcId = 0
+  /** Texts we sent recently; our own notes come back as sync messages and must not loop. */
+  private readonly recentlySent: string[] = []
   constructor(private readonly opts: SignalOptions) {
     this.fetchImpl = opts.fetchImpl ?? fetch
   }
@@ -56,8 +64,14 @@ export class SignalSurface implements ChatSurface {
           })
           if (!res.ok || !res.body) throw new Error(`events: HTTP ${res.status}`)
           for await (const ev of parseSse(res.body)) {
-            const inbound = inboundOf(ev, this.opts.account)
-            if (inbound) await onMessage(inbound)
+            const inbound = inboundOf(ev, this.opts.account, this.opts.noteToSelf ?? false)
+            if (!inbound) continue
+            if (
+              inbound.userId === `signal:${this.opts.account}` &&
+              this.recentlySent.includes(inbound.text)
+            )
+              continue
+            await onMessage(inbound)
           }
         } catch (err) {
           if (this.abort?.signal.aborted) return
@@ -71,8 +85,15 @@ export class SignalSurface implements ChatSurface {
 
   async send(userId: string, m: OutboundMessage) {
     const recipient = userId.replace(/^signal:/, "")
-    const params: Record<string, unknown> = { recipient: [recipient], message: m.text }
+    const toSelf = recipient === this.opts.account
+    const params: Record<string, unknown> = toSelf
+      ? { noteToSelf: true, message: m.text }
+      : { recipient: [recipient], message: m.text }
     if (this.opts.multiAccount) params.account = this.opts.account
+    if (toSelf) {
+      this.recentlySent.push(m.text)
+      if (this.recentlySent.length > 50) this.recentlySent.shift()
+    }
     const res = await this.fetchImpl(`${this.opts.daemonUrl}/api/v1/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -95,7 +116,14 @@ type Envelope = {
   sourceNumber?: string
   sourceName?: string
   dataMessage?: { message?: string | null; timestamp?: number }
-  syncMessage?: unknown
+  syncMessage?: {
+    sentMessage?: {
+      destination?: string | null
+      destinationNumber?: string | null
+      message?: string | null
+      timestamp?: number
+    }
+  }
   receiptMessage?: unknown
   typingMessage?: unknown
 }
@@ -105,19 +133,45 @@ type SignalEvent = {
   envelope?: Envelope
 }
 
-/** A `receive` notification with a text data message → InboundMessage. Everything else → null. */
-export function inboundOf(ev: SignalEvent, ownAccount: string): InboundMessage | null {
+/**
+ * A `receive` notification with a text data message → InboundMessage. Everything else → null.
+ * In noteToSelf mode, a sync `sentMessage` from the own number to itself (Note to Self) counts too.
+ */
+export function inboundOf(
+  ev: SignalEvent,
+  ownAccount: string,
+  noteToSelf = false,
+): InboundMessage | null {
   const env = ev.params?.envelope ?? ev.envelope
   if (!env) return null
-  const text = env.dataMessage?.message
   const from = env.sourceNumber ?? env.source
-  if (!from || typeof text !== "string" || !text.trim()) return null
-  if (from === ownAccount) return null // our own sync copies
-  return {
-    userId: `signal:${from}`,
-    text,
-    messageId: env.dataMessage?.timestamp ? String(env.dataMessage.timestamp) : undefined,
+  const text = env.dataMessage?.message
+  if (from && typeof text === "string" && text.trim()) {
+    if (from === ownAccount) return null // our own copies
+    return {
+      userId: `signal:${from}`,
+      text,
+      messageId: env.dataMessage?.timestamp ? String(env.dataMessage.timestamp) : undefined,
+    }
   }
+  const sent = env.syncMessage?.sentMessage
+  if (
+    noteToSelf &&
+    from === ownAccount &&
+    sent &&
+    typeof sent.message === "string" &&
+    sent.message.trim()
+  ) {
+    const dest = sent.destinationNumber ?? sent.destination ?? null
+    if (dest === null || dest === ownAccount) {
+      return {
+        userId: `signal:${ownAccount}`,
+        text: sent.message,
+        messageId: sent.timestamp ? String(sent.timestamp) : undefined,
+      }
+    }
+  }
+  return null
 }
 
 /** Minimal SSE parser: yields the JSON of each `data:` line (keepalives and non-JSON are skipped). */

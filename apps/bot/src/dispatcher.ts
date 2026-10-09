@@ -57,6 +57,8 @@ export interface DispatcherDeps {
   onCredentialsChanged?(userId: string): void
   /** When set, a new number must send this code first (a "select group" gate like Instinct's). */
   inviteCode?: string
+  /** When set, messages from any other user id are ignored entirely (linked-device testing). */
+  allowedUsers?: readonly string[]
   now?: () => Date
 }
 
@@ -78,6 +80,7 @@ export class Dispatcher {
     const reply = (text: string, confirm?: { actionHash: string }) =>
       this.deps.surface.send(m.userId, { text, confirm })
     const text = m.text.trim()
+    if (this.deps.allowedUsers?.length && !this.deps.allowedUsers.includes(m.userId)) return
     try {
       if (m.decision)
         return await this.decide(m.userId, m.decision.actionHash, m.decision.approve, reply)

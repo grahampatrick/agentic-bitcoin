@@ -30,7 +30,12 @@ const server = createServer((req, res) => {
           id: rpc.id,
           result: {
             timestamp: Date.now(),
-            results: [{ recipientAddress: { number: rpc.params.recipient[0] }, type: "SUCCESS" }],
+            results: [
+              {
+                recipientAddress: { number: rpc.params.recipient?.[0] ?? "self" },
+                type: "SUCCESS",
+              },
+            ],
           },
         }),
       )
@@ -120,6 +125,79 @@ describe("SignalSurface against a fake daemon", () => {
     const s = new SignalSurface({ daemonUrl: url, account: "+15550001111", multiAccount: true })
     await s.send("signal:+15552223333", { text: "hi" })
     expect((sent.at(-1) as { params: Record<string, unknown> }).params.account).toBe("+15550001111")
+  })
+  it("Note to Self: sync sentMessage to self counts only in noteToSelf mode; replies go noteToSelf and are not re-ingested", async () => {
+    const me = "+15550001111"
+    const sync = {
+      method: "receive",
+      params: {
+        envelope: {
+          source: me,
+          sourceNumber: me,
+          syncMessage: {
+            sentMessage: {
+              destination: me,
+              destinationNumber: me,
+              timestamp: 42,
+              message: "balance?",
+            },
+          },
+        },
+      },
+    }
+    expect(inboundOf(sync, me)).toBeNull()
+    expect(inboundOf(sync, me, true)).toEqual({
+      userId: `signal:${me}`,
+      text: "balance?",
+      messageId: "42",
+    })
+    const toOther = {
+      ...sync,
+      params: {
+        envelope: {
+          ...sync.params.envelope,
+          syncMessage: { sentMessage: { destinationNumber: "+15559990000", message: "hi friend" } },
+        },
+      },
+    }
+    expect(inboundOf(toOther, me, true)).toBeNull()
+    const got: InboundMessage[] = []
+    const s = new SignalSurface({ daemonUrl: url, account: me, noteToSelf: true })
+    await s.start(async (m) => {
+      got.push(m)
+    })
+    for (let i = 0; i < 50 && !pushEvent; i++) await new Promise((r) => setTimeout(r, 20))
+    await s.send(`signal:${me}`, { text: "Your wallet holds 250,000 sats." })
+    expect((sent.at(-1) as { params: Record<string, unknown> }).params).toEqual({
+      noteToSelf: true,
+      message: "Your wallet holds 250,000 sats.",
+    })
+    const push = pushEvent as (o: unknown) => void
+    push({
+      method: "receive",
+      params: {
+        envelope: {
+          sourceNumber: me,
+          syncMessage: {
+            sentMessage: { destinationNumber: me, message: "Your wallet holds 250,000 sats." },
+          },
+        },
+      },
+    })
+    push({
+      method: "receive",
+      params: {
+        envelope: {
+          sourceNumber: me,
+          syncMessage: {
+            sentMessage: { destinationNumber: me, message: "pay 500 sats to gm@getalby.com" },
+          },
+        },
+      },
+    })
+    for (let i = 0; i < 50 && got.length < 1; i++) await new Promise((r) => setTimeout(r, 20))
+    expect(got.map((g) => g.text)).toEqual(["pay 500 sats to gm@getalby.com"])
+    await s.stop()
   })
   it("inboundOf handles both documented shapes and rejects empty messages", () => {
     expect(

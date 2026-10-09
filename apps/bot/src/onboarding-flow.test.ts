@@ -28,7 +28,12 @@ const idleLlm: LlmClient = {
 }
 
 function setup(
-  opts: { probe?: WalletProbe | Error; secretsKey?: Buffer | null; inviteCode?: string } = {},
+  opts: {
+    probe?: WalletProbe | Error
+    secretsKey?: Buffer | null
+    inviteCode?: string
+    allowedUsers?: string[]
+  } = {},
 ) {
   const surface = new FakeSurface()
   const policies = new InMemoryPolicyStore()
@@ -68,6 +73,7 @@ function setup(
     },
     onCredentialsChanged: (u) => changed.push(u),
     inviteCode: opts.inviteCode,
+    allowedUsers: opts.allowedUsers,
     now: clockAt(),
   })
   const last = () => surface.sent.at(-1)?.m.text ?? ""
@@ -128,6 +134,17 @@ describe("first contact (Signal users never type /start)", () => {
     expect(last()).not.toContain("1/3")
     await surface.receive({ userId: "signal:+15559998888", text: "sats-2026" })
     expect(last()).toContain("1/3")
+  })
+})
+
+describe("allow-list", () => {
+  it("ignores everyone not listed, answers the listed number", async () => {
+    const { surface, d } = setup({ allowedUsers: ["signal:+15550001111"] })
+    await d.start()
+    await surface.receive({ userId: "signal:+15559998888", text: "hi" })
+    expect(surface.sent).toHaveLength(0)
+    await surface.receive({ userId: "signal:+15550001111", text: "hi" })
+    expect(surface.sent).toHaveLength(1)
   })
 })
 

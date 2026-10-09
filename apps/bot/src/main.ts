@@ -7,6 +7,7 @@ import {
   AnthropicLlmClient,
   InMemoryPendingStore,
   type PendingStore,
+  ScriptedLlmClient,
   type UserContext,
 } from "@agentic-bitcoin/agent"
 import {
@@ -52,6 +53,9 @@ import { SignalSurface } from "./surfaces/signal"
 import { TelegramSurface } from "./surfaces/telegram"
 
 const env = process.env
+const liveModel = !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN)
+if (!liveModel)
+  console.warn("[bot] no ANTHROPIC_API_KEY — using the SCRIPTED model (fixed phrasings only)")
 const durable = !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY)
 const db = durable
   ? supabaseClient(env.SUPABASE_URL as string, env.SUPABASE_SERVICE_ROLE_KEY as string)
@@ -160,6 +164,7 @@ const surface =
         daemonUrl: env.SIGNAL_DAEMON_URL ?? "http://localhost:8080",
         account: env.SIGNAL_ACCOUNT ?? "",
         multiAccount: env.SIGNAL_MULTI_ACCOUNT === "1",
+        noteToSelf: env.SIGNAL_NOTE_TO_SELF === "1",
       })
     : new TelegramSurface(env.TELEGRAM_BOT_TOKEN ?? "")
 if (surface.kind === "telegram" && !env.TELEGRAM_BOT_TOKEN) {
@@ -169,6 +174,15 @@ if (surface.kind === "telegram" && !env.TELEGRAM_BOT_TOKEN) {
 if (surface instanceof SignalSurface) {
   if (!env.SIGNAL_ACCOUNT) {
     console.error("Set SIGNAL_ACCOUNT to the bot's registered number (docs/signal.md)")
+    process.exit(2)
+  }
+  if (
+    env.SIGNAL_NOTE_TO_SELF === "1" &&
+    !env.BOT_ALLOWED_USERS?.includes(`signal:${env.SIGNAL_ACCOUNT}`)
+  ) {
+    console.error(
+      "SIGNAL_NOTE_TO_SELF=1 is a test mode on YOUR account: set BOT_ALLOWED_USERS=signal:<your number> so the bot answers nobody else",
+    )
     process.exit(2)
   }
   if (!(await surface.check())) {
@@ -181,7 +195,7 @@ if (surface instanceof SignalSurface) {
 
 const dispatcher = new Dispatcher({
   surface,
-  agent: { llm: new AnthropicLlmClient(), price },
+  agent: { llm: liveModel ? new AnthropicLlmClient() : new ScriptedLlmClient(), price },
   resolveContext,
   policies,
   history,
@@ -190,6 +204,9 @@ const dispatcher = new Dispatcher({
   probeWallet,
   onCredentialsChanged,
   inviteCode: env.BOT_INVITE_CODE,
+  allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
+    .map((u) => u.trim())
+    .filter(Boolean),
 })
 await dispatcher.start()
 
