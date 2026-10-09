@@ -55,6 +55,8 @@ export interface DispatcherDeps {
   probeWallet(connectionString: string): Promise<WalletProbe>
   /** Called after a pairing/key change so cached rails for the user are rebuilt. */
   onCredentialsChanged?(userId: string): void
+  /** When set, a new number must send this code first (a "select group" gate like Instinct's). */
+  inviteCode?: string
   now?: () => Date
 }
 
@@ -81,6 +83,8 @@ export class Dispatcher {
         return await this.decide(m.userId, m.decision.actionHash, m.decision.approve, reply)
       if (text.startsWith("/")) return await this.command(m, text, reply)
       const wizard = this.wizards.get(m.userId)
+      if (!wizard && (await this.deps.policies.get(m.userId)) === null)
+        return await this.firstContact(m.userId, text, reply)
       if (wizard) return await this.wizard(m.userId, wizard, text, reply)
       if (looksLikeSecret(text)) {
         await this.redact(m)
@@ -110,6 +114,25 @@ export class Dispatcher {
       console.error("[dispatcher]", err instanceof Error ? err.message : err)
       await reply("Something went wrong on my side. Nothing was sent. Try again in a moment.")
     }
+  }
+
+  /** A number we have never seen: gate on the invite code if configured, then greet and start the limits wizard. */
+  private async firstContact(
+    userId: string,
+    text: string,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const code = this.deps.inviteCode?.trim()
+    if (code && text.trim().toLowerCase() !== code.toLowerCase()) {
+      return reply(
+        "Hey! Glad you're here. Agentic Bitcoin is working with a small group right now while we ramp up. If someone gave you an invite code, send it here and you're in. Otherwise you're on the list and I'll message you the moment a spot opens. Nothing else you need to do.",
+      )
+    }
+    const w = startWizard()
+    this.wizards.set(userId, w.state)
+    return reply(
+      `Hey! Glad you're here. I'm Agentic Bitcoin: text me in plain words and I'll move bitcoin through your own wallet, within limits you set. Nothing moves without your limits, and anything over your threshold waits for your yes.\n\n${w.prompt}`,
+    )
   }
 
   private async redact(m: InboundMessage): Promise<void> {

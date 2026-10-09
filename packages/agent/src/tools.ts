@@ -95,7 +95,7 @@ export const TOOLS: readonly ToolSpec[] = [
       properties: {
         exchange: {
           type: "string",
-          description: "Which exchange account",
+          description: "Which exchange account; use strike unless the user names another",
           enum: ["strike", "coinbase"],
         },
         usd_cents: int("Dollar amount in cents"),
@@ -114,7 +114,7 @@ export const TOOLS: readonly ToolSpec[] = [
       properties: {
         exchange: {
           type: "string",
-          description: "Which exchange account",
+          description: "Which exchange account; use strike unless the user names another",
           enum: ["strike", "coinbase"],
         },
         usd_cents: int("Dollar amount per purchase, in cents"),

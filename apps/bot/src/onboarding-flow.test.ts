@@ -27,7 +27,9 @@ const idleLlm: LlmClient = {
   },
 }
 
-function setup(opts: { probe?: WalletProbe | Error; secretsKey?: Buffer | null } = {}) {
+function setup(
+  opts: { probe?: WalletProbe | Error; secretsKey?: Buffer | null; inviteCode?: string } = {},
+) {
   const surface = new FakeSurface()
   const policies = new InMemoryPolicyStore()
   const secrets = new InMemorySecretStore()
@@ -65,6 +67,7 @@ function setup(opts: { probe?: WalletProbe | Error; secretsKey?: Buffer | null }
       return probeResult
     },
     onCredentialsChanged: (u) => changed.push(u),
+    inviteCode: opts.inviteCode,
     now: clockAt(),
   })
   const last = () => surface.sent.at(-1)?.m.text ?? ""
@@ -100,6 +103,31 @@ describe("first-run wizard", () => {
     await surface.receive({ userId: "u", text: "/kill" })
     await surface.receive({ userId: "u", text: "hello" })
     expect(last()).toBe("model saw it")
+  })
+})
+
+describe("first contact (Signal users never type /start)", () => {
+  it("greets a new number and starts the wizard on any first message", async () => {
+    const { surface, policies, d, last } = setup()
+    await d.start()
+    await surface.receive({ userId: "signal:+15552223333", text: "hi there" })
+    expect(last()).toContain("Glad you're here")
+    expect(last()).toContain("1/3")
+    await surface.receive({ userId: "signal:+15552223333", text: "20000" })
+    await surface.receive({ userId: "signal:+15552223333", text: "5000" })
+    await surface.receive({ userId: "signal:+15552223333", text: "wallet" })
+    expect((await policies.get("signal:+15552223333"))?.dailyCapSats).toBe(20_000n)
+    await surface.receive({ userId: "signal:+15552223333", text: "hello again" })
+    expect(last()).toBe("model saw it") // a known user goes to the model
+  })
+  it("with an invite code, strangers get the waitlist message until they send the code", async () => {
+    const { surface, d, last } = setup({ inviteCode: "SATS-2026" })
+    await d.start()
+    await surface.receive({ userId: "signal:+15559998888", text: "hey" })
+    expect(last()).toContain("invite code")
+    expect(last()).not.toContain("1/3")
+    await surface.receive({ userId: "signal:+15559998888", text: "sats-2026" })
+    expect(last()).toContain("1/3")
   })
 })
 

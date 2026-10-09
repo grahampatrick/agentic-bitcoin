@@ -189,6 +189,7 @@ const dispatcher = new Dispatcher({
   secretsKey,
   probeWallet,
   onCredentialsChanged,
+  inviteCode: env.BOT_INVITE_CODE,
 })
 await dispatcher.start()
 
