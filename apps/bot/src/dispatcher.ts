@@ -82,16 +82,16 @@ export class Dispatcher {
       if (m.decision)
         return await this.decide(m.userId, m.decision.actionHash, m.decision.approve, reply)
       if (text.startsWith("/")) return await this.command(m, text, reply)
-      const wizard = this.wizards.get(m.userId)
-      if (!wizard && (await this.deps.policies.get(m.userId)) === null)
-        return await this.firstContact(m.userId, text, reply)
-      if (wizard) return await this.wizard(m.userId, wizard, text, reply)
       if (looksLikeSecret(text)) {
         await this.redact(m)
         return reply(
           "That looks like a wallet connection string or an API key. I never pass those to the model. Use /pair <string> or /key <strike|bitrefill> <key> instead, and delete that message.",
         )
       }
+      const wizard = this.wizards.get(m.userId)
+      if (!wizard && (await this.deps.policies.get(m.userId)) === null)
+        return await this.firstContact(m.userId, text, reply)
+      if (wizard) return await this.wizard(m.userId, wizard, text, reply)
       if (YES.test(text) || NO.test(text)) {
         const ctx = await this.deps.resolveContext(m.userId)
         const latest = await ctx.pending.latest(m.userId)
