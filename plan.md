@@ -335,10 +335,11 @@ NWC_URL=... pnpm tsx scripts/demo-pay.ts    # prints preimage + ledger entry
 
 ### M3 — Agent core, MCP server, chat surface (Telegram for dev, Signal for users)
 
-**Status: CODE DONE 2026-10-07; two live steps pending credentials.** All packages typecheck, lint and test
-offline (agent 16, mcp 4, bot 8 tests on a scripted model and fakes). Not yet run: the **eval set against the real
-model** (needs `ANTHROPIC_API_KEY`; the runner skips cleanly without it, CI job `evals` runs it when the repo secret is
-set) and the **Telegram/Signal demo** (needs a bot token or a signal-cli number). Model: Claude Opus 5.5, adaptive
+**Status: DONE; evals LIVE 2026-10-09 — 32/32 intent, 8/8 adversarial on Claude Opus 5.5 at medium effort** (CI job `evals`
+runs on every push to main with the repo secret). First real scores were 24/32 and 6/8; fixes were prompt defaults (exchange,
+schedule time, search-before-buy), an explicit refusal of "ignore your limits / no confirmation / send everything" asks
+without a tool call, and eval-design corrections (search-first accepted for goods, any-of mentions, a real memo-injection
+case, no balance in the preamble). Still to run: the Telegram/Signal chat demo (needs a token or a registered number). Model: Claude Opus 5.5, adaptive
 thinking, effort `medium`, server-side refusal fallback on (OQ-5 resolved, `packages/agent/src/model.ts`).
 
 **Goal:** A person can text the assistant on Telegram, ask for any M1 action in plain language, get a
