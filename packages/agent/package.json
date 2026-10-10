@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:evals": "tsx evals/run.ts",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "demo:give": "tsx scripts/demo.ts --give"
   },
   "dependencies": {
     "@agentic-bitcoin/core": "workspace:*",

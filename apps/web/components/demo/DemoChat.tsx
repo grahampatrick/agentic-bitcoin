@@ -20,6 +20,9 @@ const SUGGESTIONS = [
   "pay 60000 sats to gm@getalby.com",
   "get me a $10 amazon gift card",
   "buy $25 of bitcoin every friday",
+  "which churches can I give to?",
+  "tithe 2000 sats to grace-fellowship",
+  "give 10000 sats to ortiz-family every month",
   "fetch https://api.example/answer up to 50 sats",
   "sweep everything above 200000 sats to cold storage bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4 max 500000",
 ]
@@ -49,7 +52,7 @@ export function DemoChat() {
         setMsgs([
           {
             who: "sys",
-            text: `Sandbox: fake sats, real rules. Wallet 250,000 sats · on-chain 1,200,000 sats · daily cap 100,000 · ask above 5,000 · cold storage registered. Model: ${d.model === "scripted" ? "scripted (no API key on this server)" : d.model}.`,
+            text: `Sandbox: fake sats, real rules. Wallet 250,000 sats · on-chain 1,200,000 sats · daily cap 100,000 · ask above 5,000 · cold storage registered · giving directory loaded. Model: ${d.model === "scripted" ? "scripted (no API key on this server)" : d.model}.`,
           },
         ])
       })

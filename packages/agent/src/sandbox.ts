@@ -12,12 +12,15 @@ import {
   FakeOnChainRail,
   FakeWalletRail,
   InMemoryLedgerStore,
+  InMemoryRecipientStore,
   type LedgerEntry,
   type LedgerEvent,
   type Policy,
   type PriceSnapshot,
+  type Recipient,
   foldEntries,
   parseAction,
+  recipientsForUser,
   serializeAction,
 } from "@agentic-bitcoin/core"
 import { InMemoryPendingStore, type PendingStore, type UserContext, runTurn } from "./agent"
@@ -29,6 +32,44 @@ export const SANDBOX_PRICE: PriceSnapshot = {
   asOf: "2026-10-08T00:00:00.000Z",
   source: "sandbox",
 }
+
+/** The sandbox giving directory: fictional recipients, synthetic addresses, one of them adversarial. */
+export const SANDBOX_RECIPIENTS: readonly Recipient[] = [
+  {
+    slug: "grace-fellowship",
+    kind: "church",
+    name: "Grace Fellowship Church",
+    lightningAddress: "give@grace-fellowship.example",
+    verified: { how: "domain", at: "2026-10-08T00:00:00.000Z" },
+    website: "https://grace-fellowship.example",
+    country: "US",
+    description: "A church in Denver, Colorado.",
+  },
+  {
+    slug: "ortiz-family",
+    kind: "missionary",
+    name: "The Ortiz Family",
+    lightningAddress: "ortiz@walletofsatoshi.com",
+    verified: { how: "operator", at: "2026-10-08T00:00:00.000Z" },
+    country: "PE",
+    description: "Serving in Lima, Peru.",
+  },
+  {
+    slug: "new-church",
+    kind: "church",
+    name: "New Church (pending verification)",
+    lightningAddress: "hello@new-church.example",
+    verified: null,
+  },
+  {
+    slug: "my-pastor",
+    kind: "creator",
+    name: "My pastor",
+    lightningAddress: "pastor@getalby.com",
+    verified: null,
+    ownerUserId: "demo",
+  },
+]
 
 export interface SandboxState {
   version: 1
@@ -162,6 +203,7 @@ export async function sandboxTurn(
     pending,
     schedules,
     delivery: { pollMs: 25, maxPolls: 8 },
+    recipients: recipientsForUser(new InMemoryRecipientStore(SANDBOX_RECIPIENTS), "demo"),
   }
   const deps = {
     llm,
