@@ -22,6 +22,7 @@ export function LegalLinks() {
         <Link href="/privacy">{f.privacy}</Link>
         <Link href="/terms">{f.terms}</Link>
         <Link href="/demo">{f.demo}</Link>
+        <Link href="/give">{f.give}</Link>
         <a href={f.sourceUrl} rel="noopener">
           {f.source}
         </a>

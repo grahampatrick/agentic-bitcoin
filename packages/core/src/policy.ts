@@ -55,6 +55,8 @@ export type DenyReason =
   | "PER_ACTION_CAP"
   | "DAILY_CAP"
   | "MISSING_IDEMPOTENCY_KEY"
+  /** A gift to a recipient that is neither a verified directory entry nor the user's own. */
+  | "RECIPIENT_UNVERIFIED"
 
 export type Decision =
   | { type: "allow"; summary: string }
@@ -95,6 +97,10 @@ export function evaluate(
   if (!action.idempotencyKey.trim()) return deny("MISSING_IDEMPOTENCY_KEY", summary)
 
   const dest = destinationOf(action)
+  // Gifts go only to verified directory recipients or ones the user added themselves (ADR-0013).
+  if ((action.kind === "give" || action.kind === "schedule_give") && !action.verified) {
+    return deny("RECIPIENT_UNVERIFIED", summary)
+  }
   // Cold-storage sweeps go ONLY to an address the user registered with /cold (ADR-0012).
   if (action.kind === "sweep_to_cold" || action.kind === "schedule_sweep") {
     if (dest === null || !policy.coldStorageAddresses.some((a) => a.toLowerCase() === dest)) {
@@ -120,6 +126,7 @@ export function evaluate(
     action.kind === "buy_product" ||
     action.kind === "sweep_to_cold" ||
     action.kind === "schedule_sweep" ||
+    action.kind === "schedule_give" ||
     amount >= policy.confirmAboveSats
   ) {
     return { type: "needs_confirmation", summary, actionHash: actionHash(action) }

@@ -102,6 +102,8 @@ for (const c of cases) {
         "buy_bitcoin",
         "buy_product",
         "fetch_l402",
+        "give",
+        "schedule_give",
         "confirm_action",
       ].includes(u.name),
     )

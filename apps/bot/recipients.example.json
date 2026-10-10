@@ -1,0 +1,21 @@
+[
+  {
+    "slug": "grace-fellowship",
+    "kind": "church",
+    "name": "Grace Fellowship Church",
+    "lightningAddress": "give@grace-fellowship.example",
+    "website": "https://grace-fellowship.example",
+    "country": "US",
+    "description": "A church in Denver, Colorado. Replace with a real church you have verified.",
+    "verified": true
+  },
+  {
+    "slug": "ortiz-family",
+    "kind": "missionary",
+    "name": "The Ortiz Family",
+    "lightningAddress": "ortiz@walletofsatoshi.com",
+    "country": "PE",
+    "description": "Serving in Lima, Peru. Example entry; addresses here are not real.",
+    "verified": true
+  }
+]

@@ -101,6 +101,8 @@ function spendOf(action: Action): bigint {
     case "pay_address":
     case "buy_product":
     case "pay_l402":
+    case "give":
+    case "schedule_give":
       return action.amountSats
     case "buy_bitcoin":
     case "schedule_buy":

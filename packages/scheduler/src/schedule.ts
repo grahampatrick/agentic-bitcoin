@@ -3,9 +3,9 @@
  * normal `buy_bitcoin` Action with `requestedBy: "schedule"`, so caps, allow-lists, the kill switch
  * and the ledger apply unchanged. There is no second payment path.
  */
-import type { Cents, ExchangeName, Sats } from "@agentic-bitcoin/core"
+import type { Cents, ExchangeName, GivePurpose, Sats } from "@agentic-bitcoin/core"
 
-export type ScheduleKind = "buy" | "sweep"
+export type ScheduleKind = "buy" | "sweep" | "give"
 
 export interface Schedule {
   id: string
@@ -18,6 +18,13 @@ export interface Schedule {
   address?: string
   keepSats?: Sats
   maxSats?: Sats
+  /** give (M9): recurring gift to a directory recipient; `address` holds the Lightning address at creation,
+   *  `estimatedSats` the sats per firing (re-priced from usdCents when usdCents > 0). Re-resolved at fire time. */
+  recipientSlug?: string
+  recipientName?: string
+  purpose?: GivePurpose
+  /** Trust at creation; the runner re-checks it against the directory before every firing. */
+  verified?: boolean
   cron: string
   /** Sats estimate captured at creation, re-estimated at each run from the live price when available. */
   estimatedSats: Sats

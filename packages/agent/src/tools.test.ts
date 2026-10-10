@@ -1,5 +1,5 @@
 import { type Action, RAIL_FOR_KIND } from "@agentic-bitcoin/core"
-import { PRICE } from "@agentic-bitcoin/fixtures"
+import { PRICE, RECIPIENTS } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
 import {
   TOOLS,
@@ -11,7 +11,12 @@ import {
   validateInput,
 } from "./tools"
 
-const ctx = { callId: "c1", requestedBy: "agent" as const, price: PRICE }
+const ctx = {
+  callId: "c1",
+  requestedBy: "agent" as const,
+  price: PRICE,
+  recipient: { recipient: RECIPIENTS.church, trusted: true },
+}
 
 describe("tool definitions", () => {
   it("cover every Action kind exactly once, plus confirm_action", () => {
@@ -169,6 +174,18 @@ function sampleInput(name: string): Record<string, unknown> {
       return { schedule_id: "s" }
     case "search_products":
       return { merchant: "bitrefill", query: "amazon" }
+    case "find_recipient":
+      return { query: "church" }
+    case "give":
+      return { recipient_slug: "grace-fellowship", amount_sats: 1000, purpose: "tithe", note: "" }
+    case "schedule_give":
+      return {
+        recipient_slug: "grace-fellowship",
+        amount_sats: 1000,
+        usd_cents: 0,
+        cron: "0 14 * * 0",
+        purpose: "tithe",
+      }
     case "sweep_to_cold":
       return {
         address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",

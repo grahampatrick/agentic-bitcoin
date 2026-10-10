@@ -11,6 +11,10 @@ type Row = {
   keep_sats: string | null
   max_sats: string | null
   usd_cents: string
+  recipient_slug: string | null
+  recipient_name: string | null
+  purpose: string | null
+  verified: boolean | null
   cron: string
   estimated_sats: string
   sweep_to_wallet: boolean
@@ -28,6 +32,10 @@ const toRow = (s: Schedule): Row => ({
   keep_sats: s.keepSats?.toString() ?? null,
   max_sats: s.maxSats?.toString() ?? null,
   usd_cents: s.usdCents.toString(),
+  recipient_slug: s.recipientSlug ?? null,
+  recipient_name: s.recipientName ?? null,
+  purpose: s.purpose ?? null,
+  verified: s.verified ?? null,
   cron: s.cron,
   estimated_sats: s.estimatedSats.toString(),
   sweep_to_wallet: s.sweepToWallet,
@@ -44,6 +52,10 @@ const fromRow = (r: Row): Schedule => ({
   keepSats: r.keep_sats ? BigInt(r.keep_sats) : undefined,
   maxSats: r.max_sats ? BigInt(r.max_sats) : undefined,
   usdCents: BigInt(r.usd_cents),
+  recipientSlug: r.recipient_slug ?? undefined,
+  recipientName: r.recipient_name ?? undefined,
+  purpose: (r.purpose as Schedule["purpose"]) ?? undefined,
+  verified: r.verified ?? undefined,
   cron: r.cron,
   estimatedSats: BigInt(r.estimated_sats),
   sweepToWallet: r.sweep_to_wallet,

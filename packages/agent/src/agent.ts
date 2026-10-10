@@ -14,7 +14,10 @@ import {
   type Policy,
   type PriceSnapshot,
   type Rails,
+  type Recipient,
+  type RecipientReader,
   execute,
+  isTrustedRecipient,
 } from "@agentic-bitcoin/core"
 import type { LlmClient, LlmContentBlock, LlmMessage, LlmTool } from "./llm"
 import { SYSTEM_PROMPT } from "./prompt"
@@ -58,6 +61,8 @@ export interface UserContext {
   seal?: (plain: string) => string
   /** Delivery polling for merchant orders; defaults to 2 s × 30. */
   delivery?: { pollMs: number; maxPolls: number; sleep?: (ms: number) => Promise<void> }
+  /** M9: the user-scoped giving directory. Without it, give tools report "not available". */
+  recipients?: RecipientReader
 }
 
 export interface AgentDeps {
@@ -183,10 +188,18 @@ export async function handleToolCall(
 ): Promise<ToolOutcome> {
   let action: Action | null
   try {
+    // give / schedule_give: resolve the slug server-side so the Action carries the real recipient.
+    let recipient: { recipient: Recipient; trusted: boolean } | null | undefined
+    if ((name === "give" || name === "schedule_give") && ctx.recipients) {
+      const slug = String((input as { recipient_slug?: unknown })?.recipient_slug ?? "")
+      const r = slug ? await ctx.recipients.get(slug.toLowerCase()) : null
+      recipient = r ? { recipient: r, trusted: isTrustedRecipient(r, ctx.userId) } : null
+    }
     action = toolToAction(name, input, {
       callId: opts.callId,
       requestedBy: "agent",
       price: opts.price,
+      recipient,
     })
   } catch (err) {
     const msg = err instanceof ToolInputError ? err.message : "invalid tool input"
@@ -217,6 +230,7 @@ export async function handleToolCall(
     schedules: ctx.schedules,
     seal: ctx.seal,
     delivery: ctx.delivery,
+    recipients: ctx.recipients,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -253,6 +267,7 @@ export async function confirmPending(
     schedules: ctx.schedules,
     seal: ctx.seal,
     delivery: ctx.delivery,
+    recipients: ctx.recipients,
     now: opts.now,
     context: { price: opts.price },
     confirmation,
@@ -328,6 +343,15 @@ function sanitize(result: unknown): unknown {
   const r = { ...(result as Record<string, unknown>) }
   if (typeof r.preimage === "string") r.preimage = `${r.preimage.slice(0, 8)}…`
   if (typeof r.body === "string") r.body = quoteUntrusted(r.body)
+  if (Array.isArray(r.recipients)) {
+    // Directory text is supplied by recipients: names and descriptions are data, never instructions.
+    r.recipients = r.recipients.map((x) => {
+      const o = { ...(x as Record<string, unknown>) }
+      for (const k of ["name", "description", "website"])
+        if (typeof o[k] === "string") o[k] = quoteUntrusted(o[k] as string, 300)
+      return o
+    })
+  }
   if (r.order && typeof r.order === "object") {
     const o = { ...(r.order as Record<string, unknown>) }
     if (typeof o.redemption === "string")

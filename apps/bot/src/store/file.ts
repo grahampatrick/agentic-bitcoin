@@ -6,13 +6,20 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import type { LlmMessage } from "@agentic-bitcoin/agent"
-import type { Policy } from "@agentic-bitcoin/core"
+import {
+  type Policy,
+  type Recipient,
+  type RecipientStore,
+  SLUG_RE,
+  recipientMatches,
+} from "@agentic-bitcoin/core"
 import type { HistoryStore, PolicyStore, SecretName, SecretStore } from "./stores"
 
 type Shape = {
   policies: Record<string, string>
   secrets: Record<string, string>
   history: Record<string, string>
+  recipients: Record<string, string>
 }
 
 const enc = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x))
@@ -26,10 +33,14 @@ export class FileState {
   constructor(private readonly path: string) {
     this.data = existsSync(path)
       ? (JSON.parse(readFileSync(path, "utf8")) as Shape)
-      : { policies: {}, secrets: {}, history: {} }
+      : { policies: {}, secrets: {}, history: {}, recipients: {} }
     this.data.policies ??= {}
     this.data.secrets ??= {}
     this.data.history ??= {}
+    this.data.recipients ??= {}
+  }
+  keys(bucket: keyof Shape): string[] {
+    return Object.keys(this.data[bucket])
   }
   get(bucket: keyof Shape, key: string): string | null {
     return (this.data[bucket] as Record<string, string>)[key] ?? null
@@ -77,5 +88,36 @@ export class FileHistoryStore implements HistoryStore {
   }
   async set(u: string, h: LlmMessage[]) {
     this.f.set("history", u, JSON.stringify(h))
+  }
+}
+
+/** Directory + private recipients in the same file; visibility is enforced here, not by callers. */
+export class FileRecipientStore implements RecipientStore {
+  readonly kind = "file"
+  constructor(private readonly f: FileState) {}
+  private all(): Recipient[] {
+    return this.f.keys("recipients").map((k) => dec<Recipient>(this.f.get("recipients", k) ?? ""))
+  }
+  private visible(r: Recipient, userId?: string) {
+    return !r.ownerUserId || (userId !== undefined && r.ownerUserId === userId)
+  }
+  async get(slug: string, userId?: string) {
+    const v = this.f.get("recipients", slug.toLowerCase())
+    if (!v) return null
+    const r = dec<Recipient>(v)
+    return this.visible(r, userId) ? r : null
+  }
+  async search(query: string, userId?: string) {
+    return this.all().filter((r) => this.visible(r, userId) && recipientMatches(r, query))
+  }
+  async list(userId?: string) {
+    return this.all().filter((r) => this.visible(r, userId))
+  }
+  async upsert(r: Recipient) {
+    if (!SLUG_RE.test(r.slug)) throw new Error(`bad slug: ${r.slug}`)
+    this.f.set("recipients", r.slug, enc(r))
+  }
+  async remove(slug: string) {
+    this.f.set("recipients", slug, null)
   }
 }

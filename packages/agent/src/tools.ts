@@ -9,9 +9,13 @@
 import {
   type Action,
   type Cents,
+  GIVE_PURPOSES,
+  type GivePurpose,
   type PriceSnapshot,
+  type Recipient,
   type Sats,
   centsToSats,
+  satsToCents,
 } from "@agentic-bitcoin/core"
 
 export type JsonSchema = {
@@ -219,6 +223,65 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "find_recipient",
+    description:
+      "Search the giving directory (churches, missionaries, creators) and the user's private recipients. Read-only. Returns slugs, names, Lightning addresses and whether each is verified. Call it before give or schedule_give unless the user gave an exact slug.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: str(
+          "Words from the name, kind (church, missionary), place or description; empty string lists all",
+        ),
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "give",
+    description:
+      "Give sats once to a recipient by slug (from find_recipient). Only verified directory recipients or the user's own private recipients can receive; the policy decides.",
+    input_schema: {
+      type: "object",
+      properties: {
+        recipient_slug: str("The recipient's slug exactly as returned by find_recipient"),
+        amount_sats: int("Amount in whole sats"),
+        purpose: {
+          type: "string",
+          description: "What the gift is: tithe, offering, support (missionary), tip, or gift",
+          enum: [...GIVE_PURPOSES],
+        },
+        note: str("Optional note to the recipient, or an empty string"),
+      },
+      required: ["recipient_slug", "amount_sats", "purpose", "note"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "schedule_give",
+    description:
+      "Create a recurring gift to a recipient by slug. cron is a five-field UTC expression (e.g. '0 14 * * 0' every Sunday). Give usd_cents for a dollar amount re-priced each time, or amount_sats for a fixed sats amount (the other must be 0).",
+    input_schema: {
+      type: "object",
+      properties: {
+        recipient_slug: str("The recipient's slug exactly as returned by find_recipient"),
+        amount_sats: int("Fixed sats per gift, or 0 when usd_cents is used", 0),
+        usd_cents: int("Dollar amount per gift in cents, or 0 when amount_sats is used", 0),
+        cron: str("Five-field cron expression in UTC"),
+        purpose: {
+          type: "string",
+          description: "tithe, offering, support, tip, or gift",
+          enum: [...GIVE_PURPOSES],
+        },
+      },
+      required: ["recipient_slug", "amount_sats", "usd_cents", "cron", "purpose"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "confirm_action",
     description:
       "Execute an action the user has explicitly approved after seeing its summary. Only valid with an action_hash returned earlier in this conversation.",
@@ -297,6 +360,11 @@ export interface ToolContext {
   requestedBy: Action["requestedBy"]
   /** Needed to size exchange and merchant actions in sats. */
   price?: PriceSnapshot
+  /**
+   * For give / schedule_give: the recipient resolved server-side from the slug, with whether this
+   * user may give to it. `null` = no such recipient visible to the user; undefined = not looked up.
+   */
+  recipient?: { recipient: Recipient; trusted: boolean } | null
 }
 
 /** Headroom over the quoted sats for merchant orders: 1% + 10 sats, so a fair quote fits under the cap. */
@@ -424,6 +492,52 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         method,
         body: method === "POST" ? body : undefined,
         headers: method === "POST" && body ? { "content-type": "application/json" } : undefined,
+      }
+    }
+    case "find_recipient":
+      return { kind: "find_recipient", ...base, query: (input.query as string) ?? "" }
+    case "give":
+    case "schedule_give": {
+      const slug = String(input.recipient_slug ?? "").toLowerCase()
+      if (ctx.recipient === undefined)
+        throw new ToolInputError(`${name}: recipients are not available here`)
+      if (ctx.recipient === null)
+        throw new ToolInputError(
+          `${name}: no recipient with slug "${slug}" is visible to this user; call find_recipient and use a slug from its results`,
+        )
+      const { recipient: r, trusted } = ctx.recipient
+      if (r.slug !== slug)
+        throw new ToolInputError(`${name}: resolved recipient does not match slug`)
+      const purpose = input.purpose as GivePurpose
+      if (!GIVE_PURPOSES.includes(purpose)) throw new ToolInputError(`${name}: bad purpose`)
+      const common = {
+        ...base,
+        recipientSlug: r.slug,
+        recipientName: r.name,
+        address: r.lightningAddress,
+        verified: trusted,
+        purpose,
+      }
+      if (name === "give") {
+        const amountSats: Sats = BigInt(input.amount_sats as number)
+        return {
+          kind: "give",
+          ...common,
+          amountSats,
+          note: (input.note as string) || undefined,
+          fiatCentsAtRequest: ctx.price ? satsToCents(amountSats, ctx.price) : undefined,
+        }
+      }
+      const sats = BigInt((input.amount_sats as number) ?? 0)
+      const cents: Cents = BigInt((input.usd_cents as number) ?? 0)
+      if ((sats === 0n) === (cents === 0n))
+        throw new ToolInputError("schedule_give: give exactly one of amount_sats or usd_cents")
+      return {
+        kind: "schedule_give",
+        ...common,
+        amountSats: sats > 0n ? sats : centsToSats(cents, needPrice()),
+        usdCents: cents > 0n ? cents : undefined,
+        cron: input.cron as string,
       }
     }
     case "confirm_action":

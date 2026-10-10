@@ -12,11 +12,14 @@ import {
   type Policy,
   type PriceSnapshot,
   type Rails,
+  type RecipientReader,
   type Sats,
   type WalletRail,
   actionHash,
   centsToSats,
   execute,
+  isTrustedRecipient,
+  satsToCents,
 } from "@agentic-bitcoin/core"
 import { matches, parseCron } from "./cron"
 import type { Schedule, ScheduleStore } from "./schedule"
@@ -28,6 +31,8 @@ export interface RunnerDeps {
   price(): Promise<PriceSnapshot | undefined>
   /** Sweep: an exchange that can pay a Lightning invoice. Optional. */
   sweep?: (userId: string, rails: Rails, sats: Sats) => Promise<string | null>
+  /** M9: the user-scoped recipient directory, so a recurring gift re-resolves its recipient at fire time. */
+  recipients?: (userId: string) => RecipientReader
   now?: () => Date
   log?: (line: string) => void
 }
@@ -64,23 +69,45 @@ export async function runDue(deps: RunnerDeps): Promise<RunReport> {
     // Claim the slot BEFORE executing so two runners (or a crash + restart) never double-buy.
     await deps.schedules.markRun(s.id, slot)
     const result = await fire(s, deps, at)
-    report.fired.push({
-      scheduleId: s.id,
-      userId: s.userId,
-      status: result.status,
-      detail: detailOf(result),
-    })
-    log(`schedule ${s.id} (${s.userId}): ${result.status} ${detailOf(result) ?? ""}`.trim())
+    const detail = "paused" in result ? result.paused : detailOf(result)
+    report.fired.push({ scheduleId: s.id, userId: s.userId, status: result.status, detail })
+    log(`schedule ${s.id} (${s.userId}): ${result.status} ${detail ?? ""}`.trim())
   }
   return report
 }
 
-async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteResult> {
+type Paused = { status: "failed"; paused: string }
+
+async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteResult | Paused> {
   const { policy, ledger, rails } = await deps.resolve(s.userId)
   const price = await deps.price()
   const key = `${s.id}:${slotOf(at)}`
-  const action: Action =
-    s.kind === "sweep"
+  let give: Extract<Action, { kind: "give" }> | null = null
+  if (s.kind === "give") {
+    // Re-resolve the recipient: a gift must never go to a stale or revoked address (ADR-0013).
+    const reader = deps.recipients?.(s.userId)
+    const r = reader ? await reader.get(s.recipientSlug ?? "") : null
+    if (reader && !r) {
+      await deps.schedules.cancel(s.id)
+      return { status: "failed", paused: `recipient ${s.recipientSlug} is gone; schedule paused` }
+    }
+    const amount = s.usdCents > 0n && price ? centsToSats(s.usdCents, price) : s.estimatedSats
+    give = {
+      kind: "give",
+      recipientSlug: s.recipientSlug ?? "",
+      recipientName: r?.name ?? s.recipientName ?? s.recipientSlug ?? "",
+      address: r?.lightningAddress ?? s.address ?? "",
+      verified: r ? isTrustedRecipient(r, s.userId) : (s.verified ?? false),
+      amountSats: amount,
+      purpose: s.purpose ?? "gift",
+      fiatCentsAtRequest: price ? satsToCents(amount, price) : undefined,
+      idempotencyKey: key,
+      requestedBy: "schedule",
+    }
+  }
+  const action: Action = give
+    ? give
+    : s.kind === "sweep"
       ? {
           kind: "sweep_to_cold",
           address: s.address ?? "",
@@ -131,6 +158,8 @@ function detailOf(r: ExecuteResult): string | undefined {
       | { sats?: bigint; usdCents?: bigint; txid?: string; amountSats?: bigint; skipped?: boolean }
       | undefined
     if (x?.txid) return `swept ${x.amountSats} sats, tx ${x.txid.slice(0, 12)}…`
+    const g = r.result as { recipientSlug?: string; amountSats?: bigint } | undefined
+    if (g?.recipientSlug) return `gave ${g.amountSats} sats to ${g.recipientSlug}`
     if (x?.skipped) return "nothing to sweep"
     return x?.sats !== undefined ? `${x.sats} sats for ${x.usdCents} cents` : undefined
   }
@@ -145,9 +174,28 @@ function detailOf(r: ExecuteResult): string | undefined {
  */
 export function schedulesHook(store: ScheduleStore, opts: { sweepToWallet?: boolean } = {}) {
   return {
-    async create(a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" }>): Promise<string> {
+    async create(
+      a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
+    ): Promise<string> {
       parseCron(a.cron) // reject bad expressions before persisting
       const userId = a.idempotencyKey.split(":")[0] ?? "unknown"
+      if (a.kind === "schedule_give") {
+        const s = await store.create({
+          userId,
+          kind: "give",
+          exchange: "strike",
+          usdCents: a.usdCents ?? 0n,
+          address: a.address,
+          recipientSlug: a.recipientSlug,
+          recipientName: a.recipientName,
+          purpose: a.purpose,
+          verified: a.verified,
+          cron: a.cron,
+          estimatedSats: a.amountSats,
+          sweepToWallet: false,
+        })
+        return s.id
+      }
       const s =
         a.kind === "schedule_sweep"
           ? await store.create({

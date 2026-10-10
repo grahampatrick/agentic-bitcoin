@@ -7,6 +7,7 @@
  */
 import { createHash } from "node:crypto"
 import type { Cents, Sats } from "./money"
+import type { GivePurpose } from "./recipient"
 
 export type Requester = "user" | "schedule" | "agent"
 export type RailName = "wallet" | "exchange" | "goods" | "compute" | "onchain"
@@ -120,7 +121,49 @@ export interface PayL402 extends Base {
   headers?: Record<string, string>
 }
 
+/**
+ * Give to a recipient from the directory (or the user's private list). The action carries the
+ * RESOLVED recipient — name, Lightning address, trust — so the confirmation hash binds exactly
+ * what the human saw, and the policy can judge the destination without any lookup.
+ */
+export interface Give extends Base {
+  kind: "give"
+  recipientSlug: string
+  recipientName: string
+  /** The recipient's Lightning address at request time; the wallet rail resolves it to an invoice. */
+  address: string
+  /** Verified directory entry, or the user's own private recipient. Unverified gifts are denied. */
+  verified: boolean
+  amountSats: Sats
+  purpose: GivePurpose
+  /** The giver's note, passed to the recipient as the invoice memo. */
+  note?: string
+  /** USD cents at request time, for the giving statement. */
+  fiatCentsAtRequest?: Cents
+}
+
+export interface ScheduleGive extends Base {
+  kind: "schedule_give"
+  recipientSlug: string
+  recipientName: string
+  address: string
+  verified: boolean
+  /** Sats per firing (re-priced from usdCents at fire time when usdCents is set). */
+  amountSats: Sats
+  usdCents?: Cents
+  cron: string
+  purpose: GivePurpose
+}
+
+export interface FindRecipient extends Base {
+  kind: "find_recipient"
+  query: string
+}
+
 export type Action =
+  | Give
+  | ScheduleGive
+  | FindRecipient
   | PayInvoice
   | PayAddress
   | MakeInvoice
@@ -149,6 +192,9 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   pay_l402: "compute",
   sweep_to_cold: "onchain",
   schedule_sweep: "onchain",
+  give: "wallet",
+  schedule_give: "wallet",
+  find_recipient: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -162,6 +208,8 @@ export function spendSats(action: Action): Sats {
     case "pay_address":
     case "buy_product":
     case "pay_l402":
+    case "give":
+    case "schedule_give":
       return action.amountSats
     case "buy_bitcoin":
     case "schedule_buy":
@@ -175,6 +223,7 @@ export function spendSats(action: Action): Sats {
     case "get_balance":
     case "cancel_schedule":
     case "search_products":
+    case "find_recipient":
       return 0n
   }
 }
@@ -185,6 +234,8 @@ export function destinationOf(action: Action): string | null {
     case "pay_invoice":
       return action.destination?.toLowerCase() ?? null
     case "pay_address":
+    case "give":
+    case "schedule_give":
       return action.address.toLowerCase()
     case "pay_l402":
       return action.host.toLowerCase()
@@ -200,6 +251,7 @@ export function destinationOf(action: Action): string | null {
     case "get_balance":
     case "cancel_schedule":
     case "search_products":
+    case "find_recipient":
       return null
   }
 }
@@ -236,6 +288,12 @@ export function describeAction(action: Action): string {
       return `Schedule a sweep to ${action.address.slice(0, 8)}…${action.address.slice(-4)} (${action.cron})`
     case "pay_l402":
       return `Pay ${action.host} for an API request`
+    case "give":
+      return `Give to ${action.recipientName} <${action.address}> (${action.purpose})${action.note ? ` "${action.note}"` : ""}`
+    case "schedule_give":
+      return `Schedule giving to ${action.recipientName} <${action.address}> (${action.purpose}, ${action.cron})`
+    case "find_recipient":
+      return `Find a recipient matching "${action.query}"`
   }
 }
 

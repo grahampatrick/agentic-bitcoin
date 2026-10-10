@@ -14,9 +14,12 @@ import {
   DEFAULT_POLICY,
   FakeWalletRail,
   InMemoryLedgerStore,
+  InMemoryRecipientStore,
   type LedgerStore,
   type PriceSnapshot,
+  type RecipientStore,
   type WalletRail,
+  recipientsForUser,
 } from "@agentic-bitcoin/core"
 import {
   BitrefillGoodsRail,
@@ -26,6 +29,7 @@ import {
   decryptSecret,
   encryptSecret,
   parseKey,
+  probeLightningAddress,
 } from "@agentic-bitcoin/rails"
 import {
   InMemoryScheduleStore,
@@ -35,7 +39,14 @@ import {
   schedulesHook,
 } from "@agentic-bitcoin/scheduler"
 import { Dispatcher } from "./dispatcher"
-import { FileHistoryStore, FilePolicyStore, FileSecretStore, FileState } from "./store/file"
+import {
+  FileHistoryStore,
+  FilePolicyStore,
+  FileRecipientStore,
+  FileSecretStore,
+  FileState,
+} from "./store/file"
+import { SupabaseRecipientStore, seedRecipients } from "./store/recipients"
 import {
   InMemoryHistoryStore,
   InMemoryPolicyStore,
@@ -104,6 +115,15 @@ const ledgers: LedgerStoreFactory = db
         return created
       },
     }
+const recipientStore: RecipientStore = db
+  ? new SupabaseRecipientStore(db)
+  : fileState
+    ? new FileRecipientStore(fileState)
+    : new InMemoryRecipientStore()
+if (env.RECIPIENTS_FILE) {
+  const n = await seedRecipients(recipientStore, env.RECIPIENTS_FILE)
+  console.error(`[bot] giving directory: ${n} recipients loaded from ${env.RECIPIENTS_FILE}`)
+}
 const pending: PendingStore = new InMemoryPendingStore()
 const schedules = db ? new SupabaseScheduleStore(db) : new InMemoryScheduleStore()
 const secretsKey = env.SECRETS_KEY ? parseKey(env.SECRETS_KEY) : null
@@ -168,6 +188,7 @@ async function resolveContext(userId: string): Promise<UserContext> {
     seal: secretsKey ? (s: string) => encryptSecret(s, secretsKey) : undefined,
     pending,
     schedules: schedulesHook(schedules, { sweepToWallet: env.SWEEP_TO_WALLET === "1" }),
+    recipients: recipientsForUser(recipientStore, userId),
   }
 }
 
@@ -233,6 +254,8 @@ const dispatcher = new Dispatcher({
   secretsKey,
   probeWallet,
   onCredentialsChanged,
+  recipients: recipientStore,
+  probeAddress: (a) => probeLightningAddress(a),
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())
@@ -254,11 +277,12 @@ const runSchedules = async () => {
       },
       price,
       sweep,
+      recipients: (userId) => recipientsForUser(recipientStore, userId),
       log: (l) => console.error(`[scheduler] ${l}`),
     })
     for (const f of r.fired) {
       await surface.send(f.userId, {
-        text: `Scheduled buy ${f.status}${f.detail ? `: ${f.detail}` : ""}.`,
+        text: `Scheduled action ${f.status}${f.detail ? `: ${f.detail}` : ""}.`,
       })
     }
   } catch (err) {

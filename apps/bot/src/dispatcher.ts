@@ -8,11 +8,19 @@ import { type AgentDeps, type UserContext, confirmPending, runTurn } from "@agen
 import {
   DEFAULT_POLICY,
   type Policy,
+  type Recipient,
+  type RecipientStore,
+  SLUG_RE,
   formatCents,
   formatSats,
+  givingRows,
+  givingStatementCsv,
+  isLightningAddress,
+  isTrustedRecipient,
   parseAddress,
   readEntries,
   satsToCents,
+  slugify,
   spentSince,
   windowStart,
 } from "@agentic-bitcoin/core"
@@ -44,6 +52,10 @@ import type { ChatSurface, InboundMessage } from "./surfaces/surface"
 
 export interface DispatcherDeps {
   surface: ChatSurface
+  /** M9: the recipient directory (unscoped; the dispatcher scopes by user). Optional: without it giving commands are off. */
+  recipients?: RecipientStore
+  /** Checks a Lightning address answers LNURL-pay before a private recipient is saved. Injected so tests never hit the network. */
+  probeAddress?(address: string): Promise<{ ok: true } | { ok: false; error: string }>
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
   policies: PolicyStore
@@ -243,6 +255,12 @@ export class Dispatcher {
         await this.deps.policies.set(userId, next.policy)
         return reply(`Updated.\n${describePolicy(next.policy)}`)
       }
+      case "/recipients":
+        return this.recipients(userId, reply)
+      case "/recipient":
+        return this.recipient(userId, args, reply)
+      case "/statement":
+        return this.statement(userId, ctx, args, reply)
       case "/ledger": {
         const entries = await readEntries(ctx.ledger)
         const price = await this.deps.agent.price()
@@ -298,6 +316,91 @@ export class Dispatcher {
     this.deps.onCredentialsChanged?.(m.userId)
     return reply(
       `${verdict.description}\nI have deleted your message if I could; delete it yourself otherwise. Try: what's my balance?`,
+    )
+  }
+
+  private async recipients(userId: string, reply: (t: string) => Promise<void>): Promise<void> {
+    const store = this.deps.recipients
+    if (!store) return reply("Giving is not enabled on this server.")
+    const all = await store.list(userId)
+    const visible = all.filter((r) => isTrustedRecipient(r, userId))
+    if (!visible.length)
+      return reply(
+        "No recipients yet. Add your own: /recipient add <lightning address> <name>, e.g. /recipient add give@mychurch.org My Church",
+      )
+    const line = (r: Recipient) =>
+      `• ${r.name} — ${r.slug} (${r.kind}${r.ownerUserId ? ", yours" : r.verified ? `, verified by ${r.verified.how}` : ""})${r.website ? ` ${r.website}` : ""}`
+    return reply(
+      `You can give to:\n${visible.map(line).join("\n")}\nSay e.g. “give 1000 sats to ${visible[0]?.slug}” or “tithe 20000 sats to ${visible[0]?.slug} every sunday”. /recipient add|remove manages your own.`,
+    )
+  }
+
+  /** `/recipient add <lightning address> <name…>` (private to this user) · `/recipient remove <slug>`. */
+  private async recipient(
+    userId: string,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const store = this.deps.recipients
+    if (!store) return reply("Giving is not enabled on this server.")
+    const [sub, ...rest] = args
+    if (sub?.toLowerCase() === "remove") {
+      const slug = rest[0]?.toLowerCase()
+      const r = slug ? await store.get(slug, userId) : null
+      if (!r || r.ownerUserId !== userId)
+        return reply("You can only remove recipients you added. /recipients lists them.")
+      await store.remove(r.slug)
+      return reply(`Removed ${r.name}. Any recurring gift to it will pause at its next run.`)
+    }
+    if (sub?.toLowerCase() !== "add" || rest.length < 2)
+      return reply(
+        "Usage: /recipient add <lightning address> <name>  ·  /recipient remove <slug>\nExample: /recipient add give@mychurch.org My Church",
+      )
+    const address = (rest[0] ?? "").toLowerCase()
+    const name = rest.slice(1).join(" ").trim().slice(0, 80)
+    if (!isLightningAddress(address))
+      return reply(`${address} is not a Lightning address (name@domain).`)
+    const slug = slugify(name)
+    if (!SLUG_RE.test(slug))
+      return reply("Give the recipient a name with at least two letters or digits.")
+    const existing = await store.get(slug, userId)
+    if (existing && existing.ownerUserId !== userId)
+      return reply(`“${slug}” is already a directory recipient. Pick a different name.`)
+    if (this.deps.probeAddress) {
+      const p = await this.deps.probeAddress(address)
+      if (!p.ok)
+        return reply(
+          `That address does not answer Lightning payments right now (${p.error}). Not saved.`,
+        )
+    }
+    await store.upsert({
+      slug,
+      kind: "creator",
+      name,
+      lightningAddress: address,
+      verified: null,
+      ownerUserId: userId,
+    })
+    return reply(
+      `Saved ${name} as ${slug} (private to you). Say “give 1000 sats to ${slug}” or “give 5000 sats to ${slug} every month”.`,
+    )
+  }
+
+  /** `/statement [year]`: the year's succeeded gifts as CSV. We are not the donee; the recipient issues receipts. */
+  private async statement(
+    userId: string,
+    ctx: UserContext,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const year = /^\d{4}$/.test(args[0] ?? "") ? Number(args[0]) : this.now().getUTCFullYear()
+    const rows = givingRows(await readEntries(ctx.ledger), year)
+    if (!rows.length) return reply(`No gifts recorded in ${year}.`)
+    const total = rows.reduce((a, r) => a + r.sats, 0n)
+    const usd = rows.reduce((a, r) => a + (r.usdCents ?? 0n), 0n)
+    void userId
+    return reply(
+      `Giving statement ${year}: ${rows.length} gift${rows.length === 1 ? "" : "s"}, ${formatSats(total)}${usd > 0n ? ` (≈ ${formatCents(usd)} at the time of each gift)` : ""}.\nThis is your record, not a receipt: ask each recipient for one.\n\n${givingStatementCsv(rows)}`,
     )
   }
 
@@ -381,7 +484,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

@@ -64,6 +64,10 @@ pnpm --filter @agentic-bitcoin/bot start   # fake wallet until you /pair; file-b
 
 In chat: `/start` (three-question limits wizard) → `/pair <nostr+walletconnect://…>` (budgeted
 strings only) → “what's my balance?” → `/key strike …` / `/key bitrefill …` for the other rails.
+Giving: “which churches can I give to?”, “tithe 20000 sats to grace-fellowship every sunday”,
+`/recipient add <lightning address> <name>` for your own recipients, `/statement` for the year's
+gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.example.json` and
+[`docs/recipients.md`](./docs/recipients.md)).
 
 ### Self-host with Docker
 
@@ -89,7 +93,7 @@ packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, 
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)
 packages/agent      tool defs from the Action union, prompt, model loop, evals
 packages/mcp        MCP server (stdio + HTTP) over the same tools
-apps/bot            Signal chat surface, dispatcher, onboarding, stores
+apps/bot            Signal chat surface, dispatcher, onboarding, giving commands, stores
 packages/fixtures   shared test data for every package
 packages/brand      design tokens → tokens.css
 docs/adr            architecture decision records

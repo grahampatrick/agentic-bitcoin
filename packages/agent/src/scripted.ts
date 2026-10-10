@@ -55,6 +55,69 @@ export function intentOf(text: string): { name: string; input: Record<string, un
   if (/\b(balance|how (much|many) (sats|do i have))\b/.test(low))
     return { name: "get_balance", input: {} }
 
+  const give =
+    /^(?:give|tithe|donate|support|tip)\s+([\d,_]+)\s*sats?\s+to\s+(?:the\s+)?(.+?)(?:\s+(?:every|each)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|week|month))?(?:\s+for\s+(.+?))?\s*$/i.exec(
+      t,
+    )
+  if (give && !/\S+@\S+/.test(give[2] ?? "")) {
+    const amount = num(give[1] ?? "0")
+    const slug = (give[2] ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+    const verb = low.split(/\s+/)[0] ?? ""
+    const purpose =
+      verb === "tithe"
+        ? "tithe"
+        : verb === "support" || /missionar/i.test(t)
+          ? "support"
+          : verb === "tip"
+            ? "tip"
+            : "gift"
+    const when = give[3]?.toLowerCase()
+    if (when) {
+      const dow: Record<string, number> = {
+        sunday: 0,
+        monday: 1,
+        tuesday: 2,
+        wednesday: 3,
+        thursday: 4,
+        friday: 5,
+        saturday: 6,
+      }
+      const cron =
+        when === "month"
+          ? "0 14 1 * *"
+          : when === "week"
+            ? "0 14 * * 1"
+            : `0 14 * * ${dow[when] ?? 0}`
+      return {
+        name: "schedule_give",
+        input: { recipient_slug: slug, amount_sats: amount, usd_cents: 0, cron, purpose },
+      }
+    }
+    return {
+      name: "give",
+      input: { recipient_slug: slug, amount_sats: amount, purpose, note: give[4] ?? "" },
+    }
+  }
+  if (
+    /\b(find|which|what|show|list|search)\b.*\b(church|churches|missionar(?:y|ies)|recipients?|ministr(?:y|ies)|give to)\b/i.test(
+      t,
+    )
+  ) {
+    const query =
+      /\b(church(?:es)?|missionar(?:y|ies)|ministr(?:y|ies))\b/i.exec(t)?.[1]?.toLowerCase() ?? ""
+    return {
+      name: "find_recipient",
+      input: {
+        query: query
+          .replace(/churches/, "church")
+          .replace(/missionaries/, "missionary")
+          .replace(/ministries/, "ministry"),
+      },
+    }
+  }
   const pay =
     /(?:pay|send|tip)\s+(?:([\d,_]+)\s*sats?\s+to\s+(\S+@\S+)|(\S+@\S+)\s+([\d,_]+)\s*sats?)/i.exec(
       t,
@@ -217,6 +280,21 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
         : `Swept ${Number(result.amountSats).toLocaleString("en-US")} sats to cold storage. Transaction ${String(result.txid).slice(0, 12)}…`
     case "schedule_sweep":
       return `Scheduled a monthly sweep: ${result.scheduleId}.`
+    case "give":
+      return `Given. ${r.summary}${result.preimage ? ` Preimage ${result.preimage}` : ""}`
+    case "schedule_give":
+      return `Scheduled. Your recurring gift is ${result.scheduleId}; cancel it any time with “cancel ${result.scheduleId}”.`
+    case "find_recipient": {
+      const rs = (result.recipients ?? []) as {
+        slug: string
+        name: string
+        kind: string
+        verified: boolean
+      }[]
+      return rs.length
+        ? `You can give to: ${rs.map((x) => `${x.name.replace(/<\/?untrusted>/g, "")} (${x.slug}, ${x.kind}${x.verified ? ", verified" : ""})`).join("; ")}. Say e.g. “give 1000 sats to ${rs[0]?.slug}”.`
+        : "No recipient matched. Add your own with /recipient add <name> <lightning address>."
+    }
     default:
       return `Done. ${r.summary ?? ""}`.trim()
   }
@@ -256,7 +334,7 @@ export class ScriptedLlmClient implements LlmClient {
     if (!intent || !req.tools.some((t) => t.name === intent.name)) {
       const help: LlmContentBlock = {
         type: "text",
-        text: "I can check your balance, pay a lightning address or invoice, make an invoice, buy bitcoin once or on a schedule, buy a gift card, fetch a paid API, or sweep to cold storage. Try: “pay 500 sats to gm@getalby.com”.",
+        text: "I can check your balance, pay a lightning address or invoice, make an invoice, buy bitcoin once or on a schedule, buy a gift card, fetch a paid API, give to a church or missionary, or sweep to cold storage. Try: “pay 500 sats to gm@getalby.com” or “which churches can I give to?”.",
         citations: null,
       }
       return { stop_reason: "end_turn", content: [help] }

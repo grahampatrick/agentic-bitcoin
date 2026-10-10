@@ -17,6 +17,7 @@ import {
 import type { Cents } from "./money"
 import { type Decision, type EvaluateContext, type Policy, evaluate, windowStart } from "./policy"
 import { type Order, RailError, type Rails } from "./rails"
+import type { RecipientReader } from "./recipient"
 
 export interface Confirmation {
   /** Hash of the exact action the human saw; must equal `actionHash(action)`. */
@@ -44,9 +45,13 @@ export interface ExecuteInput {
   delivery?: { pollMs: number; maxPolls: number; sleep?: (ms: number) => Promise<void> }
   /** M5: the scheduler's persistence hook. Required for schedule_* actions. */
   schedules?: {
-    create(a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" }>): Promise<string>
+    create(
+      a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
+    ): Promise<string>
     cancel(id: string): Promise<void>
   }
+  /** M9: the user-scoped recipient directory, for `find_recipient`. */
+  recipients?: RecipientReader
 }
 
 export type ExecuteResult =
@@ -164,6 +169,41 @@ async function dispatch(
     case "pay_invoice": {
       const p = await need(rails.wallet, "wallet").payInvoice(action)
       return { result: p, preimage: p.preimage, detail: `fee ${p.feeSats} sats` }
+    }
+    case "give": {
+      const w = need(rails.wallet, "wallet")
+      const memo = action.note ? `${action.purpose}: ${action.note}` : action.purpose
+      const { bolt11 } = await w.resolveAddress(action.address, action.amountSats, memo)
+      const p = await w.payInvoice({
+        bolt11,
+        amountSats: action.amountSats,
+        idempotencyKey: action.idempotencyKey,
+      })
+      return {
+        result: { ...p, recipientSlug: action.recipientSlug },
+        preimage: p.preimage,
+        detail: `${action.recipientSlug} · fee ${p.feeSats} sats`,
+      }
+    }
+    case "schedule_give": {
+      const s = need(schedules, "schedules")
+      const scheduleId = await s.create(action)
+      return { result: { scheduleId }, detail: scheduleId }
+    }
+    case "find_recipient": {
+      const r = need(input.recipients, "recipients")
+      const recipients = (await r.search(action.query)).map((x) => ({
+        slug: x.slug,
+        kind: x.kind,
+        name: x.name,
+        lightningAddress: x.lightningAddress,
+        verified: x.verified !== null,
+        website: x.website,
+        country: x.country,
+        description: x.description,
+        private: !!x.ownerUserId,
+      }))
+      return { result: { recipients }, detail: `${recipients.length} results` }
     }
     case "pay_address": {
       const w = need(rails.wallet, "wallet")
