@@ -260,6 +260,12 @@ export class Dispatcher {
         )
       }
       default:
+        if (looksLikeSecret(text)) {
+          await this.redact(m)
+          return reply(
+            "That looks like a wallet connection string or an API key. I never pass those to the model. Use /pair <string> or /key <strike|bitrefill> <key> instead, and delete that message.",
+          )
+        }
         return reply("Unknown command. /help lists them.")
     }
   }

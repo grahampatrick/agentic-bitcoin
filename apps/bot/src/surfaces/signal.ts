@@ -11,6 +11,7 @@
  * no buttons: a confirmation is a plain "yes"/"no" reply, bound by the dispatcher to the user's
  * latest pending action hash.
  */
+import { redactForLog } from "../onboarding"
 import type { ChatSurface, InboundMessage, OutboundMessage } from "./surface"
 
 export interface SignalOptions {
@@ -80,7 +81,7 @@ export class SignalSurface implements ChatSurface {
             this.seen.push(key)
             if (this.seen.length > 500) this.seen.shift()
             console.error(
-              `[signal] in  ${inbound.userId.replace(/\d(?=\d{4})/g, "•")} ${inbound.messageId ?? "-"} ${inbound.text.slice(0, 40).replace(/nostr\+walletconnect:\/\/\S+/i, "[nwc]")}`,
+              `[signal] in  ${inbound.userId.replace(/\d(?=\d{4})/g, "•")} ${inbound.messageId ?? "-"} ${redactForLog(inbound.text).slice(0, 40)}`,
             )
             await onMessage(inbound)
           }

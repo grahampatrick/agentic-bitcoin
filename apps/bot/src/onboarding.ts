@@ -60,6 +60,20 @@ export function looksLikeSecret(text: string): boolean {
   )
 }
 
+/**
+ * Make a message safe for a log line: connection strings, the argument of /pair and /key, and any
+ * key-shaped token are replaced. Logs must never carry even a prefix of a secret.
+ */
+export function redactForLog(text: string): string {
+  return text
+    .replace(/nostr\+walletconnect:\/\/\S+/gi, "[nwc]")
+    .replace(/^(\/+pair\b(?:\s+unbudgeted)?)\s+\S.*$/i, "$1 [nwc]")
+    .replace(/^(\/+key\s+\S+)\s+\S.*$/i, "$1 [key]")
+    .replace(/\bsecret=\S+/gi, "secret=[redacted]")
+    .replace(/\b(sk|pk|key)[-_][A-Za-z0-9]{20,}/g, "[key]")
+    .replace(/\b[A-Za-z0-9_-]{32,}\b/g, "[token]")
+}
+
 export const PAIR_HELP = [
   "To pair your wallet, send: /pair <nostr+walletconnect://…>",
   "Get a connection string with a BUDGET and an EXPIRY:",

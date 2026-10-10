@@ -4,6 +4,7 @@ import {
   assessPairing,
   looksLikeSecret,
   parseKeyCommand,
+  redactForLog,
   startWizard,
   wizardStep,
 } from "./onboarding"
@@ -51,6 +52,24 @@ describe("looksLikeSecret", () => {
     expect(looksLikeSecret("my key is sk-abcdefghijklmnopqrstuvwxyz0123")).toBe(true)
     expect(looksLikeSecret("pay 500 sats to gm@getalby.com")).toBe(false)
     expect(looksLikeSecret("what's my balance?")).toBe(false)
+  })
+})
+
+describe("redactForLog", () => {
+  it("never leaks even a prefix of a key or connection string", () => {
+    const key = "JMRJluDcSiEvcEtP93K_cHCa7QwErTyUiOpAsDfVbTY"
+    expect(redactForLog(`/key bitrefill ${key}`)).toBe("/key bitrefill [key]")
+    expect(redactForLog(`//key bitrefill ${key}`)).toBe("//key bitrefill [key]")
+    expect(redactForLog("/pair nostr+walletconnect://abc?relay=wss://r&secret=def")).toBe(
+      "/pair [nwc]",
+    )
+    expect(redactForLog("/pair unbudgeted nostr+walletconnect://abc")).toBe(
+      "/pair unbudgeted [nwc]",
+    )
+    expect(redactForLog(`my key is ${key}`)).not.toContain("JMRJ")
+    expect(redactForLog("pay 500 sats to gm@getalby.com for coffee")).toBe(
+      "pay 500 sats to gm@getalby.com for coffee",
+    )
   })
 })
 
