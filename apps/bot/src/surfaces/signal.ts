@@ -37,6 +37,8 @@ export class SignalSurface implements ChatSurface {
   private rpcId = 0
   /** Texts we sent recently; our own notes come back as sync messages and must not loop. */
   private readonly recentlySent: string[] = []
+  /** Message ids already handled; Signal can deliver the same message twice (sync copy, replay on reconnect). */
+  private readonly seen: string[] = []
   constructor(private readonly opts: SignalOptions) {
     this.fetchImpl = opts.fetchImpl ?? fetch
   }
@@ -71,6 +73,15 @@ export class SignalSurface implements ChatSurface {
               this.recentlySent.includes(inbound.text)
             )
               continue
+            const key = inbound.messageId
+              ? `${inbound.userId}:${inbound.messageId}`
+              : `${inbound.userId}:${inbound.text}`
+            if (this.seen.includes(key)) continue
+            this.seen.push(key)
+            if (this.seen.length > 500) this.seen.shift()
+            console.error(
+              `[signal] in  ${inbound.userId.replace(/\d(?=\d{4})/g, "•")} ${inbound.messageId ?? "-"} ${inbound.text.slice(0, 40).replace(/nostr\+walletconnect:\/\/\S+/i, "[nwc]")}`,
+            )
             await onMessage(inbound)
           }
         } catch (err) {
@@ -103,6 +114,7 @@ export class SignalSurface implements ChatSurface {
     if (!res.ok) throw new Error(`signal send failed: HTTP ${res.status}`)
     const body = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
     if (body.error) throw new Error(`signal send failed: ${body.error.message ?? "rpc error"}`)
+    console.error(`[signal] out ${userId.replace(/\d(?=\d{4})/g, "•")} ${m.text.slice(0, 40)}`)
   }
 
   async stop() {

@@ -121,6 +121,40 @@ describe("SignalSurface against a fake daemon", () => {
     expect((sent[0] as { params: Record<string, unknown> }).params.account).toBeUndefined()
     await s.stop()
   })
+  it("delivers a message once even when Signal hands it over twice", async () => {
+    const got: InboundMessage[] = []
+    pushEvent = null // wait for THIS surface's stream, not a previous test's
+    const s = new SignalSurface({ daemonUrl: url, account: "+15550001111" })
+    await s.start(async (m) => {
+      got.push(m)
+    })
+    for (let i = 0; i < 50 && !pushEvent; i++) await new Promise((r) => setTimeout(r, 20))
+    const push = pushEvent as unknown as (o: unknown) => void
+    const ev = {
+      jsonrpc: "2.0",
+      method: "receive",
+      params: {
+        envelope: {
+          sourceNumber: "+15552223333",
+          dataMessage: { timestamp: 777, message: "balance?" },
+        },
+      },
+    }
+    push(ev)
+    push(ev)
+    push({
+      ...ev,
+      params: {
+        envelope: {
+          sourceNumber: "+15552223333",
+          dataMessage: { timestamp: 778, message: "balance?" },
+        },
+      },
+    })
+    for (let i = 0; i < 50 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 20))
+    expect(got.map((g) => g.messageId)).toEqual(["777", "778"])
+    await s.stop()
+  })
   it("sends `account` only in multi-account mode", async () => {
     const s = new SignalSurface({ daemonUrl: url, account: "+15550001111", multiAccount: true })
     await s.send("signal:+15552223333", { text: "hi" })

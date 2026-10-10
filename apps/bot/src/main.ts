@@ -35,6 +35,7 @@ import {
   schedulesHook,
 } from "@agentic-bitcoin/scheduler"
 import { Dispatcher } from "./dispatcher"
+import { FileHistoryStore, FilePolicyStore, FileSecretStore, FileState } from "./store/file"
 import {
   InMemoryHistoryStore,
   InMemoryPolicyStore,
@@ -72,9 +73,25 @@ const durable = !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY)
 const db = durable
   ? supabaseClient(env.SUPABASE_URL as string, env.SUPABASE_SERVICE_ROLE_KEY as string)
   : null
-const policies = db ? new SupabasePolicyStore(db) : new InMemoryPolicyStore()
-const secrets = db ? new SupabaseSecretStore(db) : new InMemorySecretStore()
-const history = db ? new SupabaseHistoryStore(db) : new InMemoryHistoryStore()
+// Without Supabase, keep policies, (encrypted) secrets and history in apps/bot/.data so restarts don't lose a pairing.
+const fileState = db
+  ? null
+  : new FileState(join(dirname(fileURLToPath(import.meta.url)), "..", ".data", "state.json"))
+const policies = db
+  ? new SupabasePolicyStore(db)
+  : fileState
+    ? new FilePolicyStore(fileState)
+    : new InMemoryPolicyStore()
+const secrets = db
+  ? new SupabaseSecretStore(db)
+  : fileState
+    ? new FileSecretStore(fileState)
+    : new InMemorySecretStore()
+const history = db
+  ? new SupabaseHistoryStore(db)
+  : fileState
+    ? new FileHistoryStore(fileState)
+    : new InMemoryHistoryStore()
 const memoryLedgers = new Map<string, LedgerStore>()
 const ledgers: LedgerStoreFactory = db
   ? new SupabaseLedgerFactory(db)
@@ -90,7 +107,8 @@ const ledgers: LedgerStoreFactory = db
 const pending: PendingStore = new InMemoryPendingStore()
 const schedules = db ? new SupabaseScheduleStore(db) : new InMemoryScheduleStore()
 const secretsKey = env.SECRETS_KEY ? parseKey(env.SECRETS_KEY) : null
-if (!durable) console.warn("[bot] no SUPABASE env — in-memory stores (non-durable)")
+if (!durable)
+  console.warn("[bot] no SUPABASE env — file store at apps/bot/.data/state.json (single operator)")
 if (!secretsKey)
   console.warn(
     "[bot] SECRETS_KEY not set — /pair and /key are disabled; using env credentials only",
