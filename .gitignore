@@ -18,3 +18,9 @@ coverage/
 
 # bot local state (encrypted secret blobs, policies); never commit
 apps/bot/.data/
+
+# private working notes
+plan.md
+
+# local tooling
+.claude/

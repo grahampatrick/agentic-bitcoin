@@ -4,7 +4,7 @@ Thanks for looking. This project moves money for people, so the bar is "boring a
 
 ## Before you open a PR
 
-1. Read `plan.md` — especially **Architectural Non-Negotiables**. Every PR is reviewed against them.
+1. Read [`docs/principles.md`](./docs/principles.md). Every PR is reviewed against it.
 2. Run the gates locally: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`.
 3. If you made a non-obvious decision, add `docs/adr/NNNN-short-title.md` in the same PR.
 4. Fixtures go in the shared fixtures package (from M1), never duplicated per package.

@@ -14,4 +14,4 @@ tokens.color.sand400 // "#e1d5cd"
 ```
 
 `pnpm test` in this package fails if `tokens.css` is stale (CI drift guard). Never hand-edit it.
-Values come from measuring instinct.com; see `plan.md` and ADR-0002 for what we do and don't copy.
+Values come from measuring instinct.com; see ADR-0002 for what we do and don't copy.

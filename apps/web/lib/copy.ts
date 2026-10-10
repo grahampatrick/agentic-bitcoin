@@ -16,7 +16,7 @@ export const WHITEPAPER = {
 export type Task = { readonly text: string; readonly icon: TaskIcon }
 export type TaskIcon = "bitcoin" | "bolt" | "cart" | "chip" | "handshake"
 
-/** The five underlined examples. Order matters: it mirrors the rails in plan.md. */
+/** The five underlined examples. Order matters: it mirrors the rails (wallet, exchange, goods, compute, on-chain). */
 export const TASKS: readonly Task[] = [
   { text: "buy bitcoin every Friday", icon: "bitcoin" },
   { text: "pay a Lightning invoice", icon: "bolt" },

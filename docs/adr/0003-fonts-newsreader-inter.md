@@ -1,6 +1,6 @@
 # ADR-0003: Newsreader (serif) + Inter (sans), self-hosted via next/font
 
-**Date:** 2026-10-07 · **Status:** accepted · resolves plan.md OQ-1
+**Date:** 2026-10-07 · **Status:** accepted · resolves the open typeface question
 
 ## Context
 The reference uses a warm, slightly condensed serif at 24px with a semibold for the headline. We

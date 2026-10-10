@@ -1,9 +1,8 @@
 /**
  * Agentic Bitcoin design tokens — the single source of truth.
  *
- * Values are the ones measured on instinct.com on 2026-10-07 (see plan.md "Reference: what
- * instinct.com actually is"). We copy structure, spacing and interaction; fonts, logo and copy
- * are our own (ADR-0002).
+ * Values are the ones measured on instinct.com on 2026-10-07. We copy structure, spacing and
+ * interaction; fonts, logo and copy are our own (ADR-0002).
  *
  * The browser consumes the generated `tokens.css` (run `pnpm --filter @agentic-bitcoin/brand build`).
  * JS/TS consumers import this module directly. Never hand-edit `tokens.css`.

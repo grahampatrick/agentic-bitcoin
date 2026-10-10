@@ -7,7 +7,7 @@ The brief is "copy the exact simple landing page and style" of instinct.com. Lay
 interaction patterns are not protectable expression; fonts, logos and sentences are.
 
 ## Decision
-We copy, from measurement (see plan.md "Reference"):
+We copy, from measurement of instinct.com on 2026-10-07 (values in `packages/brand/src/tokens.ts`):
 - Structure: logo-only header, one 41rem column, three beats + CTA, legal footer, `space-between`.
 - Metrics: 24px / 130% / −0.01em intro type, 13px legal, spacing scale, 20vh intro bottom margin.
 - Colours: the sand / onyx / ivory palette values.
@@ -21,5 +21,5 @@ We do **not** copy:
 - Their images, scripts, or any asset file.
 
 ## Consequences
-- A reviewer can diff `home.css` against the measured values in plan.md.
+- A reviewer can diff `home.css` against the measured values in `packages/brand/src/tokens.ts`.
 - `copy.test.ts` guards that the whitepaper quotes stay verbatim and that no advice creeps in.

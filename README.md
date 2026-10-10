@@ -3,17 +3,20 @@
 **An assistant that holds, sends, and spends your bitcoin the way it was designed to work: sent
 directly from one party to another, without going through a financial institution.**
 
-Text it. It can buy bitcoin on a schedule, pay a Lightning invoice, order goods in sats, rent
-compute by the second, or settle up with a friend — from *your* wallet, with *your* limits, and
+Text it on Signal. It can buy bitcoin on a schedule, pay a Lightning invoice, order goods in sats,
+rent compute by the second, or settle up with a friend — from *your* wallet, with *your* limits, and
 without us ever holding keys or money.
 
-> Product strategy, milestones, rails and non-negotiables live in [`plan.md`](./plan.md).
+> The rules every change is reviewed against live in [`docs/principles.md`](./docs/principles.md).
 > Decisions are recorded in [`docs/adr/`](./docs/adr/). This README is how to run the code.
 
 ## Status
 
-Live at **https://agentic-bitcoin.vercel.app**. M0 shipped: the landing page with a live price. The agent, wallet rail, exchange rail, goods rail and
-compute rail are planned milestones (see `plan.md`). Nothing here moves money yet.
+Live at **https://agentic-bitcoin.vercel.app**, with a sandbox at `/demo`. The landing page, policy
+engine, ledger, agent, Signal bot and every rail (Lightning wallet over NWC, Strike, Bitrefill,
+L402 compute, on-chain sweep) are implemented and tested. Real payments have been made end to end
+over Signal with a user-paired Lightning wallet. Public access is by invitation while the
+operator side is finished; see [`docs/launch-checklist.md`](./docs/launch-checklist.md).
 
 ## Prerequisites
 
@@ -48,11 +51,15 @@ Or open the live sandbox at https://agentic-bitcoin.vercel.app/demo — fake sat
 and limits updating beside the chat. With `ANTHROPIC_API_KEY` set (locally or on Vercel) the real model
 understands the messages; without it a scripted model does, and the page says so.
 
-## Run the chat bot
+## Run the Signal bot
+
+The bot talks to Signal through a `signal-cli` daemon that holds the bot's own Signal number; the
+bot process only speaks HTTP to it. [`docs/signal.md`](./docs/signal.md) walks through the number,
+registration, the daemon, and a linked-device test mode for trying it on your own account first.
 
 ```bash
-cp apps/bot/.env.example apps/bot/.env    # fill in a Telegram token + ANTHROPIC_API_KEY to start
-pnpm --filter @agentic-bitcoin/bot start   # in-memory stores, fake wallet until you /pair
+cp apps/bot/.env.example apps/bot/.env    # SIGNAL_ACCOUNT, SECRETS_KEY, ANTHROPIC_API_KEY
+pnpm --filter @agentic-bitcoin/bot start   # fake wallet until you /pair; file-backed stores without Supabase
 ```
 
 In chat: `/start` (three-question limits wizard) → `/pair <nostr+walletconnect://…>` (budgeted
@@ -76,13 +83,13 @@ pnpm build       # next build
 ## Layout
 
 ```
-apps/web            Next 15 landing: /, /text, /privacy, /terms, /api/price, /api/waitlist
+apps/web            Next 15 landing: /, /text, /demo, /status, /privacy, /terms, /api/*
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
-packages/rails      NWC wallet, L402 compute, Strike exchange (+ Breez/Coinbase stubs), secrets
+packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, LND on-chain, secrets
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)
-packages/agent      tool defs from the Action union, prompt, Claude loop, evals
+packages/agent      tool defs from the Action union, prompt, model loop, evals
 packages/mcp        MCP server (stdio + HTTP) over the same tools
-apps/bot            Telegram (dev) + Signal (users) chat surfaces, dispatcher, stores
+apps/bot            Signal chat surface, dispatcher, onboarding, stores
 packages/fixtures   shared test data for every package
 packages/brand      design tokens → tokens.css
 docs/adr            architecture decision records
@@ -92,7 +99,8 @@ supabase/migrations waitlist table
 ## Principles (short version)
 
 Non-custodial. Policy before rail. Money is integers. Every action in the ledger. Untrusted text
-is data. One wallet socket. Fixtures first. No secrets in git. No advice. See `plan.md`.
+is data. One wallet socket. Fixtures first. No secrets in git. No advice. See
+[`docs/principles.md`](./docs/principles.md).
 
 ## Licence
 
