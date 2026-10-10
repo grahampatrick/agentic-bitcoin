@@ -1,0 +1,23 @@
+{
+  "name": "@agentic-bitcoin/stores",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Supabase-backed stores shared by the bot and the web app (M12 shop). Memory stores live in core.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@agentic-bitcoin/core": "workspace:*",
+    "@supabase/supabase-js": "2.47.10"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.7",
+    "typescript": "5.7.3",
+    "vitest": "2.1.8"
+  }
+}

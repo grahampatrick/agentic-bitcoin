@@ -7,6 +7,7 @@ const nextConfig = {
     "@agentic-bitcoin/agent",
     "@agentic-bitcoin/core",
     "@agentic-bitcoin/rails",
+    "@agentic-bitcoin/stores",
   ],
   // the agent package pulls in the Anthropic SDK and the rails pull in the Alby SDK; keep them server-only
   serverExternalPackages: ["@anthropic-ai/sdk", "@getalby/sdk", "@getalby/lightning-tools"],

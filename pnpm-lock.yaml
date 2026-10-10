@@ -29,6 +29,9 @@ importers:
       '@agentic-bitcoin/scheduler':
         specifier: workspace:*
         version: link:../../packages/scheduler
+      '@agentic-bitcoin/stores':
+        specifier: workspace:*
+        version: link:../../packages/stores
       '@supabase/supabase-js':
         specifier: 2.47.10
         version: 2.47.10
@@ -66,6 +69,9 @@ importers:
       '@agentic-bitcoin/rails':
         specifier: workspace:*
         version: link:../../packages/rails
+      '@agentic-bitcoin/stores':
+        specifier: workspace:*
+        version: link:../../packages/stores
       '@supabase/supabase-js':
         specifier: 2.47.10
         version: 2.47.10
@@ -266,6 +272,25 @@ importers:
       tsx:
         specifier: 4.19.2
         version: 4.19.2
+      typescript:
+        specifier: 5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.7)
+
+  packages/stores:
+    dependencies:
+      '@agentic-bitcoin/core':
+        specifier: workspace:*
+        version: link:../core
+      '@supabase/supabase-js':
+        specifier: 2.47.10
+        version: 2.47.10
+    devDependencies:
+      '@types/node':
+        specifier: 22.10.7
+        version: 22.10.7
       typescript:
         specifier: 5.7.3
         version: 5.7.3

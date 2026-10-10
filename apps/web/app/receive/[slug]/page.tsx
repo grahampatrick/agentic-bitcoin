@@ -1,8 +1,10 @@
 import { CampaignTools } from "@/components/CampaignTools"
 import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
+import { MerchantTools } from "@/components/shop/MerchantTools"
 import { getCampaignStore } from "@/lib/campaigns/store"
 import { dashboardFor, siteBaseUrl, tipSnippet } from "@/lib/receive/service"
 import { getReceiveStore } from "@/lib/receive/store"
+import { getProductStore } from "@/lib/shop/store"
 import type { Metadata } from "next"
 import "../../page.css"
 
@@ -31,6 +33,18 @@ export default async function Dashboard({
             : `$${(c.goal.usdCentsPerMonth / 100n).toString()}/month`, // money-ok: label
       }))
     : []
+  const merchantProducts =
+    dash && dash.recipient.kind === "merchant"
+      ? (await getProductStore().listForMerchant(dash.recipient.slug)).map((p) => ({
+          id: p.id,
+          title: p.title,
+          price: (Number(p.priceCents) / 100).toFixed(2), // money-ok: display
+          deal: p.dealCents === undefined ? undefined : (Number(p.dealCents) / 100).toFixed(2), // money-ok: display
+          category: p.category,
+          kind: p.kind,
+          inStock: p.inStock,
+        }))
+      : []
   return (
     <>
       <SiteHeader />
@@ -76,6 +90,13 @@ export default async function Dashboard({
                 </li>
               ))}
             </ol>
+            {dash.recipient.kind === "merchant" ? (
+              <MerchantTools
+                slug={dash.recipient.slug}
+                token={t ?? ""}
+                products={merchantProducts}
+              />
+            ) : null}
             <CampaignTools slug={dash.recipient.slug} token={t ?? ""} campaigns={campaigns} />
             <h2>Your tip button</h2>
             <pre className="receive__snippet">

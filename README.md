@@ -71,6 +71,9 @@ gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.e
 Receiving: a church, missionary or creator onboards at `/receive` with a Lightning address or a
 receive-only wallet connection and gets `slug@<host>`, `/give/<slug>`, `/tip/<slug>` and a tip button;
 every invoice is minted by their own wallet (ADR-0014). The operator lists them with `/verify <slug>`.
+The store: `/shop` is a Lightning marketplace in the Shop-app shape (search, categories, a featured merchant, deals, cart);
+every order is one invoice minted by the merchant's own wallet, shipping is sealed for the merchant alone, and "find me
+a study bible" / "buy <id>" work from Signal (ADR-0016, [`docs/shop.md`](./docs/shop.md)).
 Campaigns: a recipient opens a goal from their dashboard; supporters pledge from chat (“support
 ortiz-family $25 a month”), follow updates with `/follow`, and see progress at `/campaigns/<slug>` (ADR-0015).
 
@@ -92,13 +95,14 @@ pnpm build       # next build
 ## Layout
 
 ```
-apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /receive, LNURL-pay, /api/*
+apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /shop/*, /receive, LNURL-pay, /api/*
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
 packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, LND on-chain, secrets
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)
 packages/agent      tool defs from the Action union, prompt, model loop, evals
 packages/mcp        MCP server (stdio + HTTP) over the same tools
 apps/bot            Signal chat surface, dispatcher, onboarding, giving commands, stores
+packages/stores     Supabase stores shared by bot and web (storefront)
 packages/fixtures   shared test data for every package
 packages/brand      design tokens → tokens.css
 docs/adr            architecture decision records
