@@ -22,6 +22,17 @@ export interface CheckDef {
 }
 
 export const CHECKS: readonly CheckDef[] = [
+  // M10: our own LNURL-pay endpoint for one recipient, when the operator names one.
+  ...(process.env.STATUS_LNURL_SLUG && process.env.NEXT_PUBLIC_SITE_URL
+    ? [
+        {
+          name: `Giving endpoint (${process.env.STATUS_LNURL_SLUG}@${new URL(process.env.NEXT_PUBLIC_SITE_URL).host})`,
+          url: `${process.env.NEXT_PUBLIC_SITE_URL}/.well-known/lnurlp/${process.env.STATUS_LNURL_SLUG}`,
+          okStatuses: [200],
+          validate: (j: unknown) => (j as { tag?: string })?.tag === "payRequest",
+        },
+      ]
+    : []),
   {
     name: "Price feed (mempool.space)",
     url: "https://mempool.space/api/v1/prices",

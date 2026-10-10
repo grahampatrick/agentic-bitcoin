@@ -63,6 +63,9 @@ importers:
       '@agentic-bitcoin/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentic-bitcoin/rails':
+        specifier: workspace:*
+        version: link:../../packages/rails
       '@supabase/supabase-js':
         specifier: 2.47.10
         version: 2.47.10
@@ -79,6 +82,9 @@ importers:
         specifier: 19.3.0
         version: 19.3.0(react@19.3.0)
     devDependencies:
+      '@agentic-bitcoin/fixtures':
+        specifier: workspace:*
+        version: link:../../packages/fixtures
       '@types/node':
         specifier: 22.10.7
         version: 22.10.7

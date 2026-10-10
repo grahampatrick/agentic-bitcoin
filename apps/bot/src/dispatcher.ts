@@ -56,6 +56,10 @@ export interface DispatcherDeps {
   recipients?: RecipientStore
   /** Checks a Lightning address answers LNURL-pay before a private recipient is saved. Injected so tests never hit the network. */
   probeAddress?(address: string): Promise<{ ok: true } | { ok: false; error: string }>
+  /** User ids allowed to run operator commands (/verify). Empty = nobody. */
+  operators?: readonly string[]
+  /** Public site, for links to /receive and /give pages. */
+  siteUrl?: string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
   policies: PolicyStore
@@ -261,6 +265,12 @@ export class Dispatcher {
         return this.recipient(userId, args, reply)
       case "/statement":
         return this.statement(userId, ctx, args, reply)
+      case "/verify":
+        return this.verify(userId, args, reply)
+      case "/receive":
+        return reply(
+          `Churches, missionaries and creators receive through their own wallet, never ours. Onboard at ${this.deps.siteUrl ?? "the website"}/receive — a Lightning address you already have, or a receive-only wallet connection. You get a give page, a tip page and a Lightning address; the operator verifies you before you appear in the directory.`,
+        )
       case "/ledger": {
         const entries = await readEntries(ctx.ledger)
         const price = await this.deps.agent.price()
@@ -386,6 +396,42 @@ export class Dispatcher {
     )
   }
 
+  /** Operator only: mark a directory recipient as verified ("operator" = we vouched in person). */
+  private async verify(
+    userId: string,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const store = this.deps.recipients
+    if (!store) return reply("Giving is not enabled on this server.")
+    if (!this.deps.operators?.includes(userId))
+      return reply("Only the operator can verify recipients.")
+    const slug = args[0]?.toLowerCase()
+    if (!slug) {
+      const pending = (await store.list()).filter((r) => !r.ownerUserId && !r.verified)
+      return reply(
+        pending.length
+          ? `Pending verification:\n${pending.map((r) => `• ${r.name} — ${r.slug} · ${r.lightningAddress}${r.website ? ` · ${r.website}` : ""}`).join("\n")}\nVerify one with /verify <slug> after confirming the address with them directly. /verify revoke <slug> removes verification.`
+          : "Nothing pending verification.",
+      )
+    }
+    if (slug === "revoke") {
+      const target = args[1]?.toLowerCase()
+      const r = target ? await store.get(target) : null
+      if (!r || r.ownerUserId) return reply("No such directory recipient.")
+      await store.upsert({ ...r, verified: null })
+      return reply(
+        `${r.name} is no longer verified; gifts to it are denied and recurring gifts will be refused at their next run.`,
+      )
+    }
+    const r = await store.get(slug)
+    if (!r || r.ownerUserId)
+      return reply("No such directory recipient. /verify lists the pending ones.")
+    if (r.verified) return reply(`${r.name} is already verified (${r.verified.how}).`)
+    await store.upsert({ ...r, verified: { how: "operator", at: this.now().toISOString() } })
+    return reply(`Verified ${r.name} (${r.slug}). It is now listed and can receive gifts.`)
+  }
+
   /** `/statement [year]`: the year's succeeded gifts as CSV. We are not the donee; the recipient issues receipts. */
   private async statement(
     userId: string,
@@ -484,7 +530,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

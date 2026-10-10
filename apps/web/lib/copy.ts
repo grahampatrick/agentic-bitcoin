@@ -55,6 +55,7 @@ export const COPY = {
     source: "Source",
     demo: "Try the sandbox",
     give: "Give",
+    receive: "Receive",
     sourceUrl: "https://github.com/grahampatrick/agentic-bitcoin",
     note: "Phrases from the Bitcoin whitepaper, 2008. Not financial advice. Non-custodial.",
   },

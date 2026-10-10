@@ -68,6 +68,9 @@ Giving: “which churches can I give to?”, “tithe 20000 sats to grace-fellow
 `/recipient add <lightning address> <name>` for your own recipients, `/statement` for the year's
 gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.example.json` and
 [`docs/recipients.md`](./docs/recipients.md)).
+Receiving: a church, missionary or creator onboards at `/receive` with a Lightning address or a
+receive-only wallet connection and gets `slug@<host>`, `/give/<slug>`, `/tip/<slug>` and a tip button;
+every invoice is minted by their own wallet (ADR-0014). The operator lists them with `/verify <slug>`.
 
 ### Self-host with Docker
 
@@ -87,7 +90,7 @@ pnpm build       # next build
 ## Layout
 
 ```
-apps/web            Next 15 landing: /, /text, /demo, /status, /privacy, /terms, /api/*
+apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /receive, LNURL-pay, /api/*
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
 packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, LND on-chain, secrets
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)

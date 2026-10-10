@@ -13,6 +13,7 @@
     "@agentic-bitcoin/agent": "workspace:*",
     "@agentic-bitcoin/brand": "workspace:*",
     "@agentic-bitcoin/core": "workspace:*",
+    "@agentic-bitcoin/rails": "workspace:*",
     "@supabase/supabase-js": "2.47.10",
     "next": "15.5.27",
     "qrcode": "1.5.4",
@@ -20,6 +21,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@agentic-bitcoin/fixtures": "workspace:*",
     "@types/node": "22.10.7",
     "@types/qrcode": "1.5.6",
     "@types/react": "19.0.7",

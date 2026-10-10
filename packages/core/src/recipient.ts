@@ -35,6 +35,13 @@ export interface Recipient {
   description?: string
   /** Set when a user added this recipient privately; only that user sees it or may give to it. */
   ownerUserId?: string
+  /**
+   * M10: a receive-only wallet connection (make_invoice, never pay_invoice), SEALED with SECRETS_KEY.
+   * Only the web receive service decrypts it, to mint invoices in the recipient's wallet. Never logged.
+   */
+  nwcReceive?: string
+  /** When the recipient onboarded themselves (web /receive); null/undefined for operator-seeded entries. */
+  submittedAt?: string
 }
 
 /** A user-scoped view: the directory plus that user's private recipients. */

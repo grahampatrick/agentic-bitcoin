@@ -256,6 +256,10 @@ const dispatcher = new Dispatcher({
   onCredentialsChanged,
   recipients: recipientStore,
   probeAddress: (a) => probeLightningAddress(a),
+  operators: env.BOT_OPERATORS?.split(",")
+    .map((u) => u.trim())
+    .filter(Boolean),
+  siteUrl: env.SITE_URL ?? "https://agentic-bitcoin.vercel.app",
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())

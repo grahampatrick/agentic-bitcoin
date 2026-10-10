@@ -32,6 +32,20 @@ Unverified directory entries are listed nowhere and the policy denies gifts to t
 We are not the donee. No gift passes through us, and we issue no receipts or tax documents.
 `/statement [year]` gives the user their own CSV record of gifts; the recipient issues receipts.
 
+## Self-onboarding (web /receive)
+
+A church, missionary or creator can onboard themselves at `/receive` with either a Lightning address
+they already have or a **receive-only** wallet connection (Nostr Wallet Connect with `make_invoice`
+and `lookup_invoice` only; connections that can pay are refused). They immediately get:
+
+- a Lightning address `slug@<our host>` and pages at `/give/<slug>` and `/tip/<slug>`,
+- a tip button snippet for their own site,
+- a dashboard link (shown once) listing invoices and, where their wallet supports it, settlement.
+
+They are **unlisted and cannot receive from our users until verified**: the operator confirms the
+address with them directly and runs `/verify <slug>` in the bot (`/verify` alone lists pending
+entries; `/verify revoke <slug>` undoes it). See ADR-0014.
+
 ## Operator checklist for adding a church or missionary
 
 1. Get their Lightning address from them directly, not from a web page.

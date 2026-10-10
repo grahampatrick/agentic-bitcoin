@@ -10,7 +10,8 @@ Everything below must be true before the Signal number goes on the landing page.
 - [ ] Counsel hour on the non-custodial / no-advice design done (plan OQ-8); exchange rail stays off publicly until then
 
 ## Infrastructure
-- [ ] Supabase project: migrations 0001–0003 applied; `SUPABASE_URL` + service-role key in the bot env and Vercel
+- [ ] Vercel env for the receive side (M10): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SECRETS_KEY` (same key as the bot), `NEXT_PUBLIC_SITE_URL`
+- [ ] Supabase project: migrations 0001–0005 applied; `SUPABASE_URL` + service-role key in the bot env and Vercel
 - [ ] `SECRETS_KEY` generated (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`), stored only in the bot env and a password manager
 - [ ] signal-cli daemon registered on the dedicated number per docs/signal.md (OQ-6); data dir backed up; survives reboot; `/api/v1/check` answers
 - [ ] Bot deployed (`docker compose up -d`), restarts on failure, logs shipped somewhere; scheduler ticks once a minute

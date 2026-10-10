@@ -57,6 +57,11 @@ export default async function GivePage() {
             </section>
           ))
         )}
+        <p>
+          Are you a church, missionary or creator?{" "}
+          <a href="/receive">Receive through your own wallet</a>: a Lightning address, a give page
+          and a tip button, in a minute.
+        </p>
         <p className="small">
           We are not the recipient of any gift and issue no receipts; ask your church or missionary
           for one. Your own record is one message away: <code>/statement</code>.

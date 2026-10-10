@@ -25,6 +25,8 @@ type Row = {
   country: string | null
   description: string | null
   owner_user_id: string | null
+  nwc_receive?: string | null
+  submitted_at?: string | null
 }
 const toRow = (r: Recipient): Row => ({
   slug: r.slug,
@@ -37,6 +39,8 @@ const toRow = (r: Recipient): Row => ({
   country: r.country ?? null,
   description: r.description ?? null,
   owner_user_id: r.ownerUserId ?? null,
+  nwc_receive: r.nwcReceive ?? null,
+  submitted_at: r.submittedAt ?? null,
 })
 const fromRow = (x: Row): Recipient => ({
   slug: x.slug,
@@ -51,6 +55,8 @@ const fromRow = (x: Row): Recipient => ({
   country: x.country ?? undefined,
   description: x.description ?? undefined,
   ownerUserId: x.owner_user_id ?? undefined,
+  nwcReceive: x.nwc_receive ?? undefined,
+  submittedAt: x.submitted_at ?? undefined,
 })
 
 export class SupabaseRecipientStore implements RecipientStore {

@@ -58,6 +58,7 @@ function setup(probeOk = true) {
     probeWallet: async () => ({ methods: [] }),
     recipients,
     probeAddress: async () => (probeOk ? { ok: true } : { ok: false, error: "HTTP 404" }),
+    operators: ["op"],
     now: clockAt("2026-10-11T12:00:00.000Z"),
   })
   const last = () => surface.sent.at(-1)?.m.text ?? ""
@@ -190,5 +191,25 @@ describe("recipients seed file", () => {
       ),
     ).toThrow(/kind/)
     expect(() => parseSeed(JSON.stringify({}))).toThrow(/array/)
+  })
+})
+
+describe("/verify (operator only)", () => {
+  it("lists pending entries, verifies and revokes; refuses non-operators", async () => {
+    const s = setup()
+    await withPolicy(s, "u1")
+    await withPolicy(s, "op")
+    await s.d.start()
+    await s.surface.receive({ userId: "u1", text: "/verify new-church" })
+    expect(s.last()).toContain("Only the operator")
+    await s.surface.receive({ userId: "op", text: "/verify" })
+    expect(s.last()).toContain("new-church")
+    await s.surface.receive({ userId: "op", text: "/verify new-church" })
+    expect(s.last()).toContain("Verified New Church")
+    expect((await s.recipients.get("new-church"))?.verified?.how).toBe("operator")
+    await s.surface.receive({ userId: "op", text: "/verify revoke new-church" })
+    expect((await s.recipients.get("new-church"))?.verified).toBeNull()
+    await s.surface.receive({ userId: "op", text: "/verify my-pastor" })
+    expect(s.last()).toContain("No such directory recipient")
   })
 })
