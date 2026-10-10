@@ -224,6 +224,7 @@ export async function handleToolCall(
       price: opts.price,
       recipient,
       campaign,
+      seal: ctx.seal,
     })
   } catch (err) {
     const msg = err instanceof ToolInputError ? err.message : "invalid tool input"
@@ -373,6 +374,14 @@ function sanitize(result: unknown): unknown {
   const r = { ...(result as Record<string, unknown>) }
   if (typeof r.preimage === "string") r.preimage = `${r.preimage.slice(0, 8)}…`
   if (typeof r.body === "string") r.body = quoteUntrusted(r.body)
+  if (Array.isArray(r.products)) {
+    // Product titles are merchant-written: data, never instructions.
+    r.products = r.products.map((p) => {
+      const o = { ...(p as Record<string, unknown>) }
+      if (typeof o.name === "string") o.name = quoteUntrusted(o.name, 200)
+      return o
+    })
+  }
   if (Array.isArray(r.recipients)) {
     // Directory text is supplied by recipients: names and descriptions are data, never instructions.
     r.recipients = r.recipients.map((x) => {

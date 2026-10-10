@@ -144,12 +144,17 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: "search_products",
     description:
-      "Search a merchant's catalogue (gift cards, phone top-ups, eSIMs). Read-only; use it to find a product_id before buy_product.",
+      "Search the storefront (directory) or Bitrefill (gift cards, top-ups). Read-only; use it to find a product_id and price before buy_product. Results carry a store link to show the user.",
     input_schema: {
       type: "object",
       properties: {
-        merchant: { type: "string", description: "Merchant", enum: ["bitrefill"] },
-        query: str("Search words, e.g. 'amazon' or 'mint mobile'"),
+        merchant: {
+          type: "string",
+          description:
+            "directory = the Agentic Bitcoin storefront (books, apparel, home, kids, sports, from Lightning merchants); bitrefill = gift cards, phone top-ups, eSIMs",
+          enum: ["directory", "bitrefill"],
+        },
+        query: str("Search words, e.g. 'study bible', 'amazon' or 'mint mobile'"),
       },
       required: ["merchant", "query"],
       additionalProperties: false,
@@ -159,16 +164,41 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: "buy_product",
     description:
-      "Buy a product (gift card, phone top-up, eSIM) from a merchant, paid in sats from the wallet. Always requires the user's confirmation.",
+      "Buy a product, paid in sats from the wallet, with the invoice issued by the merchant. Always requires the user's confirmation. Physical goods need the shipping fields (ask the user; never invent an address); digital goods leave them empty.",
     input_schema: {
       type: "object",
       properties: {
-        merchant: { type: "string", description: "Merchant", enum: ["bitrefill"] },
-        product_id: str("Merchant product id"),
-        description: str("Human description of the product, e.g. 'Amazon.com gift card $25'"),
-        usd_cents: int("Price in cents"),
+        merchant: {
+          type: "string",
+          description: "directory or bitrefill",
+          enum: ["directory", "bitrefill"],
+        },
+        product_id: str(
+          "Product id exactly as returned by search_products (directory ids look like dir:<merchant>:<id>)",
+        ),
+        description: str("Human description of the product, e.g. 'ESV Study Bible'"),
+        usd_cents: int("Price in cents, as returned by search_products"),
+        ship_name: str("Recipient's full name for shipping, or an empty string for digital goods"),
+        ship_address: str("Street address (one line), or an empty string"),
+        ship_city: str("City, or an empty string"),
+        ship_region: str("State/province, or an empty string"),
+        ship_postal: str("Postal code, or an empty string"),
+        ship_country: str("Two-letter country code, or an empty string"),
+        contact: str("Email or phone the merchant may use about the order, or an empty string"),
       },
-      required: ["merchant", "product_id", "description", "usd_cents"],
+      required: [
+        "merchant",
+        "product_id",
+        "description",
+        "usd_cents",
+        "ship_name",
+        "ship_address",
+        "ship_city",
+        "ship_region",
+        "ship_postal",
+        "ship_country",
+        "contact",
+      ],
       additionalProperties: false,
     },
     strict: true,
@@ -414,6 +444,8 @@ export interface ToolContext {
   recipient?: { recipient: Recipient; trusted: boolean } | null
   /** For give / schedule_give with a campaign_slug: the campaign resolved server-side (null = not found). */
   campaign?: Campaign | null
+  /** M12: seals shipping details before they become part of an Action (never plaintext in the ledger). */
+  seal?: (plain: string) => string
 }
 
 /** Headroom over the quoted sats for merchant orders: 1% + 10 sats, so a fair quote fits under the cap. */
@@ -489,7 +521,7 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       return {
         kind: "search_products",
         ...base,
-        merchant: "bitrefill",
+        merchant: input.merchant === "directory" ? "directory" : "bitrefill",
         query: input.query as string,
       }
     case "sweep_to_cold":
@@ -511,14 +543,37 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       }
     case "buy_product": {
       const usdCents: Cents = BigInt(input.usd_cents as number)
+      const merchant = input.merchant === "directory" ? "directory" : "bitrefill"
+      const ship = {
+        name: String(input.ship_name ?? "").trim(),
+        address: String(input.ship_address ?? "").trim(),
+        city: String(input.ship_city ?? "").trim(),
+        region: String(input.ship_region ?? "").trim(),
+        postal: String(input.ship_postal ?? "").trim(),
+        country: String(input.ship_country ?? "")
+          .trim()
+          .toUpperCase(),
+      }
+      const hasShipping = Object.values(ship).some(Boolean)
+      if (hasShipping && (!ship.name || !ship.address || !ship.city || !ship.country))
+        throw new ToolInputError(
+          "buy_product: shipping needs at least name, address, city and country",
+        )
+      if (hasShipping && !ctx.seal)
+        throw new ToolInputError(
+          "buy_product: shipping details cannot be stored on this server (no SECRETS_KEY)",
+        )
+      const contact = String(input.contact ?? "").trim()
       return {
         kind: "buy_product",
         ...base,
-        merchant: "bitrefill",
+        merchant,
         productId: input.product_id as string,
         description: input.description as string,
         usdCents,
         amountSats: withHeadroom(centsToSats(usdCents, needPrice())),
+        shippingSealed: hasShipping && ctx.seal ? ctx.seal(JSON.stringify(ship)) : undefined,
+        contactSealed: contact && ctx.seal ? ctx.seal(contact) : undefined,
       }
     }
     case "fetch_l402": {

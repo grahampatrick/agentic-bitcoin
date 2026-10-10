@@ -100,7 +100,19 @@ describe("toolToAction", () => {
     expect(buy).toMatchObject({ kind: "buy_bitcoin", usdCents: 2500n, estimatedSats: 30_059n })
     const gift = toolToAction(
       "buy_product",
-      { merchant: "bitrefill", product_id: "p", description: "d", usd_cents: 1000 },
+      {
+        merchant: "bitrefill",
+        product_id: "p",
+        description: "d",
+        usd_cents: 1000,
+        ship_name: "",
+        ship_address: "",
+        ship_city: "",
+        ship_region: "",
+        ship_postal: "",
+        ship_country: "",
+        contact: "",
+      },
       ctx,
     )
     expect(gift).toMatchObject({ kind: "buy_product", amountSats: 12_023n + 120n + 10n })
@@ -213,7 +225,19 @@ function sampleInput(name: string): Record<string, unknown> {
         cron: "0 3 1 * *",
       }
     case "buy_product":
-      return { merchant: "bitrefill", product_id: "p", description: "d", usd_cents: 100 }
+      return {
+        merchant: "bitrefill",
+        product_id: "gift-amazon-us",
+        description: "Amazon.com gift card $25",
+        usd_cents: 2500,
+        ship_name: "",
+        ship_address: "",
+        ship_city: "",
+        ship_region: "",
+        ship_postal: "",
+        ship_country: "",
+        contact: "",
+      }
     case "fetch_l402":
       return { url: "https://x.ai/", max_sats: 1, method: "GET", body: "" }
     default:

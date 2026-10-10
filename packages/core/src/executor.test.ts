@@ -104,7 +104,7 @@ describe("execute: confirmation binding", () => {
     })
     expect(res.status).toBe("succeeded")
     const result = (res as { result: { order: { state: string } } }).result
-    expect(result.order.state).toBe("unpaid") // payment is not delivery; the fake never observed it (no autoProgress) and polling is bounded
+    expect(result.order.state).toBe("paid") // the executor reports its own payment (markPaid); delivery is still separate (ADR-0011) and polling is bounded
     expect(rails.goods).toBeDefined()
   })
   it("rejects a confirmation for a different action (tampered amount)", async () => {

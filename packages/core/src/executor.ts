@@ -320,7 +320,12 @@ async function dispatch(
     case "buy_product": {
       const g = need(rails.goods, "goods")
       const w = need(rails.wallet, "wallet")
-      const order = await g.createOrder({ productId: action.productId, usdCents: action.usdCents })
+      const order = await g.createOrder({
+        productId: action.productId,
+        usdCents: action.usdCents,
+        shippingSealed: action.shippingSealed,
+        contactSealed: action.contactSealed,
+      })
       if (order.amountSats > action.amountSats) {
         throw new RailError(
           g.kind,
@@ -333,15 +338,17 @@ async function dispatch(
         amountSats: order.amountSats,
         idempotencyKey: action.idempotencyKey,
       })
-      // Payment is not delivery (ADR-0011): poll the merchant until delivered (bounded).
+      await g.markPaid?.(order.orderId, p.preimage)
+      // Payment is not delivery (ADR-0011): poll the merchant until delivered (bounded). Shipped goods
+      // are complete at `paid`; the merchant fulfils later and the order page tracks it (M12).
       const d = input.delivery ?? { pollMs: 2000, maxPolls: 30 }
       const sleep = d.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)))
+      const done = (o: Order) =>
+        o.state === "delivered" ||
+        o.state === "failed" ||
+        (o.fulfilment === "shipped" && o.state === "paid")
       let after: Order = await g.getOrder(order.orderId)
-      for (
-        let i = 0;
-        i < d.maxPolls && after.state !== "delivered" && after.state !== "failed";
-        i++
-      ) {
+      for (let i = 0; i < d.maxPolls && !done(after); i++) {
         await sleep(d.pollMs)
         after = await g.getOrder(order.orderId)
       }

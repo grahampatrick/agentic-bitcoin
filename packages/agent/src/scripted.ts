@@ -230,6 +230,45 @@ export function intentOf(text: string): { name: string; input: Record<string, un
     }
   const cancel = /cancel\s+(?:schedule\s+)?(sch_\S+)/i.exec(t)
   if (cancel) return { name: "cancel_schedule", input: { schedule_id: cancel[1] } }
+  // storefront (M12): "find me a study bible" / "search the store for tees" / "buy dir:merchant:id ship to …"
+  const buyDir =
+    /\bbuy\s+(dir:[a-z0-9-]+:[a-z0-9-]+)\b(?:[^$]*?\$\s?([\d.,_]+))?(?:.*?\bship(?:ping)?\s+to\s+(.+?)\s*$)?/i.exec(
+      t,
+    )
+  if (buyDir) {
+    // buy_product (directory): the scripted model cannot look prices up; the rail rejects a wrong price.
+    const ship = (buyDir[3] ?? "").split(/\s*,\s*/)
+    const hasShip = ship.length >= 4
+    return {
+      name: "buy_product",
+      input: {
+        merchant: "directory",
+        product_id: buyDir[1],
+        description: buyDir[1],
+        usd_cents: buyDir[2] ? dollarsToCents(buyDir[2]) : 0,
+        ship_name: hasShip ? (ship[0] ?? "") : "",
+        ship_address: hasShip ? (ship[1] ?? "") : "",
+        ship_city: hasShip ? (ship[2] ?? "") : "",
+        ship_region: hasShip && ship.length >= 6 ? (ship[3] ?? "") : "",
+        ship_postal: hasShip && ship.length >= 6 ? (ship[4] ?? "") : "",
+        ship_country: hasShip ? (ship[ship.length - 1] ?? "") : "",
+        contact: "",
+      },
+    }
+  }
+  const findShop =
+    /^(?:find|search(?: the store)?(?: for)?|look for|shop for|show me|do you have)\s+(?:me\s+)?(?:an?\s+|some\s+)?(.+?)\??$/i.exec(
+      t,
+    )
+  if (
+    findShop &&
+    !/\b(church|churches|missionar|recipient|ministr|gift\s*card|top[- ]?up|esim|mint|amazon)\b/i.test(
+      t,
+    ) &&
+    !/@/.test(t)
+  ) {
+    return { name: "search_products", input: { merchant: "directory", query: findShop[1] ?? "" } }
+  }
   const goods =
     /\$\s?([\d.,_]+)\s+(amazon|gift\s*card|top[- ]?up|mint)/i.exec(t) ??
     /(amazon|gift\s*card|top[- ]?up|mint)[^$]*\$\s?([\d.,_]+)/i.exec(t)
@@ -244,6 +283,13 @@ export function intentOf(text: string): { name: string; input: Record<string, un
         merchant: "bitrefill",
         product_id: topup ? "topup-mint-10" : "gift-amazon-us",
         description: `${topup ? "Mint Mobile top-up" : "Amazon.com gift card"} $${amount}`,
+        ship_name: "",
+        ship_address: "",
+        ship_city: "",
+        ship_region: "",
+        ship_postal: "",
+        ship_country: "",
+        contact: "",
         usd_cents: dollarsToCents(amount ?? "0"),
       },
     }
@@ -314,9 +360,22 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
         : `Paid; the merchant reports “${order.state}”. I'll keep it in your ledger.`
     }
     case "search_products": {
-      const products = (result.products ?? []) as { id: string; name: string }[]
+      const products = (result.products ?? []) as {
+        id: string
+        name: string
+        usdCents?: bigint | string | null
+        url?: string
+      }[]
+      const strip = (x: string) => x.replace(/<\/?untrusted>/g, "")
+      const price = (c: bigint | string | null | undefined) =>
+        c === null || c === undefined ? "" : ` $${(Number(c) / 100).toFixed(2)}` // money-ok: display in a canned demo model
       return products.length
-        ? `Found: ${products.map((p) => `${p.name} (${p.id})`).join("; ")}.`
+        ? `Found: ${products
+            .slice(0, 5)
+            .map((p) => `${strip(p.name)}${price(p.usdCents)} (${p.id})${p.url ? ` ${p.url}` : ""}`)
+            .join(
+              "; ",
+            )}. Say “buy <id>” — physical goods need “ship to name, street, city, region, postal, country”.`
         : "Nothing matched."
     }
     case "fetch_l402":

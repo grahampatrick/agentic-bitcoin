@@ -14,7 +14,10 @@ import {
 import {
   DEFAULT_POLICY,
   FakeWalletRail,
+  type GoodsRail,
   InMemoryLedgerStore,
+  InMemoryOrderStore,
+  InMemoryProductStore,
   InMemoryRecipientStore,
   type LedgerStore,
   type PriceSnapshot,
@@ -25,6 +28,8 @@ import {
 } from "@agentic-bitcoin/core"
 import {
   BitrefillGoodsRail,
+  CompositeGoodsRail,
+  DirectoryGoodsRail,
   LndOnChainRail,
   NwcWalletRail,
   StrikeExchangeRail,
@@ -50,6 +55,13 @@ import {
   FileState,
 } from "./store/file"
 import { SupabaseRecipientStore, seedRecipients } from "./store/recipients"
+import {
+  FileOrderStore,
+  FileProductStore,
+  SupabaseOrderStore,
+  SupabaseProductStore,
+  seedShop,
+} from "./store/shop"
 import {
   InMemoryHistoryStore,
   InMemoryPolicyStore,
@@ -132,6 +144,20 @@ const campaignStore = db
   : fileState
     ? new FileCampaignStore(fileState)
     : null
+const productStore = db
+  ? new SupabaseProductStore(db)
+  : fileState
+    ? new FileProductStore(fileState)
+    : new InMemoryProductStore()
+const orderStore = db
+  ? new SupabaseOrderStore(db)
+  : fileState
+    ? new FileOrderStore(fileState)
+    : new InMemoryOrderStore()
+if (env.SHOP_FILE) {
+  const n = await seedShop(productStore, env.SHOP_FILE)
+  console.error(`[bot] storefront: ${n} products loaded from ${env.SHOP_FILE}`)
+}
 /** Opaque supporter identity for campaign counts: a hash, never the user id (salted by SECRETS_KEY when set). */
 const supporterKeyOf = (userId: string) =>
   createHash("sha256")
@@ -152,7 +178,7 @@ if (!env.NWC_URL) console.warn("[bot] NWC_URL not set — users without /pair ge
 /** Per-user credential → rail cache, rebuilt when /pair or /key changes something. */
 const railCache = new Map<
   string,
-  { wallet: WalletRail; exchange?: StrikeExchangeRail; goods?: BitrefillGoodsRail }
+  { wallet: WalletRail; exchange?: StrikeExchangeRail; goods?: GoodsRail; onchain?: LndOnChainRail }
 >()
 async function secret(userId: string, name: SecretName): Promise<string | null> {
   if (!secretsKey) return null
@@ -173,7 +199,20 @@ async function railsFor(userId: string) {
         ? new LndOnChainRail({ baseUrl: env.LND_REST_URL, macaroonHex: env.LND_MACAROON_HEX })
         : undefined,
     exchange: strikeKey ? new StrikeExchangeRail({ apiKey: strikeKey }) : undefined,
-    goods: bitrefillKey ? new BitrefillGoodsRail({ apiKey: bitrefillKey }) : undefined,
+    // M12: one goods socket — storefront merchants (invoices from their wallets) plus Bitrefill when keyed.
+    goods: new CompositeGoodsRail(
+      new DirectoryGoodsRail({
+        products: productStore,
+        orders: orderStore,
+        merchant: (slug) => recipientStore.get(slug),
+        price,
+        secretsKey,
+        walletFor: (cs) => new NwcWalletRail({ connectionString: cs }),
+        siteUrl: env.SITE_URL ?? "https://agentic-bitcoin.vercel.app",
+        buyerKey: supporterKeyOf(userId),
+      }),
+      bitrefillKey ? new BitrefillGoodsRail({ apiKey: bitrefillKey }) : undefined,
+    ),
   }
   railCache.set(userId, built)
   return built
@@ -283,6 +322,8 @@ const dispatcher = new Dispatcher({
     .filter(Boolean),
   siteUrl: env.SITE_URL ?? "https://agentic-bitcoin.vercel.app",
   campaigns: campaignStore ?? undefined,
+  orders: orderStore,
+  buyerKeyOf: supporterKeyOf,
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())

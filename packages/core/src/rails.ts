@@ -98,13 +98,6 @@ export interface ExchangeRail {
 
 // --- goods ------------------------------------------------------------------------------------
 
-export interface Product {
-  id: string
-  name: string
-  /** Fixed price in cents, or null when the customer picks an amount. */
-  usdCents: Cents | null
-}
-
 export type OrderState = "unpaid" | "paid" | "delivered" | "failed"
 
 export interface Order {
@@ -114,14 +107,39 @@ export interface Order {
   state: OrderState
   /** Redemption data once delivered. Bearer secret: encrypt at rest, never log. */
   redemption?: string
+  /** M12: "instant" goods (codes) are polled to `delivered`; "shipped" goods are complete at `paid` and fulfilled later by the merchant. */
+  fulfilment?: "instant" | "shipped"
+  /** Payment hash of the merchant's invoice, when the adapter knows it. */
+  paymentHash?: string
+}
+
+export interface Product {
+  id: string
+  name: string
+  /** Fixed price in cents, or null when the customer picks an amount. */
+  usdCents: Cents | null
+  /** M12 extras for directory products. */
+  merchant?: string
+  kind?: "digital" | "physical"
+  imageUrl?: string
+  category?: string
+  url?: string
 }
 
 export interface GoodsRail {
   readonly kind: string
   searchProducts(query: string): Promise<Product[]>
-  createOrder(input: { productId: string; usdCents: Cents }): Promise<Order>
+  createOrder(input: {
+    productId: string
+    usdCents: Cents
+    /** M12: sealed blobs for physical goods; the rail stores them for the merchant and never opens them. */
+    shippingSealed?: string
+    contactSealed?: string
+  }): Promise<Order>
   /** Poll until `delivered`; `paid` is NOT delivery (ADR-0011). */
   getOrder(orderId: string): Promise<Order>
+  /** M12: the executor paid the invoice; adapters that track orders themselves record the proof. */
+  markPaid?(orderId: string, preimage: string): Promise<void>
 }
 
 // --- compute ----------------------------------------------------------------------------------

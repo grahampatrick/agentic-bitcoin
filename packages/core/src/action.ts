@@ -12,7 +12,7 @@ import type { GivePurpose } from "./recipient"
 export type Requester = "user" | "schedule" | "agent"
 export type RailName = "wallet" | "exchange" | "goods" | "compute" | "onchain"
 export type ExchangeName = "strike" | "coinbase"
-export type MerchantName = "bitrefill"
+export type MerchantName = "bitrefill" | "directory"
 
 interface Base {
   /** Caller-chosen stable id. The same key must never execute twice. */
@@ -73,10 +73,14 @@ export interface CancelSchedule extends Base {
 export interface BuyProduct extends Base {
   kind: "buy_product"
   merchant: MerchantName
+  /** Bitrefill ids as-is; directory products as `dir:<merchant>:<id>`. */
   productId: string
   description: string
   usdCents: Cents
   amountSats: Sats
+  /** M12: shipping/contact details SEALED (AES-GCM) before this became an Action; the ledger never holds plaintext. */
+  shippingSealed?: string
+  contactSealed?: string
 }
 
 export interface SearchProducts extends Base {

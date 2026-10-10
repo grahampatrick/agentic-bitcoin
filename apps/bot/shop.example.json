@@ -1,0 +1,54 @@
+[
+  {
+    "id": "esv-study-bible",
+    "merchantSlug": "reformation-books",
+    "title": "ESV Study Bible",
+    "description": "Hardcover, 2,752 pages. Example listing.",
+    "category": "books",
+    "priceCents": 4999,
+    "dealCents": 3999,
+    "kind": "physical",
+    "inStock": true,
+    "imageUrl": "https://images.example/esv.jpg"
+  },
+  {
+    "id": "psalms-commentary",
+    "merchantSlug": "reformation-books",
+    "title": "The Psalms: A Christ-Centered Commentary",
+    "description": "Four volumes.",
+    "category": "books",
+    "priceCents": 8000,
+    "kind": "physical",
+    "inStock": true
+  },
+  {
+    "id": "greek-syntax-ebook",
+    "merchantSlug": "reformation-books",
+    "title": "Greek Syntax (ebook)",
+    "description": "Delivered as a download link in the order note.",
+    "category": "books",
+    "priceCents": 1999,
+    "kind": "digital",
+    "inStock": true
+  },
+  {
+    "id": "classic-tee",
+    "merchantSlug": "north-fork-apparel",
+    "title": "Classic tee",
+    "description": "100% cotton.",
+    "category": "apparel",
+    "priceCents": 2400,
+    "dealCents": 1900,
+    "kind": "physical",
+    "inStock": true
+  },
+  {
+    "id": "wool-cap",
+    "merchantSlug": "north-fork-apparel",
+    "title": "Wool cap",
+    "category": "apparel",
+    "priceCents": 3000,
+    "kind": "physical",
+    "inStock": true
+  }
+]

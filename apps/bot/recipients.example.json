@@ -17,5 +17,24 @@
     "country": "PE",
     "description": "Serving in Lima, Peru. Example entry; addresses here are not real.",
     "verified": true
+  },
+  {
+    "slug": "reformation-books",
+    "kind": "merchant",
+    "name": "Reformation Books",
+    "lightningAddress": "pay@reformation-books.example",
+    "website": "https://reformation-books.example",
+    "country": "US",
+    "description": "Theology, commentaries and study bibles. Example merchant; replace with a real one.",
+    "verified": true
+  },
+  {
+    "slug": "north-fork-apparel",
+    "kind": "merchant",
+    "name": "North Fork Apparel",
+    "lightningAddress": "shop@walletofsatoshi.com",
+    "country": "US",
+    "description": "Tees, caps and hoodies. Example merchant.",
+    "verified": true
   }
 ]

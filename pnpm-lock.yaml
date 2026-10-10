@@ -119,6 +119,9 @@ importers:
       '@agentic-bitcoin/fixtures':
         specifier: workspace:*
         version: link:../fixtures
+      '@agentic-bitcoin/rails':
+        specifier: workspace:*
+        version: link:../rails
       '@types/node':
         specifier: 22.10.7
         version: 22.10.7

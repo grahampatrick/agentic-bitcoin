@@ -237,14 +237,17 @@ export class FakeGoodsRail implements GoodsRail {
     if (this.autoProgress) {
       const n = (this.polls.get(orderId) ?? 0) + 1
       this.polls.set(orderId, n)
-      if (n >= 1 && o.state === "unpaid") this.markPaid(orderId)
+      if (n >= 1 && o.state === "unpaid") this.setPaid(orderId)
       if (n >= 2 && o.state === "paid") this.deliver(orderId)
     }
     return Promise.resolve({ ...o })
   }
 
-  /** Test hook: payment observed. Delivery follows on the next `getOrder` after `deliver`. */
-  markPaid(orderId: string): void {
+  /** Payment observed (the executor calls this after paying; tests may too). Delivery follows `deliver`. */
+  async markPaid(orderId: string, _preimage?: string): Promise<void> {
+    this.setPaid(orderId)
+  }
+  private setPaid(orderId: string): void {
     const o = this.orders.get(orderId)
     if (o) o.state = "paid"
   }
