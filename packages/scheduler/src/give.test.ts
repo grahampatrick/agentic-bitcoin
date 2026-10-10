@@ -1,12 +1,14 @@
 import {
   FakeWalletRail,
+  InMemoryCampaignStore,
   InMemoryLedgerStore,
   InMemoryRecipientStore,
   type Policy,
+  contributionSink,
   readEntries,
   recipientsForUser,
 } from "@agentic-bitcoin/core"
-import { PRICE, RECIPIENTS } from "@agentic-bitcoin/fixtures"
+import { CAMPAIGNS, PRICE, RECIPIENTS } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
 import { runDue, schedulesHook } from "./runner"
 import { InMemoryScheduleStore } from "./schedule"
@@ -138,5 +140,57 @@ describe("recurring gifts", () => {
       (await w.schedules.listActive()).filter((s) => s.recipientSlug === "new-church"),
     ).toHaveLength(0)
     expect((await readEntries(w.ledger)).filter((e) => e.outcome === "succeeded")).toHaveLength(0)
+  })
+})
+
+describe("campaign pledges (M11)", () => {
+  it("a schedule_give with a campaign registers a pledge, follows the campaign, and each firing is tallied once", async () => {
+    const w = world()
+    const campaigns = new InMemoryCampaignStore([CAMPAIGNS.ortizSupport])
+    const hook = schedulesHook(w.schedules, { userId: "u1", supporterKey: "sk1", campaigns })
+    const id = await hook.create({
+      kind: "schedule_give",
+      idempotencyKey: "u1:call",
+      requestedBy: "agent",
+      recipientSlug: "ortiz-family",
+      recipientName: "The Ortiz Family",
+      address: "ortiz@walletofsatoshi.com",
+      verified: true,
+      amountSats: 1_000n,
+      usdCents: 2_500n,
+      cron: "0 14 * * 0",
+      purpose: "support",
+      campaignSlug: "ortiz-field-support",
+      supporterName: "G.",
+    })
+    expect(await campaigns.pledges("ortiz-field-support")).toMatchObject([
+      { scheduleId: id, active: true, usdCents: 2_500n },
+    ])
+    expect(await campaigns.followers("ortiz-field-support")).toEqual(["u1"])
+    expect((await hook.list())[0]?.summary).toBe(
+      "Give $25 to ortiz-family (support, campaign ortiz-field-support)",
+    )
+
+    const deps = {
+      ...w.deps,
+      resolve: async () => ({
+        policy,
+        ledger: w.ledger,
+        rails: { wallet: w.wallet },
+        contributions: contributionSink(campaigns),
+        supporterKey: "sk1",
+      }),
+    }
+    await runDue(deps)
+    await runDue(deps) // same slot: no second firing
+    const cs = await campaigns.contributions("ortiz-field-support")
+    expect(cs).toHaveLength(1)
+    expect(cs[0]).toMatchObject({ source: "chat", supporterKey: "sk1", supporterName: "G." })
+    expect(cs[0]?.amountMsats).toBe(30_059_000n) // $25 at the fixture price
+
+    await hook.cancel(id)
+    expect((await campaigns.pledges("ortiz-field-support"))[0]?.active).toBe(false)
+    const other = schedulesHook(w.schedules, { userId: "u2" })
+    await expect(other.cancel(id)).rejects.toThrow(/not your schedule/)
   })
 })

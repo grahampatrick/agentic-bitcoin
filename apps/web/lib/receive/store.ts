@@ -14,6 +14,8 @@ export interface ReceiveInvoice {
   createdAt: string
   settledAt?: string
   preimage?: string
+  /** M11: set when the invoice was requested from a campaign page. */
+  campaignSlug?: string
 }
 
 export interface ReceiveStore {
@@ -90,6 +92,7 @@ type InvoiceRow = {
   created_at: string
   settled_at: string | null
   preimage: string | null
+  campaign_slug?: string | null
 }
 
 export class SupabaseReceiveStore implements ReceiveStore {
@@ -155,6 +158,7 @@ export class SupabaseReceiveStore implements ReceiveStore {
       comment: inv.comment ?? null,
       source: inv.source,
       created_at: inv.createdAt,
+      campaign_slug: inv.campaignSlug ?? null,
     })
     if (error) throw new Error(`invoice record failed: ${error.message}`)
   }
@@ -184,6 +188,7 @@ export class SupabaseReceiveStore implements ReceiveStore {
       createdAt: i.created_at,
       settledAt: i.settled_at ?? undefined,
       preimage: i.preimage ?? undefined,
+      campaignSlug: i.campaign_slug ?? undefined,
     }))
   }
   async markSettled(paymentHash: string, settledAt: string, preimage?: string) {

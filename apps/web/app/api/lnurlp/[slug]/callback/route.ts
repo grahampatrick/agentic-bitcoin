@@ -12,6 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const u = new URL(req.url)
   const amount = Number(u.searchParams.get("amount"))
   const comment = u.searchParams.get("comment") ?? undefined
+  const campaign = u.searchParams.get("campaign") ?? undefined
   if (!Number.isInteger(amount) || amount <= 0)
     return NextResponse.json(
       { status: "ERROR", reason: "amount (msats) required" },
@@ -22,6 +23,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     slug,
     amount,
     comment,
+    campaign,
   )
   return NextResponse.json(body, {
     status: "status" in body ? 400 : 200,

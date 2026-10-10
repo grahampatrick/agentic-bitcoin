@@ -121,6 +121,7 @@ export async function invoiceFor(
   slug: string,
   amountMsats: number,
   comment?: string,
+  campaignSlug?: string,
 ): Promise<{ pr: string; routes: []; paymentHash: string } | ReturnType<typeof lnurlError>> {
   const d = defaults(deps)
   const r = await deps.store.getRecipient(slug)
@@ -145,6 +146,8 @@ export async function invoiceFor(
         comment: comment?.slice(0, 200) || undefined,
         source: inv.source,
         createdAt: d.now().toISOString(),
+        campaignSlug:
+          campaignSlug && /^[a-z0-9-]{2,63}$/.test(campaignSlug) ? campaignSlug : undefined,
       })
       return { pr: inv.pr, routes: [], paymentHash: inv.paymentHash }
     } finally {

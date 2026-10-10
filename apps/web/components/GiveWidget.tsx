@@ -9,6 +9,8 @@ type Props = {
   mode: "give" | "tip"
   lightningAddress: string
   verified: boolean
+  /** M11: tag the invoice with a campaign so a settled gift counts toward it. */
+  campaignSlug?: string
 }
 
 const PRESETS: Record<Props["mode"], number[]> = {
@@ -16,7 +18,7 @@ const PRESETS: Record<Props["mode"], number[]> = {
   tip: [100, 500, 2_100, 10_000],
 }
 
-export function GiveWidget({ slug, name, mode, lightningAddress, verified }: Props) {
+export function GiveWidget({ slug, name, mode, lightningAddress, verified, campaignSlug }: Props) {
   const [sats, setSats] = useState<number>(PRESETS[mode][1] ?? 1000)
   const [note, setNote] = useState("")
   const [pr, setPr] = useState<string | null>(null)
@@ -39,6 +41,7 @@ export function GiveWidget({ slug, name, mode, lightningAddress, verified }: Pro
     try {
       const q = new URLSearchParams({ amount: String(sats * 1000) })
       if (note.trim()) q.set("comment", note.trim().slice(0, 200))
+      if (campaignSlug) q.set("campaign", campaignSlug)
       const res = await fetch(`/api/lnurlp/${slug}/callback?${q}`)
       const j = (await res.json()) as { pr?: string; reason?: string }
       if (!res.ok || !j.pr) throw new Error(j.reason ?? "could not create an invoice")

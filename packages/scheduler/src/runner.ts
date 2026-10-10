@@ -7,6 +7,8 @@
  */
 import {
   type Action,
+  type CampaignStore,
+  type ContributionSink,
   type ExecuteResult,
   type LedgerStore,
   type Policy,
@@ -14,6 +16,7 @@ import {
   type Rails,
   type RecipientReader,
   type Sats,
+  type ScheduleSummary,
   type WalletRail,
   actionHash,
   centsToSats,
@@ -27,7 +30,14 @@ import type { Schedule, ScheduleStore } from "./schedule"
 export interface RunnerDeps {
   schedules: ScheduleStore
   /** Per-user: policy, ledger and rails. The exchange rail must be present for a run to succeed. */
-  resolve(userId: string): Promise<{ policy: Policy; ledger: LedgerStore; rails: Rails }>
+  resolve(userId: string): Promise<{
+    policy: Policy
+    ledger: LedgerStore
+    rails: Rails
+    /** M11: where a fired campaign gift is tallied, and the supporter's opaque key. */
+    contributions?: ContributionSink
+    supporterKey?: string
+  }>
   price(): Promise<PriceSnapshot | undefined>
   /** Sweep: an exchange that can pay a Lightning invoice. Optional. */
   sweep?: (userId: string, rails: Rails, sats: Sats) => Promise<string | null>
@@ -79,7 +89,7 @@ export async function runDue(deps: RunnerDeps): Promise<RunReport> {
 type Paused = { status: "failed"; paused: string }
 
 async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteResult | Paused> {
-  const { policy, ledger, rails } = await deps.resolve(s.userId)
+  const { policy, ledger, rails, contributions, supporterKey } = await deps.resolve(s.userId)
   const price = await deps.price()
   const key = `${s.id}:${slotOf(at)}`
   let give: Extract<Action, { kind: "give" }> | null = null
@@ -101,6 +111,8 @@ async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteRes
       amountSats: amount,
       purpose: s.purpose ?? "gift",
       fiatCentsAtRequest: price ? satsToCents(amount, price) : undefined,
+      campaignSlug: s.campaignSlug,
+      supporterName: s.supporterName,
       idempotencyKey: key,
       requestedBy: "schedule",
     }
@@ -130,6 +142,8 @@ async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteRes
     policy,
     ledger,
     rails,
+    contributions,
+    supporterKey,
     now: () => at,
     context: { price },
     confirmation: {
@@ -172,8 +186,33 @@ function detailOf(r: ExecuteResult): string | undefined {
  * The executor's `schedules` hook: turns `schedule_buy` / `cancel_schedule` Actions into store
  * calls. `sweepToWallet` defaults to false; the wallet-pairing flow (M7) turns it on per user.
  */
-export function schedulesHook(store: ScheduleStore, opts: { sweepToWallet?: boolean } = {}) {
+export function schedulesHook(
+  store: ScheduleStore,
+  opts: {
+    sweepToWallet?: boolean
+    /** M11: the user these hooks serve (for `list`) and where pledges/follows are recorded. */
+    userId?: string
+    supporterKey?: string
+    campaigns?: Pick<CampaignStore, "setPledge" | "follow" | "get">
+  } = {},
+) {
   return {
+    async list(): Promise<ScheduleSummary[]> {
+      if (!opts.userId) return []
+      return (await store.listForUser(opts.userId)).map((s) => ({
+        id: s.id,
+        kind: s.kind,
+        cron: s.cron,
+        active: s.active,
+        lastRunAt: s.lastRunAt,
+        summary:
+          s.kind === "give"
+            ? `Give ${s.usdCents > 0n ? `$${(s.usdCents / 100n).toString()}` : `${s.estimatedSats.toLocaleString("en-US")} sats`} to ${s.recipientSlug} (${s.purpose ?? "gift"}${s.campaignSlug ? `, campaign ${s.campaignSlug}` : ""})` // money-ok: label
+            : s.kind === "sweep"
+              ? `Sweep above ${s.keepSats ?? 0n} sats to cold storage`
+              : `Buy $${(s.usdCents / 100n).toString()} on ${s.exchange}`, // money-ok: label
+      }))
+    },
     async create(
       a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
     ): Promise<string> {
@@ -190,10 +229,24 @@ export function schedulesHook(store: ScheduleStore, opts: { sweepToWallet?: bool
           recipientName: a.recipientName,
           purpose: a.purpose,
           verified: a.verified,
+          campaignSlug: a.campaignSlug,
+          supporterName: a.supporterName,
           cron: a.cron,
           estimatedSats: a.amountSats,
           sweepToWallet: false,
         })
+        if (a.campaignSlug && opts.campaigns && opts.supporterKey) {
+          await opts.campaigns.setPledge({
+            scheduleId: s.id,
+            campaignSlug: a.campaignSlug,
+            supporterKey: opts.supporterKey,
+            amountSats: a.amountSats,
+            usdCents: a.usdCents,
+            cron: a.cron,
+            active: true,
+          })
+          await opts.campaigns.follow(a.campaignSlug, userId)
+        }
         return s.id
       }
       const s =
@@ -222,7 +275,20 @@ export function schedulesHook(store: ScheduleStore, opts: { sweepToWallet?: bool
       return s.id
     },
     async cancel(id: string): Promise<void> {
+      const s = await store.get(id)
+      if (opts.userId && s && s.userId !== opts.userId) throw new Error("not your schedule")
       await store.cancel(id)
+      if (s?.campaignSlug && opts.campaigns && opts.supporterKey) {
+        await opts.campaigns.setPledge({
+          scheduleId: s.id,
+          campaignSlug: s.campaignSlug,
+          supporterKey: opts.supporterKey,
+          amountSats: s.estimatedSats,
+          usdCents: s.usdCents > 0n ? s.usdCents : undefined,
+          cron: s.cron,
+          active: false,
+        })
+      }
     },
   }
 }

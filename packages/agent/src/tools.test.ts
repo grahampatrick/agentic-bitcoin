@@ -177,7 +177,14 @@ function sampleInput(name: string): Record<string, unknown> {
     case "find_recipient":
       return { query: "church" }
     case "give":
-      return { recipient_slug: "grace-fellowship", amount_sats: 1000, purpose: "tithe", note: "" }
+      return {
+        recipient_slug: "grace-fellowship",
+        amount_sats: 1000,
+        purpose: "tithe",
+        note: "",
+        campaign_slug: "",
+        supporter_name: "",
+      }
     case "schedule_give":
       return {
         recipient_slug: "grace-fellowship",
@@ -185,7 +192,13 @@ function sampleInput(name: string): Record<string, unknown> {
         usd_cents: 0,
         cron: "0 14 * * 0",
         purpose: "tithe",
+        campaign_slug: "",
+        supporter_name: "",
       }
+    case "list_schedules":
+      return {}
+    case "giving_summary":
+      return { year: 2026 }
     case "sweep_to_cold":
       return {
         address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",

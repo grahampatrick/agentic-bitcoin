@@ -7,6 +7,7 @@
  */
 import { type Action, actionHash, isSpend } from "./action"
 import { parseAddress } from "./address"
+import type { CampaignReader, ContributionSink } from "./campaign"
 import {
   type LedgerEntry,
   type LedgerStore,
@@ -17,6 +18,7 @@ import {
 import type { Cents } from "./money"
 import { type Decision, type EvaluateContext, type Policy, evaluate, windowStart } from "./policy"
 import { type Order, RailError, type Rails } from "./rails"
+import { givingRows } from "./recipient"
 import type { RecipientReader } from "./recipient"
 
 export interface Confirmation {
@@ -49,9 +51,27 @@ export interface ExecuteInput {
       a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
     ): Promise<string>
     cancel(id: string): Promise<void>
+    /** M11: the user's own schedules, summarized for the model. */
+    list?(): Promise<ScheduleSummary[]>
   }
+  /** M11: campaigns, for find_recipient results. */
+  campaigns?: CampaignReader
+  /** M11: where successful gifts to a campaign are recorded (deduped by payment hash). */
+  contributions?: ContributionSink
+  /** Opaque per-user key for supporter counts; never the user id. */
+  supporterKey?: string
   /** M9: the user-scoped recipient directory, for `find_recipient`. */
   recipients?: RecipientReader
+}
+
+export interface ScheduleSummary {
+  id: string
+  kind: string
+  cron: string
+  /** One human line: "Buy $25 on strike", "Give 1,000 sats to grace-fellowship (tithe)". */
+  summary: string
+  active: boolean
+  lastRunAt: string | null
 }
 
 export type ExecuteResult =
@@ -179,10 +199,58 @@ async function dispatch(
         amountSats: action.amountSats,
         idempotencyKey: action.idempotencyKey,
       })
+      if (action.campaignSlug && input.contributions) {
+        try {
+          await input.contributions.record({
+            campaignSlug: action.campaignSlug,
+            paymentHash: p.paymentHash,
+            amountMsats: action.amountSats * 1000n,
+            at: (input.now ?? (() => new Date()))().toISOString(),
+            source: "chat",
+            supporterKey: input.supporterKey,
+            supporterName: action.supporterName,
+          })
+        } catch {
+          /* the payment succeeded; the campaign tally is best-effort and recomputable from ledgers */
+        }
+      }
       return {
-        result: { ...p, recipientSlug: action.recipientSlug },
+        result: { ...p, recipientSlug: action.recipientSlug, campaignSlug: action.campaignSlug },
         preimage: p.preimage,
-        detail: `${action.recipientSlug} · fee ${p.feeSats} sats`,
+        detail: `${action.recipientSlug}${action.campaignSlug ? ` (${action.campaignSlug})` : ""} · fee ${p.feeSats} sats`,
+      }
+    }
+    case "list_schedules": {
+      const s = need(schedules, "schedules")
+      const list = s.list ? await s.list() : []
+      return { result: { schedules: list }, detail: `${list.length} schedules` }
+    }
+    case "giving_summary": {
+      const rows = givingRows(foldEntries(await input.ledger.events()), action.year)
+      const byRecipient = new Map<
+        string,
+        { recipientSlug: string; recipientName: string; sats: bigint; gifts: number }
+      >()
+      for (const r of rows) {
+        const e = byRecipient.get(r.recipientSlug) ?? {
+          recipientSlug: r.recipientSlug,
+          recipientName: r.recipientName,
+          sats: 0n,
+          gifts: 0,
+        }
+        e.sats += r.sats
+        e.gifts++
+        byRecipient.set(r.recipientSlug, e)
+      }
+      const totalSats = rows.reduce((a, r) => a + r.sats, 0n)
+      return {
+        result: {
+          year: action.year,
+          totalSats,
+          gifts: rows.length,
+          byRecipient: [...byRecipient.values()],
+        },
+        detail: `${rows.length} gifts, ${totalSats} sats`,
       }
     }
     case "schedule_give": {
@@ -192,17 +260,35 @@ async function dispatch(
     }
     case "find_recipient": {
       const r = need(input.recipients, "recipients")
-      const recipients = (await r.search(action.query)).map((x) => ({
-        slug: x.slug,
-        kind: x.kind,
-        name: x.name,
-        lightningAddress: x.lightningAddress,
-        verified: x.verified !== null,
-        website: x.website,
-        country: x.country,
-        description: x.description,
-        private: !!x.ownerUserId,
-      }))
+      const found = await r.search(action.query)
+      const recipients = []
+      for (const x of found) {
+        const campaigns = input.campaigns
+          ? (await input.campaigns.listForRecipient(x.slug))
+              .filter((c) => c.active)
+              .map((c) => ({
+                slug: c.slug,
+                title: c.title,
+                story: c.story,
+                goal:
+                  "satsTotal" in c.goal
+                    ? `${c.goal.satsTotal} sats total`
+                    : `$${(c.goal.usdCentsPerMonth / 100n).toString()} per month`, // money-ok: label
+              }))
+          : []
+        recipients.push({
+          slug: x.slug,
+          kind: x.kind,
+          name: x.name,
+          lightningAddress: x.lightningAddress,
+          verified: x.verified !== null,
+          website: x.website,
+          country: x.country,
+          description: x.description,
+          private: !!x.ownerUserId,
+          campaigns,
+        })
+      }
       return { result: { recipients }, detail: `${recipients.length} results` }
     }
     case "pay_address": {

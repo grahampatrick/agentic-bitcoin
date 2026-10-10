@@ -71,6 +71,8 @@ gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.e
 Receiving: a church, missionary or creator onboards at `/receive` with a Lightning address or a
 receive-only wallet connection and gets `slug@<host>`, `/give/<slug>`, `/tip/<slug>` and a tip button;
 every invoice is minted by their own wallet (ADR-0014). The operator lists them with `/verify <slug>`.
+Campaigns: a recipient opens a goal from their dashboard; supporters pledge from chat (“support
+ortiz-family $25 a month”), follow updates with `/follow`, and see progress at `/campaigns/<slug>` (ADR-0015).
 
 ### Self-host with Docker
 
@@ -90,7 +92,7 @@ pnpm build       # next build
 ## Layout
 
 ```
-apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /receive, LNURL-pay, /api/*
+apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /receive, LNURL-pay, /api/*
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
 packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, LND on-chain, secrets
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)

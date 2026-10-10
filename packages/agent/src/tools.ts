@@ -8,6 +8,7 @@
  */
 import {
   type Action,
+  type Campaign,
   type Cents,
   GIVE_PURPOSES,
   type GivePurpose,
@@ -253,8 +254,21 @@ export const TOOLS: readonly ToolSpec[] = [
           enum: [...GIVE_PURPOSES],
         },
         note: str("Optional note to the recipient, or an empty string"),
+        campaign_slug: str(
+          "Campaign slug from find_recipient results when the gift supports a campaign, else an empty string",
+        ),
+        supporter_name: str(
+          "First name the user chose to show the recipient, or an empty string (anonymous)",
+        ),
       },
-      required: ["recipient_slug", "amount_sats", "purpose", "note"],
+      required: [
+        "recipient_slug",
+        "amount_sats",
+        "purpose",
+        "note",
+        "campaign_slug",
+        "supporter_name",
+      ],
       additionalProperties: false,
     },
     strict: true,
@@ -275,8 +289,41 @@ export const TOOLS: readonly ToolSpec[] = [
           description: "tithe, offering, support, tip, or gift",
           enum: [...GIVE_PURPOSES],
         },
+        campaign_slug: str(
+          "Campaign slug from find_recipient results when the pledge supports a campaign, else an empty string",
+        ),
+        supporter_name: str(
+          "First name the user chose to show the recipient, or an empty string (anonymous)",
+        ),
       },
-      required: ["recipient_slug", "amount_sats", "usd_cents", "cron", "purpose"],
+      required: [
+        "recipient_slug",
+        "amount_sats",
+        "usd_cents",
+        "cron",
+        "purpose",
+        "campaign_slug",
+        "supporter_name",
+      ],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "list_schedules",
+    description:
+      "List the user's recurring actions (buys, sweeps, gifts and pledges) with their ids, so one can be cancelled with cancel_schedule. Read-only.",
+    input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  {
+    name: "giving_summary",
+    description:
+      "How much the user has given in a year, in total and per recipient, from their own ledger. Read-only.",
+    input_schema: {
+      type: "object",
+      properties: { year: int("Four-digit year, e.g. 2026", 2000) },
+      required: ["year"],
       additionalProperties: false,
     },
     strict: true,
@@ -365,6 +412,8 @@ export interface ToolContext {
    * user may give to it. `null` = no such recipient visible to the user; undefined = not looked up.
    */
   recipient?: { recipient: Recipient; trusted: boolean } | null
+  /** For give / schedule_give with a campaign_slug: the campaign resolved server-side (null = not found). */
+  campaign?: Campaign | null
 }
 
 /** Headroom over the quoted sats for merchant orders: 1% + 10 sats, so a fair quote fits under the cap. */
@@ -510,6 +559,25 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         throw new ToolInputError(`${name}: resolved recipient does not match slug`)
       const purpose = input.purpose as GivePurpose
       if (!GIVE_PURPOSES.includes(purpose)) throw new ToolInputError(`${name}: bad purpose`)
+      const campaignSlug = String(input.campaign_slug ?? "").toLowerCase() || undefined
+      if (campaignSlug) {
+        if (!ctx.campaign)
+          throw new ToolInputError(
+            `${name}: no campaign "${campaignSlug}" for this recipient; use a campaign slug from find_recipient`,
+          )
+        if (
+          ctx.campaign.slug !== campaignSlug ||
+          ctx.campaign.recipientSlug !== r.slug ||
+          !ctx.campaign.active
+        )
+          throw new ToolInputError(
+            `${name}: campaign "${campaignSlug}" does not belong to ${r.slug} or is closed`,
+          )
+      }
+      const supporterName =
+        String(input.supporter_name ?? "")
+          .trim()
+          .slice(0, 40) || undefined
       const common = {
         ...base,
         recipientSlug: r.slug,
@@ -517,6 +585,8 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         address: r.lightningAddress,
         verified: trusted,
         purpose,
+        campaignSlug,
+        supporterName,
       }
       if (name === "give") {
         const amountSats: Sats = BigInt(input.amount_sats as number)
@@ -540,6 +610,10 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         cron: input.cron as string,
       }
     }
+    case "list_schedules":
+      return { kind: "list_schedules", ...base }
+    case "giving_summary":
+      return { kind: "giving_summary", ...base, year: input.year as number }
     case "confirm_action":
       return null
   }

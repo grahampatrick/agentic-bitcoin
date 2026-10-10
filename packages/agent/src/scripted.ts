@@ -93,14 +93,61 @@ export function intentOf(text: string): { name: string; input: Record<string, un
             : `0 14 * * ${dow[when] ?? 0}`
       return {
         name: "schedule_give",
-        input: { recipient_slug: slug, amount_sats: amount, usd_cents: 0, cron, purpose },
+        input: {
+          recipient_slug: slug,
+          amount_sats: amount,
+          usd_cents: 0,
+          cron,
+          purpose,
+          campaign_slug: "",
+          supporter_name: "",
+        },
       }
     }
     return {
       name: "give",
-      input: { recipient_slug: slug, amount_sats: amount, purpose, note: give[4] ?? "" },
+      input: {
+        recipient_slug: slug,
+        amount_sats: amount,
+        purpose,
+        note: give[4] ?? "",
+        campaign_slug: "",
+        supporter_name: "",
+      },
     }
   }
+  // "support the ortiz family $25 a month" → a dollar pledge, re-priced each time
+  const pledge =
+    /^(?:support|give(?: to)?|sponsor)\s+(?:the\s+)?(.+?)\s+(?:with\s+)?\$\s?([\d.,_]+)\s+(?:a|per|every|each)\s+(month|week)\s*$/i.exec(
+      t,
+    )
+  if (pledge) {
+    const slug = (pledge[1] ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+    return {
+      name: "schedule_give",
+      input: {
+        recipient_slug: slug,
+        amount_sats: 0,
+        usd_cents: dollarsToCents(pledge[2] ?? "0"),
+        cron: pledge[3]?.toLowerCase() === "week" ? "0 14 * * 1" : "0 14 1 * *",
+        purpose: "support",
+        campaign_slug: "",
+        supporter_name: "",
+      },
+    }
+  }
+  if (
+    /\b(pause|stop|cancel|list|show|what)\b.*\b(my\s+)?(support|pledges?|schedules?|recurring|subscriptions?)\b/i.test(
+      t,
+    ) &&
+    !/sch_/.test(t)
+  )
+    return { name: "list_schedules", input: {} }
+  const given = /\bhow much\s+(?:have|did)\s+i\s+(?:given|give|gave)\b(?:.*?\b(20\d\d)\b)?/i.exec(t)
+  if (given) return { name: "giving_summary", input: { year: given[1] ? Number(given[1]) : 2026 } }
   if (
     /\b(find|which|what|show|list|search)\b.*\b(church|churches|missionar(?:y|ies)|recipients?|ministr(?:y|ies)|give to)\b/i.test(
       t,
@@ -290,10 +337,29 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
         name: string
         kind: string
         verified: boolean
+        campaigns?: { slug: string; title: string; goal: string }[]
       }[]
+      const strip = (s: string) => s.replace(/<\/?untrusted>/g, "")
       return rs.length
-        ? `You can give to: ${rs.map((x) => `${x.name.replace(/<\/?untrusted>/g, "")} (${x.slug}, ${x.kind}${x.verified ? ", verified" : ""})`).join("; ")}. Say e.g. “give 1000 sats to ${rs[0]?.slug}”.`
+        ? `You can give to: ${rs.map((x) => `${strip(x.name)} (${x.slug}, ${x.kind}${x.verified ? ", verified" : ""})${x.campaigns?.length ? ` — campaign: ${x.campaigns.map((c) => `${strip(c.title)} [${c.slug}], ${c.goal}`).join("; ")}` : ""}`).join("; ")}. Say e.g. “give 1000 sats to ${rs[0]?.slug}”.`
         : "No recipient matched. Add your own with /recipient add <name> <lightning address>."
+    }
+    case "list_schedules": {
+      const ss = (result.schedules ?? []) as { id: string; summary: string; active: boolean }[]
+      const live = ss.filter((s) => s.active)
+      return live.length
+        ? `Your recurring actions: ${live.map((s) => `${s.summary} (${s.id})`).join("; ")}. Cancel one with “cancel ${live[0]?.id}”.`
+        : "You have no recurring actions."
+    }
+    case "giving_summary": {
+      const by = (result.byRecipient ?? []) as {
+        recipientName: string
+        sats: bigint | string
+        gifts: number
+      }[]
+      return by.length
+        ? `In ${result.year} you gave ${Number(result.totalSats).toLocaleString("en-US")} sats in ${result.gifts} gifts: ${by.map((b) => `${b.recipientName} ${Number(b.sats).toLocaleString("en-US")} sats (${b.gifts})`).join("; ")}. /statement ${result.year} gives you the CSV.`
+        : `No gifts recorded in ${result.year}.`
     }
     default:
       return `Done. ${r.summary ?? ""}`.trim()

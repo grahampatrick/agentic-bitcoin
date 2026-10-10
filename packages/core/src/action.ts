@@ -140,6 +140,10 @@ export interface Give extends Base {
   note?: string
   /** USD cents at request time, for the giving statement. */
   fiatCentsAtRequest?: Cents
+  /** M11: the campaign this gift supports, if any. */
+  campaignSlug?: string
+  /** Opt-in first name shown to the recipient and on the campaign page; data. */
+  supporterName?: string
 }
 
 export interface ScheduleGive extends Base {
@@ -153,6 +157,8 @@ export interface ScheduleGive extends Base {
   usdCents?: Cents
   cron: string
   purpose: GivePurpose
+  campaignSlug?: string
+  supporterName?: string
 }
 
 export interface FindRecipient extends Base {
@@ -160,10 +166,23 @@ export interface FindRecipient extends Base {
   query: string
 }
 
+/** The user's recurring actions (buys, sweeps, gifts), so they can pause or change them. */
+export interface ListSchedules extends Base {
+  kind: "list_schedules"
+}
+
+/** What the user has given: per recipient and in total, for a year. Read-only, from the ledger. */
+export interface GivingSummary extends Base {
+  kind: "giving_summary"
+  year: number
+}
+
 export type Action =
   | Give
   | ScheduleGive
   | FindRecipient
+  | ListSchedules
+  | GivingSummary
   | PayInvoice
   | PayAddress
   | MakeInvoice
@@ -195,6 +214,8 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   give: "wallet",
   schedule_give: "wallet",
   find_recipient: "wallet",
+  list_schedules: "wallet",
+  giving_summary: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -224,6 +245,8 @@ export function spendSats(action: Action): Sats {
     case "cancel_schedule":
     case "search_products":
     case "find_recipient":
+    case "list_schedules":
+    case "giving_summary":
       return 0n
   }
 }
@@ -252,6 +275,8 @@ export function destinationOf(action: Action): string | null {
     case "cancel_schedule":
     case "search_products":
     case "find_recipient":
+    case "list_schedules":
+    case "giving_summary":
       return null
   }
 }
@@ -289,11 +314,15 @@ export function describeAction(action: Action): string {
     case "pay_l402":
       return `Pay ${action.host} for an API request`
     case "give":
-      return `Give to ${action.recipientName} <${action.address}> (${action.purpose})${action.note ? ` "${action.note}"` : ""}`
+      return `Give to ${action.recipientName} <${action.address}> (${action.purpose}${action.campaignSlug ? `, campaign ${action.campaignSlug}` : ""})${action.note ? ` "${action.note}"` : ""}`
     case "schedule_give":
-      return `Schedule giving to ${action.recipientName} <${action.address}> (${action.purpose}, ${action.cron})`
+      return `Schedule giving to ${action.recipientName} <${action.address}> (${action.purpose}${action.campaignSlug ? `, campaign ${action.campaignSlug}` : ""}, ${action.cron})`
     case "find_recipient":
       return `Find a recipient matching "${action.query}"`
+    case "list_schedules":
+      return "List recurring actions"
+    case "giving_summary":
+      return `Summarize giving in ${action.year}`
   }
 }
 

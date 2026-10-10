@@ -46,6 +46,14 @@ They are **unlisted and cannot receive from our users until verified**: the oper
 address with them directly and runs `/verify <slug>` in the bot (`/verify` alone lists pending
 entries; `/verify revoke <slug>` undoes it). See ADR-0014.
 
+## Campaigns
+
+From the dashboard a recipient can open a **campaign**: a goal supporters pledge to, either dollars
+per month or a total in sats, with a story and updates. Supporters pledge from chat ("support
+ortiz-family $25 a month"), give once from the campaign page, or follow updates with `/follow <slug>`.
+Progress is computed from gifts we observed (deduplicated by payment hash) plus any the recipient
+reports from outside Lightning, which are labelled as reported. See ADR-0015.
+
 ## Operator checklist for adding a church or missionary
 
 1. Get their Lightning address from them directly, not from a web page.

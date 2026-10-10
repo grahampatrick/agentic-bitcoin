@@ -20,6 +20,7 @@ type Shape = {
   secrets: Record<string, string>
   history: Record<string, string>
   recipients: Record<string, string>
+  campaigns: Record<string, string>
 }
 
 const enc = (v: unknown) => JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x))
@@ -33,11 +34,12 @@ export class FileState {
   constructor(private readonly path: string) {
     this.data = existsSync(path)
       ? (JSON.parse(readFileSync(path, "utf8")) as Shape)
-      : { policies: {}, secrets: {}, history: {}, recipients: {} }
+      : { policies: {}, secrets: {}, history: {}, recipients: {}, campaigns: {} }
     this.data.policies ??= {}
     this.data.secrets ??= {}
     this.data.history ??= {}
     this.data.recipients ??= {}
+    this.data.campaigns ??= {}
   }
   keys(bucket: keyof Shape): string[] {
     return Object.keys(this.data[bucket])

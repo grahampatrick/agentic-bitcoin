@@ -25,6 +25,9 @@ export interface Schedule {
   purpose?: GivePurpose
   /** Trust at creation; the runner re-checks it against the directory before every firing. */
   verified?: boolean
+  /** M11: the campaign a recurring gift supports, and the supporter's opt-in name. */
+  campaignSlug?: string
+  supporterName?: string
   cron: string
   /** Sats estimate captured at creation, re-estimated at each run from the live price when available. */
   estimatedSats: Sats

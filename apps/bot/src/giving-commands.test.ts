@@ -6,11 +6,12 @@ import {
 } from "@agentic-bitcoin/agent"
 import {
   FakeWalletRail,
+  InMemoryCampaignStore,
   InMemoryLedgerStore,
   InMemoryRecipientStore,
   recipientsForUser,
 } from "@agentic-bitcoin/core"
-import { PRICE, RECIPIENTS, clockAt } from "@agentic-bitcoin/fixtures"
+import { CAMPAIGNS, PRICE, RECIPIENTS, clockAt } from "@agentic-bitcoin/fixtures"
 import { parseKey } from "@agentic-bitcoin/rails"
 import { describe, expect, it } from "vitest"
 import { Dispatcher } from "./dispatcher"
@@ -29,6 +30,7 @@ function setup(probeOk = true) {
   const surface = new FakeSurface()
   const policies = new InMemoryPolicyStore()
   const recipients = new InMemoryRecipientStore(Object.values(RECIPIENTS))
+  const campaigns = new InMemoryCampaignStore(Object.values(CAMPAIGNS))
   const ledger = new InMemoryLedgerStore()
   const policy = {
     dailyCapSats: 100_000n,
@@ -59,10 +61,11 @@ function setup(probeOk = true) {
     recipients,
     probeAddress: async () => (probeOk ? { ok: true } : { ok: false, error: "HTTP 404" }),
     operators: ["op"],
+    campaigns,
     now: clockAt("2026-10-11T12:00:00.000Z"),
   })
   const last = () => surface.sent.at(-1)?.m.text ?? ""
-  return { surface, policies, recipients, ledger, d, last }
+  return { surface, policies, recipients, campaigns, ledger, d, last }
 }
 const withPolicy = async (s: ReturnType<typeof setup>, u: string) =>
   s.policies.set(u, {
@@ -211,5 +214,33 @@ describe("/verify (operator only)", () => {
     expect((await s.recipients.get("new-church"))?.verified).toBeNull()
     await s.surface.receive({ userId: "op", text: "/verify my-pastor" })
     expect(s.last()).toContain("No such directory recipient")
+  })
+})
+
+describe("/campaigns, /follow, /unfollow and update delivery", () => {
+  it("lists campaigns with progress and toggles following", async () => {
+    const s = setup()
+    await withPolicy(s, "u1")
+    await s.d.start()
+    await s.campaigns.addContribution({
+      campaignSlug: "grace-well",
+      paymentHash: "h1",
+      amountMsats: 5_000_000n,
+      at: "2026-10-10T00:00:00Z",
+      source: "web",
+    })
+    await s.surface.receive({ userId: "u1", text: "/campaigns" })
+    expect(s.last()).toContain("A well for the village — grace-well")
+    expect(s.last()).toContain("5,000 sats raised · 1 supporter")
+    expect(s.last()).toContain("$1200/month")
+    await s.surface.receive({ userId: "u1", text: "/follow grace-well" })
+    expect(s.last()).toContain("Following A well for the village")
+    expect(await s.campaigns.followers("grace-well")).toEqual(["u1"])
+    await s.surface.receive({ userId: "u1", text: "/campaigns" })
+    expect(s.last()).toContain("following")
+    await s.surface.receive({ userId: "u1", text: "/unfollow grace-well" })
+    expect(await s.campaigns.followers("grace-well")).toEqual([])
+    await s.surface.receive({ userId: "u1", text: "/follow nope" })
+    expect(s.last()).toContain("Which campaign?")
   })
 })

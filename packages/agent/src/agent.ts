@@ -8,7 +8,10 @@
  */
 import {
   type Action,
+  type Campaign,
+  type CampaignReader,
   type Confirmation,
+  type ContributionSink,
   type ExecuteResult,
   type LedgerStore,
   type Policy,
@@ -63,6 +66,11 @@ export interface UserContext {
   delivery?: { pollMs: number; maxPolls: number; sleep?: (ms: number) => Promise<void> }
   /** M9: the user-scoped giving directory. Without it, give tools report "not available". */
   recipients?: RecipientReader
+  /** M11: campaigns (read) and where this user's campaign gifts are tallied. */
+  campaigns?: CampaignReader
+  contributions?: ContributionSink
+  /** Opaque per-user key for supporter counts; never the user id. */
+  supporterKey?: string
 }
 
 export interface AgentDeps {
@@ -187,19 +195,35 @@ export async function handleToolCall(
   opts: { callId: string; price?: PriceSnapshot; now: () => Date },
 ): Promise<ToolOutcome> {
   let action: Action | null
+  let toolInput = input
   try {
     // give / schedule_give: resolve the slug server-side so the Action carries the real recipient.
     let recipient: { recipient: Recipient; trusted: boolean } | null | undefined
+    let campaign: Campaign | null | undefined
     if ((name === "give" || name === "schedule_give") && ctx.recipients) {
-      const slug = String((input as { recipient_slug?: unknown })?.recipient_slug ?? "")
+      const inp = (input ?? {}) as Record<string, unknown>
+      const slug = String(inp.recipient_slug ?? "")
       const r = slug ? await ctx.recipients.get(slug.toLowerCase()) : null
       recipient = r ? { recipient: r, trusted: isTrustedRecipient(r, ctx.userId) } : null
+      if (r && ctx.campaigns) {
+        const cslug = String(inp.campaign_slug ?? "").toLowerCase()
+        if (cslug) campaign = await ctx.campaigns.get(cslug)
+        else {
+          // No campaign named: when the recipient runs exactly one active campaign, the gift supports it.
+          const active = (await ctx.campaigns.listForRecipient(r.slug)).filter((c) => c.active)
+          if (active.length === 1 && active[0]) {
+            campaign = active[0]
+            toolInput = { ...inp, campaign_slug: active[0].slug }
+          }
+        }
+      }
     }
-    action = toolToAction(name, input, {
+    action = toolToAction(name, toolInput, {
       callId: opts.callId,
       requestedBy: "agent",
       price: opts.price,
       recipient,
+      campaign,
     })
   } catch (err) {
     const msg = err instanceof ToolInputError ? err.message : "invalid tool input"
@@ -231,6 +255,9 @@ export async function handleToolCall(
     seal: ctx.seal,
     delivery: ctx.delivery,
     recipients: ctx.recipients,
+    campaigns: ctx.campaigns,
+    contributions: ctx.contributions,
+    supporterKey: ctx.supporterKey,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -268,6 +295,9 @@ export async function confirmPending(
     seal: ctx.seal,
     delivery: ctx.delivery,
     recipients: ctx.recipients,
+    campaigns: ctx.campaigns,
+    contributions: ctx.contributions,
+    supporterKey: ctx.supporterKey,
     now: opts.now,
     context: { price: opts.price },
     confirmation,
@@ -349,6 +379,13 @@ function sanitize(result: unknown): unknown {
       const o = { ...(x as Record<string, unknown>) }
       for (const k of ["name", "description", "website"])
         if (typeof o[k] === "string") o[k] = quoteUntrusted(o[k] as string, 300)
+      if (Array.isArray(o.campaigns))
+        o.campaigns = o.campaigns.map((c) => {
+          const cc = { ...(c as Record<string, unknown>) }
+          for (const k of ["title", "story"])
+            if (typeof cc[k] === "string") cc[k] = quoteUntrusted(cc[k] as string, 300)
+          return cc
+        })
       return o
     })
   }

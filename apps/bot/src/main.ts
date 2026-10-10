@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 /**
  * Bot entrypoint. SURFACE=telegram|signal. With SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY the
  * stores are durable; otherwise everything is in memory (dev). NWC_URL is the single dev wallet
@@ -19,6 +20,7 @@ import {
   type PriceSnapshot,
   type RecipientStore,
   type WalletRail,
+  contributionSink,
   recipientsForUser,
 } from "@agentic-bitcoin/core"
 import {
@@ -39,6 +41,7 @@ import {
   schedulesHook,
 } from "@agentic-bitcoin/scheduler"
 import { Dispatcher } from "./dispatcher"
+import { FileCampaignStore, SupabaseCampaignStore, deliverCampaignUpdates } from "./store/campaigns"
 import {
   FileHistoryStore,
   FilePolicyStore,
@@ -124,6 +127,17 @@ if (env.RECIPIENTS_FILE) {
   const n = await seedRecipients(recipientStore, env.RECIPIENTS_FILE)
   console.error(`[bot] giving directory: ${n} recipients loaded from ${env.RECIPIENTS_FILE}`)
 }
+const campaignStore = db
+  ? new SupabaseCampaignStore(db)
+  : fileState
+    ? new FileCampaignStore(fileState)
+    : null
+/** Opaque supporter identity for campaign counts: a hash, never the user id (salted by SECRETS_KEY when set). */
+const supporterKeyOf = (userId: string) =>
+  createHash("sha256")
+    .update(`supporter:${env.SECRETS_KEY ?? ""}:${userId}`)
+    .digest("hex")
+    .slice(0, 16)
 const pending: PendingStore = new InMemoryPendingStore()
 const schedules = db ? new SupabaseScheduleStore(db) : new InMemoryScheduleStore()
 const secretsKey = env.SECRETS_KEY ? parseKey(env.SECRETS_KEY) : null
@@ -187,8 +201,16 @@ async function resolveContext(userId: string): Promise<UserContext> {
     // gift-card codes are sealed into the ledger only when SECRETS_KEY exists; otherwise never stored
     seal: secretsKey ? (s: string) => encryptSecret(s, secretsKey) : undefined,
     pending,
-    schedules: schedulesHook(schedules, { sweepToWallet: env.SWEEP_TO_WALLET === "1" }),
+    schedules: schedulesHook(schedules, {
+      sweepToWallet: env.SWEEP_TO_WALLET === "1",
+      userId,
+      supporterKey: supporterKeyOf(userId),
+      campaigns: campaignStore ?? undefined,
+    }),
     recipients: recipientsForUser(recipientStore, userId),
+    campaigns: campaignStore ?? undefined,
+    contributions: campaignStore ? contributionSink(campaignStore) : undefined,
+    supporterKey: supporterKeyOf(userId),
   }
 }
 
@@ -260,6 +282,7 @@ const dispatcher = new Dispatcher({
     .map((u) => u.trim())
     .filter(Boolean),
   siteUrl: env.SITE_URL ?? "https://agentic-bitcoin.vercel.app",
+  campaigns: campaignStore ?? undefined,
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())
@@ -277,7 +300,13 @@ const runSchedules = async () => {
       schedules,
       resolve: async (userId) => {
         const c = await resolveContext(userId)
-        return { policy: c.policy, ledger: c.ledger, rails: c.rails }
+        return {
+          policy: c.policy,
+          ledger: c.ledger,
+          rails: c.rails,
+          contributions: c.contributions,
+          supporterKey: c.supporterKey,
+        }
       },
       price,
       sweep,
@@ -291,6 +320,21 @@ const runSchedules = async () => {
     }
   } catch (err) {
     console.error("[scheduler] run failed", err)
+  }
+  // M11: campaign updates to followers, once each.
+  if (campaignStore) {
+    try {
+      const n = await deliverCampaignUpdates(
+        campaignStore,
+        (u, text) => surface.send(u, { text }),
+        {
+          siteUrl: env.SITE_URL ?? "https://agentic-bitcoin.vercel.app",
+        },
+      )
+      if (n) console.error(`[campaigns] delivered ${n} update message(s)`)
+    } catch (err) {
+      console.error("[campaigns] delivery failed", err)
+    }
   }
 }
 setInterval(runSchedules, 60_000)

@@ -6,11 +6,14 @@
  */
 import { type AgentDeps, type UserContext, confirmPending, runTurn } from "@agentic-bitcoin/agent"
 import {
+  type CampaignStore,
   DEFAULT_POLICY,
   type Policy,
   type Recipient,
   type RecipientStore,
   SLUG_RE,
+  campaignProgress,
+  centsToSats,
   formatCents,
   formatSats,
   givingRows,
@@ -60,6 +63,8 @@ export interface DispatcherDeps {
   operators?: readonly string[]
   /** Public site, for links to /receive and /give pages. */
   siteUrl?: string
+  /** M11: campaigns (follow/unfollow, /campaigns). */
+  campaigns?: CampaignStore
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
   policies: PolicyStore
@@ -267,6 +272,24 @@ export class Dispatcher {
         return this.statement(userId, ctx, args, reply)
       case "/verify":
         return this.verify(userId, args, reply)
+      case "/campaigns":
+        return this.campaigns(userId, reply)
+      case "/follow":
+      case "/unfollow": {
+        const store = this.deps.campaigns
+        if (!store) return reply("Campaigns are not enabled on this server.")
+        const slug = args[0]?.toLowerCase()
+        const c = slug ? await store.get(slug) : null
+        if (!c) return reply("Which campaign? /campaigns lists them.")
+        if (cmd === "/follow") {
+          await store.follow(c.slug, userId)
+          return reply(
+            `Following ${c.title}: I will send you its updates here. /unfollow ${c.slug} to stop.`,
+          )
+        }
+        await store.unfollow(c.slug, userId)
+        return reply(`No more updates from ${c.title}.`)
+      }
       case "/receive":
         return reply(
           `Churches, missionaries and creators receive through their own wallet, never ours. Onboard at ${this.deps.siteUrl ?? "the website"}/receive — a Lightning address you already have, or a receive-only wallet connection. You get a give page, a tip page and a Lightning address; the operator verifies you before you appear in the directory.`,
@@ -393,6 +416,33 @@ export class Dispatcher {
     })
     return reply(
       `Saved ${name} as ${slug} (private to you). Say “give 1000 sats to ${slug}” or “give 5000 sats to ${slug} every month”.`,
+    )
+  }
+
+  private async campaigns(userId: string, reply: (t: string) => Promise<void>): Promise<void> {
+    const store = this.deps.campaigns
+    if (!store) return reply("Campaigns are not enabled on this server.")
+    const price = await this.deps.agent.price()
+    const active = await store.listActive()
+    if (!active.length)
+      return reply("No campaigns yet. Recipients create them from their dashboard on the website.")
+    const mine = new Set(await store.following(userId))
+    const lines: string[] = []
+    for (const c of active) {
+      const p = campaignProgress(
+        c,
+        await store.contributions(c.slug),
+        await store.pledges(c.slug),
+        {
+          satsPerUsdCent: price ? (cents) => centsToSats(cents, price) : undefined,
+        },
+      )
+      lines.push(
+        `• ${c.title} — ${c.slug} (for ${c.recipientSlug}): goal ${p.goalLabel}${p.percent !== null ? `, ${p.percent}%` : ""} · ${formatSats(p.raisedSats)} raised · ${p.supporters} supporter${p.supporters === 1 ? "" : "s"}${p.pledges ? ` · ${p.pledges} pledge${p.pledges === 1 ? "" : "s"}` : ""}${mine.has(c.slug) ? " · following" : ""}`,
+      )
+    }
+    return reply(
+      `${lines.join("\n")}\nSay e.g. “support ${active[0]?.recipientSlug} $25 a month” or “give 5000 sats to ${active[0]?.recipientSlug}”. /follow <slug> for updates.`,
     )
   }
 
@@ -530,7 +580,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

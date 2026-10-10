@@ -1,4 +1,6 @@
+import { CampaignTools } from "@/components/CampaignTools"
 import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
+import { getCampaignStore } from "@/lib/campaigns/store"
 import { dashboardFor, siteBaseUrl, tipSnippet } from "@/lib/receive/service"
 import { getReceiveStore } from "@/lib/receive/store"
 import type { Metadata } from "next"
@@ -18,6 +20,17 @@ export default async function Dashboard({
   const { t } = await searchParams
   const base = siteBaseUrl()
   const dash = await dashboardFor({ store: getReceiveStore(), baseUrl: base }, slug, t ?? "")
+  const campaigns = dash
+    ? (await getCampaignStore().listForRecipient(dash.recipient.slug)).map((c) => ({
+        slug: c.slug,
+        title: c.title,
+        active: c.active,
+        goalLabel:
+          "satsTotal" in c.goal
+            ? `${c.goal.satsTotal.toLocaleString("en-US")} sats`
+            : `$${(c.goal.usdCentsPerMonth / 100n).toString()}/month`, // money-ok: label
+      }))
+    : []
   return (
     <>
       <SiteHeader />
@@ -63,6 +76,7 @@ export default async function Dashboard({
                 </li>
               ))}
             </ol>
+            <CampaignTools slug={dash.recipient.slug} token={t ?? ""} campaigns={campaigns} />
             <h2>Your tip button</h2>
             <pre className="receive__snippet">
               {tipSnippet(base, dash.recipient.slug, dash.recipient.name)}
