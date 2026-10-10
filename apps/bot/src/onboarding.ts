@@ -30,7 +30,7 @@ export function assessPairing(probe: WalletProbe, opts: { allowUnbudgeted: boole
       ok: false,
       error: `This connection cannot ${missing.join(", ")}. Create one with those permissions.`,
     }
-  if (!probe.budget && !opts.allowUnbudgeted) {
+  if (probe.budget === null && !opts.allowUnbudgeted) {
     return {
       ok: false,
       unbudgeted: true,
@@ -41,7 +41,9 @@ export function assessPairing(probe: WalletProbe, opts: { allowUnbudgeted: boole
   const b = probe.budget
   const budgetLine = b
     ? `Wallet budget ${formatSats(b.totalSats)} ${b.renewal} (${formatSats(b.usedSats)} used).`
-    : "Wallet budget: NONE (you overrode the check)."
+    : b === null
+      ? "Wallet budget: NONE (you overrode the check)."
+      : "This wallet does not report its budget, so I could not verify one: make sure you set a budget in the wallet app."
   return {
     ok: true,
     description: `Paired ${probe.alias ?? "your wallet"}${probe.network ? ` on ${probe.network}` : ""}. ${budgetLine}`,

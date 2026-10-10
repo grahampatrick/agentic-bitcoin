@@ -29,6 +29,11 @@ describe("assessPairing", () => {
       description: expect.stringContaining("NONE"),
     })
   })
+  it("accepts a wallet that cannot report a budget, with a warning", () => {
+    const r = assessPairing({ ...good, budget: undefined }, { allowUnbudgeted: false })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.description).toContain("could not verify")
+  })
   it("refuses a connection missing a required method", () => {
     expect(
       assessPairing({ ...good, methods: ["get_balance"] }, { allowUnbudgeted: false }),

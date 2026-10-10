@@ -44,6 +44,7 @@ export interface NwcClientLike {
     amount?: number
   }>
   getInfo?(): Promise<{ alias: string; network: string; methods: string[]; lud16?: string }>
+  getWalletServiceInfo?(): Promise<{ capabilities?: string[] }>
   getBudget?(): Promise<
     | { used_budget: number; total_budget: number; renews_at?: number; renewal_period: string }
     | Record<string, never>
@@ -213,28 +214,60 @@ export class NwcWalletRail implements WalletRail {
     return this.resolver(address, amountSats, memo)
   }
 
-  /** What the wallet says about this connection, for onboarding checks. Never the secret. */
+  /**
+   * What the wallet says about this connection, for onboarding checks. Never the secret.
+   * Resilient: capabilities come from the wallet's info event (no request round-trip), a balance
+   * read is the liveness test, and get_info / get_budget are asked only when advertised and are
+   * allowed to fail. `budget: undefined` means "could not verify", `null` means "none".
+   */
   async describeConnection(): Promise<{
     alias?: string
     network?: string
     methods?: string[]
     budget?: { usedSats: Sats; totalSats: Sats; renewal: string } | null
   }> {
-    const info = this.client.getInfo
-      ? await this.guard(() => this.client.getInfo?.() ?? Promise.resolve(undefined))
-      : undefined
-    let budget: { usedSats: Sats; totalSats: Sats; renewal: string } | null | undefined
-    if (this.client.getBudget) {
-      const b = await this.guard(() => this.client.getBudget?.() ?? Promise.resolve({}))
-      budget = isBudget(b)
-        ? {
-            usedSats: msatsToSats(b.used_budget),
-            totalSats: msatsToSats(b.total_budget),
-            renewal: b.renewal_period,
-          }
-        : null
+    // Capabilities from the wallet's info event: free (no request), and the only honest signal of
+    // which optional methods the wallet will answer. Absent → try everything, tolerate failure.
+    let caps: string[] | undefined
+    try {
+      caps = (await this.client.getWalletServiceInfo?.())?.capabilities?.filter(
+        (c) => c !== "notifications",
+      )
+    } catch {
+      caps = undefined
     }
-    return { alias: info?.alias, network: info?.network, methods: info?.methods, budget }
+    const supports = (m: string) => !caps || caps.includes(m)
+    // The real liveness check: every NIP-47 wallet answers get_balance.
+    await this.getBalance()
+    let alias: string | undefined
+    let network: string | undefined
+    let methods = caps
+    if (this.client.getInfo && supports("get_info")) {
+      try {
+        const info = await this.client.getInfo()
+        alias = info?.alias
+        network = info?.network
+        if (!methods && Array.isArray(info?.methods)) methods = info.methods
+      } catch {
+        /* optional */
+      }
+    }
+    let budget: { usedSats: Sats; totalSats: Sats; renewal: string } | null | undefined
+    if (this.client.getBudget && supports("get_budget")) {
+      try {
+        const b = await this.client.getBudget()
+        budget = isBudget(b)
+          ? {
+              usedSats: msatsToSats(b.used_budget),
+              totalSats: msatsToSats(b.total_budget),
+              renewal: b.renewal_period,
+            }
+          : null
+      } catch {
+        budget = undefined
+      }
+    }
+    return { alias, network, methods, budget }
   }
 
   close(): void {

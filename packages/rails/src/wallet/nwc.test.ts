@@ -74,6 +74,7 @@ class FakeClient implements NwcClientLike {
       fees_paid: s.fees_paid,
     }
   }
+  getWalletServiceInfo?: () => Promise<{ capabilities?: string[] }>
   async getInfo() {
     return { alias: "test-hub", network: "signet", methods: ["pay_invoice"] }
   }
@@ -283,6 +284,31 @@ describe("lookupInvoice and connection info", () => {
       preimage: "p".repeat(64),
     })
     await expect(rail.lookupInvoice("2".repeat(64))).rejects.toMatchObject({ code: "NOT_FOUND" })
+  })
+  it("describes a wallet that stays silent on get_info/get_budget (e.g. Coinos) instead of timing out", async () => {
+    const client = new FakeClient()
+    client.getWalletServiceInfo = async () => ({
+      capabilities: [
+        "get_balance",
+        "pay_invoice",
+        "make_invoice",
+        "lookup_invoice",
+        "notifications",
+      ],
+    })
+    client.getInfo = async () => {
+      throw new Error("never answers")
+    }
+    client.getBudget = async () => {
+      throw new Error("never answers")
+    }
+    const { rail } = make(client)
+    expect(await rail.describeConnection()).toEqual({
+      alias: undefined,
+      network: undefined,
+      methods: ["get_balance", "pay_invoice", "make_invoice", "lookup_invoice"],
+      budget: undefined,
+    })
   })
   it("describes the connection with a budget in sats", async () => {
     const { rail } = make()
