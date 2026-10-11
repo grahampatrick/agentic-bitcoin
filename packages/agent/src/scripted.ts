@@ -455,6 +455,14 @@ export class ScriptedLlmClient implements LlmClient {
       }
       return { stop_reason: "end_turn", content: [noAdvice] }
     }
+    if (/\btax(?:es|-?deductible|\s+deductible|\s+receipt)?\b/i.test(text)) {
+      const noTax: LlmContentBlock = {
+        type: "text",
+        text: "I can't tell you whether a gift is tax-deductible, and Agentic Bitcoin issues no receipts: the recipient does. Ask them, or a tax professional. I can still send the gift when you say an amount.",
+        citations: null,
+      }
+      return { stop_reason: "end_turn", content: [noTax] }
+    }
     const intent = intentOf(text)
     if (!intent || !req.tools.some((t) => t.name === intent.name)) {
       const help: LlmContentBlock = {

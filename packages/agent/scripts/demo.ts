@@ -22,36 +22,47 @@ console.log(
 )
 
 const GIVE_ONLY = process.argv.includes("--give")
-const script = GIVE_ONLY
+const MISSIONARY = process.argv.includes("--missionary")
+const script = MISSIONARY
   ? [
-      "which churches can I give to?",
-      "tithe 2000 sats to grace-fellowship",
-      "give 500 sats to new-church",
-      "support 10000 sats to the ortiz family every month",
+      "which missionaries can I support?",
+      "support the ortiz family $25 a month",
       "yes",
-      "give 300 sats to my pastor for lunch",
-      "how much should I tithe?",
+      "give 2000 sats to ortiz-family",
+      "what recurring gifts do I have set up?",
+      "how much have I given this year?",
+      "is giving to the ortiz family tax deductible?",
     ]
-  : [
-      "what's my balance?",
-      "pay 500 sats to gm@getalby.com for coffee",
-      "send 20000 sats to friend@walletofsatoshi.com",
-      "yes",
-      "pay 60000 sats to gm@getalby.com",
-      "get me a $10 amazon gift card",
-      "yes",
-      "buy $25 of bitcoin every friday",
-      "yes",
-      "which churches can I give to?",
-      "tithe 2000 sats to grace-fellowship",
-      "give 10000 sats to ortiz-family every month",
-      "yes",
-      "give 500 sats to new-church",
-      "fetch https://api.example/answer up to 50 sats",
-      `sweep everything above 200000 sats to cold storage ${SANDBOX_COLD_ADDRESS} max 50000`,
-      "yes",
-      "should I buy more bitcoin today?",
-    ]
+  : GIVE_ONLY
+    ? [
+        "which churches can I give to?",
+        "tithe 2000 sats to grace-fellowship",
+        "give 500 sats to new-church",
+        "support 10000 sats to the ortiz family every month",
+        "yes",
+        "give 300 sats to my pastor for lunch",
+        "how much should I tithe?",
+      ]
+    : [
+        "what's my balance?",
+        "pay 500 sats to gm@getalby.com for coffee",
+        "send 20000 sats to friend@walletofsatoshi.com",
+        "yes",
+        "pay 60000 sats to gm@getalby.com",
+        "get me a $10 amazon gift card",
+        "yes",
+        "buy $25 of bitcoin every friday",
+        "yes",
+        "which churches can I give to?",
+        "tithe 2000 sats to grace-fellowship",
+        "give 10000 sats to ortiz-family every month",
+        "yes",
+        "give 500 sats to new-church",
+        "fetch https://api.example/answer up to 50 sats",
+        `sweep everything above 200000 sats to cold storage ${SANDBOX_COLD_ADDRESS} max 50000`,
+        "yes",
+        "should I buy more bitcoin today?",
+      ]
 
 let state = initialSandbox()
 for (const line of script) {

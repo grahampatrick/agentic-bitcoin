@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:evals": "tsx evals/run.ts",
     "demo": "tsx scripts/demo.ts",
-    "demo:give": "tsx scripts/demo.ts --give"
+    "demo:give": "tsx scripts/demo.ts --give",
+    "demo:missionary": "tsx scripts/demo.ts --missionary"
   },
   "dependencies": {
     "@agentic-bitcoin/core": "workspace:*",

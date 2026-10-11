@@ -16,7 +16,8 @@
     "lint:fix": "biome check --write .",
     "test": "pnpm -r --if-present test",
     "demo": "pnpm --filter @agentic-bitcoin/agent demo",
-    "demo:give": "pnpm --filter @agentic-bitcoin/agent demo:give"
+    "demo:give": "pnpm --filter @agentic-bitcoin/agent demo:give",
+    "demo:missionary": "pnpm --filter @agentic-bitcoin/agent demo:missionary"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

@@ -5,12 +5,14 @@
  */
 import {
   type Action,
+  type Campaign,
   type ComputeRail,
   DEFAULT_POLICY,
   FakeExchangeRail,
   FakeGoodsRail,
   FakeOnChainRail,
   FakeWalletRail,
+  InMemoryCampaignStore,
   InMemoryLedgerStore,
   InMemoryRecipientStore,
   type LedgerEntry,
@@ -18,6 +20,9 @@ import {
   type Policy,
   type PriceSnapshot,
   type Recipient,
+  type ScheduleSummary,
+  contributionSink,
+  describeAction,
   foldEntries,
   parseAction,
   recipientsForUser,
@@ -71,6 +76,28 @@ export const SANDBOX_RECIPIENTS: readonly Recipient[] = [
   },
 ]
 
+/** Sandbox campaigns: the missionary family's monthly support goal and the church's well. */
+export const SANDBOX_CAMPAIGNS: readonly Campaign[] = [
+  {
+    slug: "ortiz-field-support",
+    recipientSlug: "ortiz-family",
+    title: "Ortiz family field support",
+    story:
+      "Monthly support for the family's work in Lima: language school this year, church planting next.",
+    goal: { usdCentsPerMonth: 120_000n },
+    startsAt: "2026-10-01T00:00:00.000Z",
+    active: true,
+  },
+  {
+    slug: "grace-well",
+    recipientSlug: "grace-fellowship",
+    title: "A well for the village",
+    goal: { satsTotal: 20_000_000n },
+    startsAt: "2026-10-01T00:00:00.000Z",
+    active: true,
+  },
+]
+
 export interface SandboxState {
   version: 1
   walletSats: string
@@ -81,6 +108,8 @@ export interface SandboxState {
   history: LlmMessage[]
   /** Stable counter for schedule ids and the like. */
   seq: number
+  /** Recurring actions created in this sandbox (M11: so list_schedules answers). */
+  schedules?: ScheduleSummary[]
 }
 
 export const SANDBOX_POLICY: Policy = {
@@ -102,6 +131,7 @@ export function initialSandbox(): SandboxState {
     pending: [],
     history: [],
     seq: 0,
+    schedules: [],
   }
 }
 
@@ -182,13 +212,32 @@ export async function sandboxTurn(
   for (const ev of state.events) await ledger.append(ev)
   const pending = new StatePending(state.pending)
   let seq = state.seq
+  const scheduleList: ScheduleSummary[] = [...(state.schedules ?? [])]
   const schedules = {
-    async create() {
+    async create(
+      a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
+    ) {
       seq++
-      return `sch_${seq}`
+      const id = `sch_${seq}`
+      scheduleList.push({
+        id,
+        kind: a.kind,
+        cron: a.cron,
+        summary: describeAction(a),
+        active: true,
+        lastRunAt: null,
+      })
+      return id
     },
-    async cancel() {},
+    async cancel(id: string) {
+      const hit = scheduleList.find((x) => x.id === id)
+      if (hit) hit.active = false
+    },
+    async list() {
+      return scheduleList
+    },
   }
+  const campaigns = new InMemoryCampaignStore(SANDBOX_CAMPAIGNS)
   const ctx: UserContext = {
     userId: "demo",
     policy: state.policy,
@@ -204,6 +253,9 @@ export async function sandboxTurn(
     schedules,
     delivery: { pollMs: 25, maxPolls: 8 },
     recipients: recipientsForUser(new InMemoryRecipientStore(SANDBOX_RECIPIENTS), "demo"),
+    campaigns,
+    contributions: contributionSink(campaigns),
+    supporterKey: "demo-supporter",
   }
   const deps = {
     llm,
@@ -271,6 +323,7 @@ export async function sandboxTurn(
     pending: state.pending,
     history: result.history.slice(-24),
     seq,
+    schedules: scheduleList,
   }
   return {
     reply: result.reply,
