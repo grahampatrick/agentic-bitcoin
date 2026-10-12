@@ -235,3 +235,15 @@ describe("shopping end to end through the agent loop", () => {
     ).not.toContain("Main St")
   })
 })
+
+describe("rail disabled hint", () => {
+  it("a search on a switched-off goods rail tells the user the exact /budget command", async () => {
+    const w = world()
+    w.ctx.policy = { ...w.ctx.policy, rails: { ...w.ctx.policy.rails, goods: false } }
+    const r = await runTurn(w.deps, "u1", "find me a study bible", [])
+    expect(r.toolCalls[0]).toEqual({ name: "search_products", status: "denied" })
+    expect(r.reply).toBe(
+      "I can't do that: The goods rail is off in your limits. Turn it on with: /budget rail goods on",
+    )
+  })
+})

@@ -336,7 +336,9 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
   if (status === "awaiting_confirmation")
     return `${r.summary}\nReply yes to approve or no to cancel.`
   if (status === "denied")
-    return `I can't do that: ${String(r.reason).replace(/_/g, " ").toLowerCase()} (${r.summary}). Your limits are set outside this chat with /budget.`
+    return r.hint
+      ? `I can't do that: ${String(r.hint)}`
+      : `I can't do that: ${String(r.reason).replace(/_/g, " ").toLowerCase()} (${r.summary}). Your limits are set outside this chat with /budget.`
   if (status === "invalid_input") return `I couldn't do that: ${r.error}.`
   if (status === "failed") return `That didn't go through: ${r.error}.`
   if (status === "no_pending_action") return "There is nothing waiting for your approval."

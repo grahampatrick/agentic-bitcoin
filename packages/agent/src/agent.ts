@@ -23,6 +23,7 @@ import {
   type RewardStore,
   execute,
   isTrustedRecipient,
+  railOf,
 } from "@agentic-bitcoin/core"
 import type { LlmClient, LlmContentBlock, LlmMessage, LlmTool } from "./llm"
 import { SYSTEM_PROMPT } from "./prompt"
@@ -340,16 +341,23 @@ async function outcomeOf(
         isError: false,
       }
     }
-    case "denied":
+    case "denied": {
+      // A switched-off rail is the user's own setting: tell them the exact command, not just the reason.
+      const hint =
+        result.decision.reason === "RAIL_DISABLED"
+          ? `The ${railOf(action)} rail is off in your limits. Turn it on with: /budget rail ${railOf(action)} on`
+          : undefined
       return {
         status: "denied",
         content: toToolJson({
           status: "denied",
           reason: result.decision.reason,
           summary: result.decision.summary,
+          hint,
         }),
         isError: true,
       }
+    }
     case "failed":
       return {
         status: "failed",
