@@ -74,6 +74,8 @@ export interface ShopOrder {
   buyerKey?: string
   /** Merchant's note to the buyer (tracking number etc.); data. */
   note?: string
+  /** M13: where a web buyer wants sats-back paid (a Lightning address). */
+  rewardAddress?: string
 }
 
 export interface ProductStore {

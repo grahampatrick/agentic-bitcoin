@@ -52,6 +52,7 @@ describe("MCP server", () => {
       "make_invoice",
       "pay_invoice",
       "pay_lightning_address",
+      "rewards_summary",
       "schedule_buy",
       "schedule_give",
       "schedule_sweep",

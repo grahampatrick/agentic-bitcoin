@@ -7,6 +7,8 @@ import {
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
+  type Reward,
+  type RewardStore,
   SHOP_CATEGORIES,
   type ShopCategory,
   type ShopOrder,
@@ -65,6 +67,7 @@ type OrderRow = {
   contact_sealed: string | null
   buyer_key: string | null
   note: string | null
+  reward_address?: string | null
 }
 const orderFromRow = (r: OrderRow): ShopOrder => ({
   id: r.id,
@@ -84,6 +87,7 @@ const orderFromRow = (r: OrderRow): ShopOrder => ({
   contactSealed: r.contact_sealed ?? undefined,
   buyerKey: r.buyer_key ?? undefined,
   note: r.note ?? undefined,
+  rewardAddress: r.reward_address ?? undefined,
 })
 const orderToRow = (o: ShopOrder): OrderRow => ({
   id: o.id,
@@ -103,6 +107,7 @@ const orderToRow = (o: ShopOrder): OrderRow => ({
   contact_sealed: o.contactSealed ?? null,
   buyer_key: o.buyerKey ?? null,
   note: o.note ?? null,
+  reward_address: o.rewardAddress ?? null,
 })
 
 async function q<T>(
@@ -285,4 +290,105 @@ export async function seedShop(store: ProductStore, path: string): Promise<numbe
   const products = parseShopSeed(readFileSync(path, "utf8"))
   for (const p of products) await store.upsert(p)
   return products.length
+}
+
+// --- rewards (M13) ------------------------------------------------------------------------------
+
+type RewardRow = {
+  id: string
+  user_id: string | null
+  payout_address: string | null
+  source: string
+  merchant_slug: string | null
+  order_id: string
+  purchase_sats: string
+  amount_sats: string
+  bps: number
+  state: string
+  created_at: string
+  payable_at: string
+  paid_at: string | null
+  payment_hash: string | null
+  void_reason: string | null
+}
+const rewardFromRow = (r: RewardRow): Reward => ({
+  id: r.id,
+  userId: r.user_id ?? undefined,
+  payoutAddress: r.payout_address ?? undefined,
+  source: r.source as Reward["source"],
+  merchantSlug: r.merchant_slug ?? undefined,
+  orderId: r.order_id,
+  purchaseSats: BigInt(r.purchase_sats),
+  amountSats: BigInt(r.amount_sats),
+  bps: r.bps,
+  state: r.state as Reward["state"],
+  createdAt: r.created_at,
+  payableAt: r.payable_at,
+  paidAt: r.paid_at ?? undefined,
+  paymentHash: r.payment_hash ?? undefined,
+  voidReason: r.void_reason ?? undefined,
+})
+const rewardToRow = (r: Reward): RewardRow => ({
+  id: r.id,
+  user_id: r.userId ?? null,
+  payout_address: r.payoutAddress?.toLowerCase() ?? null,
+  source: r.source,
+  merchant_slug: r.merchantSlug ?? null,
+  order_id: r.orderId,
+  purchase_sats: r.purchaseSats.toString(),
+  amount_sats: r.amountSats.toString(),
+  bps: r.bps,
+  state: r.state,
+  created_at: r.createdAt,
+  payable_at: r.payableAt,
+  paid_at: r.paidAt ?? null,
+  payment_hash: r.paymentHash ?? null,
+  void_reason: r.voidReason ?? null,
+})
+
+export class SupabaseRewardStore implements RewardStore {
+  readonly kind = "supabase"
+  constructor(private readonly db: SupabaseClient) {}
+  async get(id: string) {
+    const d = await q<RewardRow | null>(
+      this.db.from("rewards").select("*").eq("id", id).maybeSingle(),
+      "reward read",
+    )
+    return d ? rewardFromRow(d) : null
+  }
+  async getByOrder(orderId: string) {
+    const d = await q<RewardRow | null>(
+      this.db.from("rewards").select("*").eq("order_id", orderId).maybeSingle(),
+      "reward read",
+    )
+    return d ? rewardFromRow(d) : null
+  }
+  async listForUser(userId: string) {
+    return (
+      await q<RewardRow[]>(this.db.from("rewards").select("*").eq("user_id", userId), "rewards")
+    ).map(rewardFromRow)
+  }
+  async listForAddress(address: string) {
+    return (
+      await q<RewardRow[]>(
+        this.db.from("rewards").select("*").eq("payout_address", address.toLowerCase()),
+        "rewards",
+      )
+    ).map(rewardFromRow)
+  }
+  async listOpen() {
+    return (
+      await q<RewardRow[]>(
+        this.db.from("rewards").select("*").in("state", ["pending", "payable"]),
+        "rewards",
+      )
+    ).map(rewardFromRow)
+  }
+  async create(r: Reward) {
+    const { error } = await this.db.from("rewards").insert(rewardToRow(r))
+    if (error && error.code !== "23505") throw new Error(`reward write failed: ${error.message}`)
+  }
+  async update(r: Reward) {
+    await q(this.db.from("rewards").update(rewardToRow(r)).eq("id", r.id), "reward update")
+  }
 }

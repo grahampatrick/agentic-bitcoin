@@ -181,12 +181,18 @@ export interface GivingSummary extends Base {
   year: number
 }
 
+/** The user's sats-back: pending, payable and paid. Read-only. */
+export interface RewardsSummary extends Base {
+  kind: "rewards_summary"
+}
+
 export type Action =
   | Give
   | ScheduleGive
   | FindRecipient
   | ListSchedules
   | GivingSummary
+  | RewardsSummary
   | PayInvoice
   | PayAddress
   | MakeInvoice
@@ -220,6 +226,7 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   find_recipient: "wallet",
   list_schedules: "wallet",
   giving_summary: "wallet",
+  rewards_summary: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -251,6 +258,7 @@ export function spendSats(action: Action): Sats {
     case "find_recipient":
     case "list_schedules":
     case "giving_summary":
+    case "rewards_summary":
       return 0n
   }
 }
@@ -281,6 +289,7 @@ export function destinationOf(action: Action): string | null {
     case "find_recipient":
     case "list_schedules":
     case "giving_summary":
+    case "rewards_summary":
       return null
   }
 }
@@ -327,6 +336,8 @@ export function describeAction(action: Action): string {
       return "List recurring actions"
     case "giving_summary":
       return `Summarize giving in ${action.year}`
+    case "rewards_summary":
+      return "Show sats-back rewards"
   }
 }
 

@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto"
-import { InMemoryOrderStore, InMemoryProductStore, type ShopProduct } from "@agentic-bitcoin/core"
+import {
+  DEFAULT_REWARD_RATES,
+  InMemoryOrderStore,
+  InMemoryProductStore,
+  InMemoryRewardStore,
+  type ShopProduct,
+  rewardSink,
+} from "@agentic-bitcoin/core"
 import { PRICE, SHOP } from "@agentic-bitcoin/fixtures"
 import { decryptSecret, encryptSecret, parseKey } from "@agentic-bitcoin/rails"
 import { describe, expect, it } from "vitest"
@@ -13,6 +20,7 @@ import {
   listMerchants,
   merchantOrders,
   orderStatus,
+  rewardsForAddress,
   upsertProduct,
   viewProducts,
 } from "./service"
@@ -34,10 +42,14 @@ function world() {
   ])
   const products = new InMemoryProductStore(SHOP.products as unknown as ShopProduct[])
   const orders = new InMemoryOrderStore()
+  const rewardStore = new InMemoryRewardStore()
+  let rw = 0
   const deps = {
     products,
     orders,
     receive,
+    rewardStore,
+    rewards: rewardSink(rewardStore, DEFAULT_REWARD_RATES, () => `rw_${++rw}`),
     price: async () => PRICE,
     baseUrl: BASE,
     secretsKey: KEY,
@@ -56,7 +68,7 @@ function world() {
       close() {},
     }),
   }
-  return { deps, products, orders, settled }
+  return { deps, products, orders, settled, rewardStore }
 }
 
 describe("catalogue views", () => {
@@ -214,5 +226,43 @@ describe("merchant tools", () => {
       state: "fulfilled",
       note: "USPS 9400...",
     })
+  })
+})
+
+describe("sats-back on web orders (M13)", () => {
+  it("a paid order with a reward address earns 1%, once, visible by address; no address earns nothing", async () => {
+    const w = world()
+    const r = await checkout(w.deps, {
+      merchantSlug: "reformation-books",
+      items: [{ productId: "greek-syntax-ebook", qty: 1 }],
+      rewardAddress: "Me@getalby.com",
+    })
+    expect(r).toMatchObject({ ok: true })
+    const id = (r as { orderId: string }).orderId
+    expect(
+      await checkout(w.deps, {
+        merchantSlug: "reformation-books",
+        items: [{ productId: "greek-syntax-ebook", qty: 1 }],
+        rewardAddress: "nope",
+      }),
+    ).toMatchObject({ ok: false })
+    w.settled.add((await w.orders.get(id))?.paymentHash ?? "")
+    await orderStatus(w.deps, id)
+    await orderStatus(w.deps, id) // idempotent
+    const sum = await rewardsForAddress(w.deps, "me@getalby.com")
+    expect(sum?.count).toBe(1)
+    expect(sum?.rewards[0]).toMatchObject({
+      orderId: id,
+      amountSats: (Number((await w.orders.get(id))?.totalSats ?? 0n) / 100) | 0,
+      state: "pending",
+    })
+    const none = await checkout(w.deps, {
+      merchantSlug: "reformation-books",
+      items: [{ productId: "greek-syntax-ebook", qty: 1 }],
+    })
+    const id2 = (none as { orderId: string }).orderId
+    w.settled.add((await w.orders.get(id2))?.paymentHash ?? "")
+    await orderStatus(w.deps, id2)
+    expect(await w.rewardStore.getByOrder(id2)).toBeNull()
   })
 })

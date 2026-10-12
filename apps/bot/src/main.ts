@@ -13,18 +13,23 @@ import {
 } from "@agentic-bitcoin/agent"
 import {
   DEFAULT_POLICY,
+  DEFAULT_REWARD_RATES,
   FakeWalletRail,
   type GoodsRail,
   InMemoryLedgerStore,
   InMemoryOrderStore,
   InMemoryProductStore,
   InMemoryRecipientStore,
+  InMemoryRewardStore,
   type LedgerStore,
   type PriceSnapshot,
   type RecipientStore,
+  type RewardRates,
   type WalletRail,
   contributionSink,
+  formatSats,
   recipientsForUser,
+  rewardSink,
 } from "@agentic-bitcoin/core"
 import {
   BitrefillGoodsRail,
@@ -43,6 +48,7 @@ import {
   SupabaseScheduleStore,
   makeSweep,
   runDue,
+  runRewardPayouts,
   schedulesHook,
 } from "@agentic-bitcoin/scheduler"
 import { Dispatcher } from "./dispatcher"
@@ -58,8 +64,10 @@ import { SupabaseRecipientStore, seedRecipients } from "./store/recipients"
 import {
   FileOrderStore,
   FileProductStore,
+  FileRewardStore,
   SupabaseOrderStore,
   SupabaseProductStore,
+  SupabaseRewardStore,
   seedShop,
 } from "./store/shop"
 import {
@@ -158,6 +166,39 @@ if (env.SHOP_FILE) {
   const n = await seedShop(productStore, env.SHOP_FILE)
   console.error(`[bot] storefront: ${n} products loaded from ${env.SHOP_FILE}`)
 }
+// M13: sats-back. Rates are operator config; payouts come from the operator's own wallet (REWARDS_NWC_URL)
+// under the operator's own caps. Without that wallet, rewards accrue and show as payable, never paid.
+const rewardStore = db
+  ? new SupabaseRewardStore(db)
+  : fileState
+    ? new FileRewardStore(fileState)
+    : new InMemoryRewardStore()
+const rewardRates: RewardRates = {
+  ...DEFAULT_REWARD_RATES,
+  bps: {
+    directory: Number(env.REWARDS_BPS_DIRECTORY ?? DEFAULT_REWARD_RATES.bps.directory),
+    bitrefill: Number(env.REWARDS_BPS_BITREFILL ?? DEFAULT_REWARD_RATES.bps.bitrefill),
+  },
+  minPayoutSats: BigInt(env.REWARDS_MIN_PAYOUT_SATS ?? DEFAULT_REWARD_RATES.minPayoutSats),
+}
+let rewardSeq = 0
+const rewards = rewardSink(
+  rewardStore,
+  rewardRates,
+  () => `rw_${Date.now().toString(36)}_${(++rewardSeq).toString(36)}`,
+)
+const rewardsWallet = env.REWARDS_NWC_URL
+  ? new NwcWalletRail({ connectionString: env.REWARDS_NWC_URL })
+  : null
+const rewardsLedger = new InMemoryLedgerStore() // the operator's payout ledger (durable store is a later step)
+const rewardsPolicy = {
+  ...DEFAULT_POLICY,
+  dailyCapSats: BigInt(env.REWARDS_DAILY_CAP_SATS ?? "50000"),
+  perActionCapSats: BigInt(env.REWARDS_DAILY_CAP_SATS ?? "50000"),
+  confirmAboveSats: 1_000_000_000n,
+}
+if (!rewardsWallet)
+  console.warn("[bot] REWARDS_NWC_URL not set — sats-back accrues but is not paid out")
 /** Opaque supporter identity for campaign counts: a hash, never the user id (salted by SECRETS_KEY when set). */
 const supporterKeyOf = (userId: string) =>
   createHash("sha256")
@@ -250,6 +291,8 @@ async function resolveContext(userId: string): Promise<UserContext> {
     campaigns: campaignStore ?? undefined,
     contributions: campaignStore ? contributionSink(campaignStore) : undefined,
     supporterKey: supporterKeyOf(userId),
+    rewards,
+    rewardStore,
   }
 }
 
@@ -324,6 +367,7 @@ const dispatcher = new Dispatcher({
   campaigns: campaignStore ?? undefined,
   orders: orderStore,
   buyerKeyOf: supporterKeyOf,
+  rewardStore,
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())
@@ -361,6 +405,47 @@ const runSchedules = async () => {
     }
   } catch (err) {
     console.error("[scheduler] run failed", err)
+  }
+  // M13: pay out sats-back from the operator wallet (chat buyers: an invoice on their own paired wallet).
+  if (rewardsWallet) {
+    try {
+      const r = await runRewardPayouts({
+        store: rewardStore,
+        rates: rewardRates,
+        operator: {
+          policy: rewardsPolicy,
+          ledger: rewardsLedger,
+          rails: { wallet: rewardsWallet },
+        },
+        invoiceFor: async (payee, sats) => {
+          if (payee.userId) {
+            const w = (await railsFor(payee.userId)).wallet
+            if (w instanceof FakeWalletRail) return null
+            const inv = await w.makeInvoice({
+              amountSats: sats,
+              memo: "Agentic Bitcoin sats-back",
+              expirySeconds: 3600,
+            })
+            return { bolt11: inv.bolt11 }
+          }
+          if (payee.payoutAddress)
+            return rewardsWallet.resolveAddress(
+              payee.payoutAddress,
+              sats,
+              "Agentic Bitcoin sats-back",
+            )
+          return null
+        },
+        log: (l) => console.error(`[rewards] ${l}`),
+      })
+      for (const p of r.paid)
+        if (p.payee.startsWith("signal:") || p.payee.startsWith("telegram:"))
+          await surface.send(p.payee, {
+            text: `Sats-back paid: ${formatSats(p.sats)} to your wallet (${p.rewards} reward${p.rewards === 1 ? "" : "s"}).`,
+          })
+    } catch (err) {
+      console.error("[rewards] payout run failed", err)
+    }
   }
   // M11: campaign updates to followers, once each.
   if (campaignStore) {

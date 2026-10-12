@@ -146,6 +146,8 @@ export function intentOf(text: string): { name: string; input: Record<string, un
     !/sch_/.test(t)
   )
     return { name: "list_schedules", input: {} }
+  if (/\b(sats[- ]?back|rewards?|cash[- ]?back)\b/i.test(t))
+    return { name: "rewards_summary", input: {} }
   const given = /\bhow much\s+(?:have|did)\s+i\s+(?:given|give|gave)\b(?:.*?\b(20\d\d)\b)?/i.exec(t)
   if (given) return { name: "giving_summary", input: { year: given[1] ? Number(given[1]) : 2026 } }
   if (
@@ -409,6 +411,13 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
       return live.length
         ? `Your recurring actions: ${live.map((s) => `${s.summary} (${s.id})`).join("; ")}. Cancel one with “cancel ${live[0]?.id}”.`
         : "You have no recurring actions."
+    }
+    case "rewards_summary": {
+      const n = (v: unknown) => Number(v).toLocaleString("en-US")
+      const recent = (result.recent ?? []) as { state: string }[]
+      return recent.length
+        ? `Sats-back: ${n(result.paidSats)} sats paid, ${n(result.payableSats)} sats payable now, ${n(result.pendingSats)} sats pending${result.nextPayableAt ? ` (next on ${String(result.nextPayableAt).slice(0, 10)})` : ""}. Payouts go to your paired wallet automatically once they reach the minimum.`
+        : "No sats-back yet. Purchases from the store earn rewards once they are paid."
     }
     case "giving_summary": {
       const by = (result.byRecipient ?? []) as {

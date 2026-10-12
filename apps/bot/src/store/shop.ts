@@ -6,6 +6,8 @@ import {
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
+  type Reward,
+  type RewardStore,
   type ShopCategory,
   type ShopOrder,
   type ShopProduct,
@@ -17,6 +19,7 @@ import type { FileState } from "./file"
 export {
   SupabaseOrderStore,
   SupabaseProductStore,
+  SupabaseRewardStore,
   parseShopSeed,
   seedShop,
 } from "@agentic-bitcoin/stores"
@@ -105,5 +108,40 @@ export class FileOrderStore implements OrderStore {
   }
   async update(o: ShopOrder) {
     this.f.set("shop", `o:${o.id}`, enc(o))
+  }
+}
+
+/** M13: rewards in the same file bucket, prefixed `r:`. */
+export class FileRewardStore implements RewardStore {
+  readonly kind = "file"
+  constructor(private readonly f: FileState) {}
+  private all(): Reward[] {
+    return this.f
+      .keys("shop")
+      .filter((k) => k.startsWith("r:"))
+      .map((k) => dec<Reward>(this.f.get("shop", k) ?? ""))
+  }
+  async get(id: string) {
+    const v = this.f.get("shop", `r:${id}`)
+    return v ? dec<Reward>(v) : null
+  }
+  async getByOrder(orderId: string) {
+    return this.all().find((r) => r.orderId === orderId) ?? null
+  }
+  async listForUser(userId: string) {
+    return this.all().filter((r) => r.userId === userId)
+  }
+  async listForAddress(address: string) {
+    return this.all().filter((r) => r.payoutAddress?.toLowerCase() === address.toLowerCase())
+  }
+  async listOpen() {
+    return this.all().filter((r) => r.state === "pending" || r.state === "payable")
+  }
+  async create(r: Reward) {
+    if (await this.getByOrder(r.orderId)) return
+    this.f.set("shop", `r:${r.id}`, enc(r))
+  }
+  async update(r: Reward) {
+    this.f.set("shop", `r:${r.id}`, enc(r))
   }
 }

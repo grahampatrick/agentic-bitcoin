@@ -12,6 +12,7 @@ import {
   type Policy,
   type Recipient,
   type RecipientStore,
+  type RewardStore,
   SLUG_RE,
   campaignProgress,
   centsToSats,
@@ -26,6 +27,7 @@ import {
   satsToCents,
   slugify,
   spentSince,
+  summarizeRewards,
   windowStart,
 } from "@agentic-bitcoin/core"
 import {
@@ -68,6 +70,8 @@ export interface DispatcherDeps {
   campaigns?: CampaignStore
   /** M12: the user's storefront orders (by opaque buyer key). */
   orders?: OrderStore
+  /** M13: the user's sats-back rewards. */
+  rewardStore?: RewardStore
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -278,6 +282,19 @@ export class Dispatcher {
         return this.verify(userId, args, reply)
       case "/campaigns":
         return this.campaigns(userId, reply)
+      case "/rewards": {
+        const store = this.deps.rewardStore
+        if (!store) return reply("Rewards are not enabled on this server.")
+        const list = await store.listForUser(userId)
+        const sum = summarizeRewards(list, this.now())
+        if (!sum.count)
+          return reply(
+            "No sats-back yet. Store purchases earn rewards once they are paid; /shop to browse.",
+          )
+        return reply(
+          `Sats-back: ${formatSats(sum.paidSats)} paid · ${formatSats(sum.payableSats)} payable now · ${formatSats(sum.pendingSats)} pending${sum.nextPayableAt ? ` (next on ${sum.nextPayableAt.slice(0, 10)})` : ""}.\nPayouts arrive in your paired wallet automatically; until paid, a reward is a promise from us, not a balance. ${this.deps.siteUrl ?? ""}/rewards`,
+        )
+      }
       case "/shop":
         return reply(
           `Browse the store: ${this.deps.siteUrl ?? ""}/shop — every price in sats, every invoice from the merchant's own wallet. Or just tell me: “find me a study bible”, then “buy <id>”. Physical goods: add “ship to name, street, city, region, postal, country”.`,
@@ -603,7 +620,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

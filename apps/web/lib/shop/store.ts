@@ -3,12 +3,21 @@
  * (shared across dev route modules on globalThis). Merchants come from the receive store.
  */
 import {
+  DEFAULT_REWARD_RATES,
   InMemoryOrderStore,
   InMemoryProductStore,
+  InMemoryRewardStore,
   type OrderStore,
   type ProductStore,
+  type RewardSink,
+  type RewardStore,
+  rewardSink,
 } from "@agentic-bitcoin/core"
-import { SupabaseOrderStore, SupabaseProductStore } from "@agentic-bitcoin/stores"
+import {
+  SupabaseOrderStore,
+  SupabaseProductStore,
+  SupabaseRewardStore,
+} from "@agentic-bitcoin/stores"
 import { createClient } from "@supabase/supabase-js"
 import { InMemoryReceiveStore, getReceiveStore } from "../receive/store"
 import { DEMO_MERCHANTS, DEMO_PRODUCTS } from "./demo"
@@ -16,6 +25,7 @@ import { DEMO_MERCHANTS, DEMO_PRODUCTS } from "./demo"
 const g = globalThis as {
   __shopProducts?: ProductStore
   __shopOrders?: OrderStore
+  __shopRewards?: RewardStore
   __shopDemoSeeded?: boolean
 }
 
@@ -62,4 +72,19 @@ function seedDemoMerchants() {
 export function __setShopStores(products: ProductStore | null, orders: OrderStore | null): void {
   g.__shopProducts = products ?? undefined
   g.__shopOrders = orders ?? undefined
+}
+
+export function getRewardStore(): RewardStore {
+  if (g.__shopRewards) return g.__shopRewards
+  g.__shopRewards = isDemoCatalogue() ? new InMemoryRewardStore() : new SupabaseRewardStore(db())
+  return g.__shopRewards
+}
+let rewardSeq = 0
+export function rewardSinkFor(): RewardSink {
+  const bps = Number(process.env.REWARDS_BPS_DIRECTORY ?? DEFAULT_REWARD_RATES.bps.directory)
+  return rewardSink(
+    getRewardStore(),
+    { ...DEFAULT_REWARD_RATES, bps: { ...DEFAULT_REWARD_RATES.bps, directory: bps } },
+    () => `rw_${Date.now().toString(36)}_${(++rewardSeq).toString(36)}`,
+  )
 }

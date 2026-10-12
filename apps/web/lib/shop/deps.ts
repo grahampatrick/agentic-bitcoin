@@ -2,7 +2,7 @@ import { getPrice } from "../price/feed"
 import { siteBaseUrl } from "../receive/service"
 import { getReceiveStore } from "../receive/store"
 import type { ShopDeps } from "./service"
-import { getOrderStore, getProductStore } from "./store"
+import { getOrderStore, getProductStore, getRewardStore, rewardSinkFor } from "./store"
 
 export async function price() {
   try {

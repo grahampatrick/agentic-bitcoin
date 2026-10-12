@@ -102,6 +102,7 @@ export class DirectoryGoodsRail implements GoodsRail {
     shippingSealed?: string
     contactSealed?: string
     buyerKey?: string
+    rewardAddress?: string
   }): Promise<ShopOrder> {
     if (!input.items.length) throw new RailError(this.kind, "REJECTED", "empty order")
     const merchant = await this.o.merchant(input.merchantSlug)
@@ -141,6 +142,7 @@ export class DirectoryGoodsRail implements GoodsRail {
         shippingSealed: input.shippingSealed,
         contactSealed: input.contactSealed,
         buyerKey: input.buyerKey ?? this.o.buyerKey,
+        rewardAddress: input.rewardAddress,
       }
       await this.o.orders.create(order)
       return order

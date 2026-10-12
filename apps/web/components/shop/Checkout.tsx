@@ -20,6 +20,7 @@ export function Checkout({
     country: "",
   })
   const [contact, setContact] = useState("")
+  const [rewardAddress, setRewardAddress] = useState("")
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [orderId, setOrderId] = useState<string | null>(null)
@@ -56,6 +57,7 @@ export function Checkout({
           items: lines.map((l) => ({ productId: l.p.id, qty: l.qty })),
           shipping: needsShipping ? ship : undefined,
           contact,
+          rewardAddress,
         }),
       })
       const j = (await res.json()) as { ok: boolean; error?: string; orderId?: string }
@@ -117,6 +119,14 @@ export function Checkout({
           Email or phone for the merchant (optional
           {lines.some((l) => l.p.kind === "digital") ? ", recommended for digital goods" : ""})
           <input value={contact} onChange={(e) => setContact(e.target.value)} />
+        </label>
+        <label>
+          Sats-back to this Lightning address (optional): 1% of this order, paid to your wallet
+          <input
+            value={rewardAddress}
+            onChange={(e) => setRewardAddress(e.target.value)}
+            placeholder="you@getalby.com"
+          />
         </label>
         <button type="submit" className="btn" disabled={busy}>
           {busy ? "Asking the merchant's wallet…" : `Pay ${usd(total)} over Lightning`}

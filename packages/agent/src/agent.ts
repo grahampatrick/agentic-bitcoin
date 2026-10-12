@@ -19,6 +19,8 @@ import {
   type Rails,
   type Recipient,
   type RecipientReader,
+  type RewardSink,
+  type RewardStore,
   execute,
   isTrustedRecipient,
 } from "@agentic-bitcoin/core"
@@ -71,6 +73,9 @@ export interface UserContext {
   contributions?: ContributionSink
   /** Opaque per-user key for supporter counts; never the user id. */
   supporterKey?: string
+  /** M13: sats-back accrual and the user's rewards. */
+  rewards?: RewardSink
+  rewardStore?: RewardStore
 }
 
 export interface AgentDeps {
@@ -259,6 +264,9 @@ export async function handleToolCall(
     campaigns: ctx.campaigns,
     contributions: ctx.contributions,
     supporterKey: ctx.supporterKey,
+    rewards: ctx.rewards,
+    rewardStore: ctx.rewardStore,
+    userId: ctx.userId,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -299,6 +307,9 @@ export async function confirmPending(
     campaigns: ctx.campaigns,
     contributions: ctx.contributions,
     supporterKey: ctx.supporterKey,
+    rewards: ctx.rewards,
+    rewardStore: ctx.rewardStore,
+    userId: ctx.userId,
     now: opts.now,
     context: { price: opts.price },
     confirmation,

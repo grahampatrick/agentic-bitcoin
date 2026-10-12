@@ -20,6 +20,7 @@ import { type Decision, type EvaluateContext, type Policy, evaluate, windowStart
 import { type Order, RailError, type Rails } from "./rails"
 import { givingRows } from "./recipient"
 import type { RecipientReader } from "./recipient"
+import { type RewardSink, type RewardStore, summarizeRewards } from "./rewards"
 
 export interface Confirmation {
   /** Hash of the exact action the human saw; must equal `actionHash(action)`. */
@@ -60,6 +61,10 @@ export interface ExecuteInput {
   contributions?: ContributionSink
   /** Opaque per-user key for supporter counts; never the user id. */
   supporterKey?: string
+  /** M13: where a paid purchase accrues sats-back, and the user's rewards for the summary. */
+  rewards?: RewardSink
+  rewardStore?: RewardStore
+  userId?: string
   /** M9: the user-scoped recipient directory, for `find_recipient`. */
   recipients?: RecipientReader
 }
@@ -225,6 +230,29 @@ async function dispatch(
       const list = s.list ? await s.list() : []
       return { result: { schedules: list }, detail: `${list.length} schedules` }
     }
+    case "rewards_summary": {
+      const store = need(input.rewardStore, "rewards")
+      const list = input.userId ? await store.listForUser(input.userId) : []
+      const now = (input.now ?? (() => new Date()))()
+      const sum = summarizeRewards(list, now)
+      return {
+        result: {
+          ...sum,
+          recent: list
+            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+            .slice(0, 10)
+            .map((r) => ({
+              orderId: r.orderId,
+              source: r.source,
+              amountSats: r.amountSats,
+              state: r.state,
+              payableAt: r.payableAt,
+              paidAt: r.paidAt,
+            })),
+        },
+        detail: `${sum.paidSats} sats paid, ${sum.payableSats} payable, ${sum.pendingSats} pending`,
+      }
+    }
     case "giving_summary": {
       const rows = givingRows(foldEntries(await input.ledger.events()), action.year)
       const byRecipient = new Map<
@@ -353,6 +381,22 @@ async function dispatch(
         after = await g.getOrder(order.orderId)
       }
       const redemption = after.state === "delivered" ? after.redemption : undefined
+      if (input.rewards && (after.state === "paid" || after.state === "delivered")) {
+        try {
+          await input.rewards.accrue({
+            orderId: after.orderId,
+            source: action.merchant === "directory" ? "directory" : "bitrefill",
+            merchantSlug:
+              action.merchant === "directory" ? action.productId.split(":")[1] : undefined,
+            purchaseSats: after.amountSats,
+            kind: after.fulfilment === "shipped" ? "physical" : "digital",
+            userId: input.userId,
+            at: (input.now ?? (() => new Date()))().toISOString(),
+          })
+        } catch {
+          /* rewards are best-effort; the purchase stands */
+        }
+      }
       return {
         result: { order: after, payment: p },
         preimage: p.preimage,

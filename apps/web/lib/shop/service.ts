@@ -9,14 +9,18 @@ import {
   type PriceSnapshot,
   type ProductStore,
   type Recipient,
+  type RewardSink,
+  type RewardStore,
   SHOP_CATEGORIES,
   type ShopCategory,
   type ShopOrder,
   type ShopOrderItem,
   type ShopProduct,
   effectivePriceCents,
+  isLightningAddress,
   preimageMatches,
   satsForCents,
+  summarizeRewards,
 } from "@agentic-bitcoin/core"
 import {
   DirectoryGoodsRail,
@@ -38,6 +42,9 @@ export interface ShopDeps {
   fetchImpl?: typeof fetch
   now?: () => Date
   walletFor?: ConstructorParameters<typeof DirectoryGoodsRail>[0]["walletFor"]
+  /** M13: sats-back accrual on paid orders, and the public lookup. */
+  rewards?: RewardSink
+  rewardStore?: RewardStore
 }
 const key = (d: ShopDeps) =>
   d.secretsKey === undefined
@@ -147,6 +154,8 @@ export interface CheckoutInput {
   shipping?: Partial<Shipping>
   contact?: string
   buyerKey?: string
+  /** M13: a Lightning address for sats-back (optional). */
+  rewardAddress?: string
 }
 export type CheckoutResult =
   | {
@@ -226,6 +235,11 @@ export async function checkout(deps: ShopDeps, input: CheckoutInput): Promise<Ch
       return { ok: false, error: "This server cannot store contact details yet (no SECRETS_KEY)." }
     contactSealed = encryptSecret(contact, k)
   }
+  const rewardAddress = String(input.rewardAddress ?? "")
+    .trim()
+    .toLowerCase()
+  if (rewardAddress && !isLightningAddress(rewardAddress))
+    return { ok: false, error: "The sats-back address must be a Lightning address (name@domain)." }
   try {
     const o = await rail(deps, input.buyerKey).createCartOrder({
       merchantSlug: input.merchantSlug,
@@ -233,6 +247,7 @@ export async function checkout(deps: ShopDeps, input: CheckoutInput): Promise<Ch
       shippingSealed,
       contactSealed,
       buyerKey: input.buyerKey,
+      rewardAddress: rewardAddress || undefined,
     })
     return {
       ok: true,
@@ -292,6 +307,7 @@ export async function orderStatus(deps: ShopDeps, id: string): Promise<OrderView
           paidAt: look.settledAt ?? (deps.now ?? (() => new Date()))().toISOString(),
         }
         await deps.orders.update(o)
+        await accrueReward(deps, o)
       }
     } catch {
       /* the merchant's wallet app remains the record */
@@ -329,13 +345,49 @@ export async function claimPaid(
   if (o.state !== "unpaid") return { ok: true }
   if (!preimageMatches(preimage.trim(), o.paymentHash))
     return { ok: false, error: "That preimage does not match this invoice." }
-  await deps.orders.update({
+  const paid: ShopOrder = {
     ...o,
     state: "paid",
     preimage: preimage.trim().toLowerCase(),
     paidAt: (deps.now ?? (() => new Date()))().toISOString(),
-  })
+  }
+  await deps.orders.update(paid)
+  await accrueReward(deps, paid)
   return { ok: true }
+}
+
+/** M13: a paid web order earns sats-back for the address the buyer gave (none → nothing). */
+async function accrueReward(deps: ShopDeps, o: ShopOrder): Promise<void> {
+  if (!deps.rewards || !o.rewardAddress) return
+  try {
+    await deps.rewards.accrue({
+      orderId: o.id,
+      source: "directory",
+      merchantSlug: o.merchantSlug,
+      purchaseSats: o.totalSats,
+      kind: o.items.some((i) => i.kind === "physical") ? "physical" : "digital",
+      payoutAddress: o.rewardAddress,
+      at: o.paidAt ?? (deps.now ?? (() => new Date()))().toISOString(),
+    })
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Public: what an address has earned. */
+export async function rewardsForAddress(deps: ShopDeps, address: string) {
+  if (!deps.rewardStore || !isLightningAddress(address)) return null
+  const list = await deps.rewardStore.listForAddress(address.trim().toLowerCase())
+  return {
+    ...summarizeRewards(list, (deps.now ?? (() => new Date()))()),
+    rewards: list.map((r) => ({
+      orderId: r.orderId,
+      amountSats: Number(r.amountSats),
+      state: r.state,
+      payableAt: r.payableAt,
+      paidAt: r.paidAt,
+    })),
+  }
 }
 
 // --- merchant tools (dashboard token) -------------------------------------------------------------

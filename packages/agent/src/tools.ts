@@ -359,6 +359,13 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "rewards_summary",
+    description:
+      "The user's sats-back rewards from purchases: paid, payable now, and pending with the date they become payable. Read-only.",
+    input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  {
     name: "confirm_action",
     description:
       "Execute an action the user has explicitly approved after seeing its summary. Only valid with an action_hash returned earlier in this conversation.",
@@ -669,6 +676,8 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       return { kind: "list_schedules", ...base }
     case "giving_summary":
       return { kind: "giving_summary", ...base, year: input.year as number }
+    case "rewards_summary":
+      return { kind: "rewards_summary", ...base }
     case "confirm_action":
       return null
   }
