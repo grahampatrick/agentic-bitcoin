@@ -70,6 +70,12 @@ export default async function Home() {
               </Link>
             </p>
             <LivePrice initial={initial} />
+            <p className="price born">
+              {COPY.born.label}{" "}
+              <a href={COPY.born.href} rel="noopener" className="price__num">
+                {COPY.born.height.toLocaleString("en-US")}
+              </a>
+            </p>
           </div>
         </div>
         <LegalLinks />

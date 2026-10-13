@@ -48,6 +48,8 @@ export const COPY = {
   /** Beat 3, before the task list. */
   examplesLead: "It can help you ",
   cta: "Text Agentic Bitcoin",
+  /** The chain tip when the first commit landed (2026-10-07 22:08 UTC). A birthday you can verify. */
+  born: { label: "Born at block", height: 970_396, href: "https://mempool.space/block/970396" },
   footer: {
     copyright: `Copyright © ${new Date().getFullYear()} Agentic Bitcoin`,
     privacy: "Privacy policy",

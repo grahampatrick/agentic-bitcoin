@@ -39,3 +39,10 @@ describe("landing copy", () => {
     expect(COPY.footer.note).toContain("Non-custodial")
   })
 })
+
+describe("born at block", () => {
+  it("is the chain tip at the first commit and links to the block", () => {
+    expect(COPY.born.height).toBe(970_396)
+    expect(COPY.born.href).toBe("https://mempool.space/block/970396")
+  })
+})
