@@ -269,3 +269,14 @@
 .updates li p {
   margin: 0.25rem 0 0;
 }
+
+/* /pay/<token> */
+.items {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.items td {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
+}

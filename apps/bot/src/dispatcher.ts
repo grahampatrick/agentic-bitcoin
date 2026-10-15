@@ -8,6 +8,8 @@ import { type AgentDeps, type UserContext, confirmPending, runTurn } from "@agen
 import {
   type CampaignStore,
   DEFAULT_POLICY,
+  type InvoiceStore,
+  type IssuedInvoice,
   type OrderStore,
   type Policy,
   type Recipient,
@@ -20,6 +22,8 @@ import {
   formatSats,
   givingRows,
   givingStatementCsv,
+  invoiceStatus,
+  invoicesCsv,
   isLightningAddress,
   isTrustedRecipient,
   parseAddress,
@@ -72,6 +76,8 @@ export interface DispatcherDeps {
   orders?: OrderStore
   /** M13: the user's sats-back rewards. */
   rewardStore?: RewardStore
+  /** M14: the user's issued invoices. */
+  invoiceStore?: InvoiceStore
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -282,6 +288,23 @@ export class Dispatcher {
         return this.verify(userId, args, reply)
       case "/campaigns":
         return this.campaigns(userId, reply)
+      case "/invoices": {
+        const store = this.deps.invoiceStore
+        if (!store) return reply("Invoices are not enabled on this server.")
+        const list = await store.listForIssuer(userId, 100)
+        if (args[0]?.toLowerCase() === "csv") return reply(invoicesCsv(list, this.now()))
+        const now = this.now()
+        const open = list.filter((i) => i.state === "open")
+        if (!list.length)
+          return reply(
+            "No invoices yet. Say e.g. “invoice Bob $200 for the deck due friday” or “request $18 from Alice for dinner”.",
+          )
+        const line = (i: IssuedInvoice) =>
+          `• ${i.number} ${i.payerName} ${formatCents(i.totalCents)} — ${invoiceStatus(i, now)}${i.dueAt ? ` · due ${i.dueAt.slice(0, 10)}` : ""} · ${this.deps.siteUrl ?? ""}/pay/${i.token}`
+        return reply(
+          `${open.length} open of ${list.length}.\n${list.slice(0, 10).map(line).join("\n")}${list.length > 10 ? "\n…" : ""}\n/invoices csv for the full list. Say “void inv_…” to cancel one.`,
+        )
+      }
       case "/rewards": {
         const store = this.deps.rewardStore
         if (!store) return reply("Rewards are not enabled on this server.")
@@ -620,7 +643,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

@@ -149,17 +149,21 @@ export function intentOf(text: string): { name: string; input: Record<string, un
     const amount = (isRequest ? invoice[1] : invoice[2]) ?? "0"
     const what = invoice[3] ?? (isRequest ? "Payment request" : "Invoice")
     const due = isRequest ? "" : (invoice[4] ?? "")
+    const monthly = /\b(monthly|every month)\b/i.test(t)
+    const stripMonthly = (x: string) => x.replace(/\s+(monthly|every month)$/i, "").trim()
     return {
       name: "create_invoice",
       input: {
         invoice_kind: isRequest ? "request" : "invoice",
-        payer_name: payer.trim(),
+        payer_name: stripMonthly(payer),
         payer_contact: "",
         items_json: JSON.stringify([
-          { description: what.trim(), qty: 1, unit_cents: dollarsToCents(amount) },
+          { description: stripMonthly(what), qty: 1, unit_cents: dollarsToCents(amount) },
         ]),
         memo: "",
-        due_date: due ? dueDate(due) : "",
+        due_date: due && !monthly ? dueDate(stripMonthly(due)) : "",
+        cron: monthly ? "0 14 1 * *" : "",
+        due_days: monthly ? 14 : 0,
       },
     }
   }
@@ -475,6 +479,8 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
         : "You have no recurring actions."
     }
     case "create_invoice":
+      if (result.scheduleId)
+        return `Scheduled: a fresh invoice goes out each time (${result.scheduleId}); cancel with “cancel ${result.scheduleId}”.`
       return `Done: ${result.number} for $${(Number(result.totalCents) / 100).toFixed(2)} (${Number(result.amountSats).toLocaleString("en-US")} sats)${result.dueAt ? `, due ${String(result.dueAt).slice(0, 10)}` : ""}. Send them this link: ${result.link}` // money-ok: display in a canned demo model
     case "list_invoices": {
       const list = (result.invoices ?? []) as {

@@ -4,6 +4,8 @@
  */
 import { readFileSync } from "node:fs"
 import {
+  type InvoiceStore,
+  type IssuedInvoice,
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
@@ -390,5 +392,147 @@ export class SupabaseRewardStore implements RewardStore {
   }
   async update(r: Reward) {
     await q(this.db.from("rewards").update(rewardToRow(r)).eq("id", r.id), "reward update")
+  }
+}
+
+// --- invoices (M14) -----------------------------------------------------------------------------
+
+type InvoiceRow = {
+  id: string
+  number: string
+  issuer: string
+  issuer_name: string | null
+  kind: string
+  payer_name: string
+  payer_contact_sealed: string | null
+  items: string
+  total_cents: string
+  memo: string | null
+  due_at: string | null
+  state: string
+  token: string
+  bolt11: string | null
+  payment_hash: string | null
+  amount_sats: string | null
+  usd_cents_per_btc: string | null
+  minted_at: string | null
+  expires_at: string | null
+  created_at: string
+  paid_at: string | null
+  preimage: string | null
+  paid_reported: boolean | null
+  voided_at: string | null
+}
+const invoiceFromRow = (r: InvoiceRow): IssuedInvoice => ({
+  id: r.id,
+  number: r.number,
+  issuer: r.issuer,
+  issuerName: r.issuer_name ?? undefined,
+  kind: r.kind as IssuedInvoice["kind"],
+  payerName: r.payer_name,
+  payerContactSealed: r.payer_contact_sealed ?? undefined,
+  items: dec<IssuedInvoice["items"]>(r.items),
+  totalCents: BigInt(r.total_cents),
+  memo: r.memo ?? undefined,
+  dueAt: r.due_at ?? undefined,
+  state: r.state as IssuedInvoice["state"],
+  token: r.token,
+  bolt11: r.bolt11 ?? undefined,
+  paymentHash: r.payment_hash ?? undefined,
+  amountSats: r.amount_sats ? BigInt(r.amount_sats) : undefined,
+  usdCentsPerBtc: r.usd_cents_per_btc ? BigInt(r.usd_cents_per_btc) : undefined,
+  mintedAt: r.minted_at ?? undefined,
+  expiresAt: r.expires_at ?? undefined,
+  createdAt: r.created_at,
+  paidAt: r.paid_at ?? undefined,
+  preimage: r.preimage ?? undefined,
+  paidReported: r.paid_reported ?? undefined,
+  voidedAt: r.voided_at ?? undefined,
+})
+const invoiceToRow = (i: IssuedInvoice): InvoiceRow => ({
+  id: i.id,
+  number: i.number,
+  issuer: i.issuer,
+  issuer_name: i.issuerName ?? null,
+  kind: i.kind,
+  payer_name: i.payerName,
+  payer_contact_sealed: i.payerContactSealed ?? null,
+  items: enc(i.items),
+  total_cents: i.totalCents.toString(),
+  memo: i.memo ?? null,
+  due_at: i.dueAt ?? null,
+  state: i.state,
+  token: i.token,
+  bolt11: i.bolt11 ?? null,
+  payment_hash: i.paymentHash?.toLowerCase() ?? null,
+  amount_sats: i.amountSats?.toString() ?? null,
+  usd_cents_per_btc: i.usdCentsPerBtc?.toString() ?? null,
+  minted_at: i.mintedAt ?? null,
+  expires_at: i.expiresAt ?? null,
+  created_at: i.createdAt,
+  paid_at: i.paidAt ?? null,
+  preimage: i.preimage ?? null,
+  paid_reported: i.paidReported ?? null,
+  voided_at: i.voidedAt ?? null,
+})
+
+export class SupabaseInvoiceStore implements InvoiceStore {
+  readonly kind = "supabase"
+  constructor(private readonly db: SupabaseClient) {}
+  private async one(col: string, val: string) {
+    const d = await q<InvoiceRow | null>(
+      this.db.from("invoices").select("*").eq(col, val).maybeSingle(),
+      "invoice read",
+    )
+    return d ? invoiceFromRow(d) : null
+  }
+  get(id: string) {
+    return this.one("id", id)
+  }
+  getByToken(token: string) {
+    return this.one("token", token)
+  }
+  getByPaymentHash(hash: string) {
+    return this.one("payment_hash", hash.toLowerCase())
+  }
+  async listForIssuer(issuer: string, limit = 100) {
+    return (
+      await q<InvoiceRow[]>(
+        this.db
+          .from("invoices")
+          .select("*")
+          .eq("issuer", issuer)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+        "invoices",
+      )
+    ).map(invoiceFromRow)
+  }
+  async listOpenMinted() {
+    return (
+      await q<InvoiceRow[]>(
+        this.db
+          .from("invoices")
+          .select("*")
+          .eq("state", "open")
+          .not("payment_hash", "is", null)
+          .limit(500),
+        "invoices",
+      )
+    ).map(invoiceFromRow)
+  }
+  async nextNumber(issuer: string) {
+    const { count, error } = await this.db
+      .from("invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("issuer", issuer)
+    if (error) throw new Error(`invoice count failed: ${error.message}`)
+    return `INV-${String((count ?? 0) + 1).padStart(4, "0")}`
+  }
+  async create(i: IssuedInvoice) {
+    await q(this.db.from("invoices").insert(invoiceToRow(i)), "invoice create")
+  }
+  async update(i: IssuedInvoice) {
+    await q(this.db.from("invoices").update(invoiceToRow(i)).eq("id", i.id), "invoice update")
   }
 }

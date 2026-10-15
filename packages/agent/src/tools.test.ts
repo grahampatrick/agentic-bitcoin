@@ -221,6 +221,8 @@ function sampleInput(name: string): Record<string, unknown> {
         items_json: '[{"description":"Deck","qty":1,"unit_cents":20000}]',
         memo: "",
         due_date: "",
+        cron: "",
+        due_days: 0,
       }
     case "list_invoices":
       return { filter: "open" }

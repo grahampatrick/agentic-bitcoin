@@ -1,4 +1,5 @@
 import { CampaignTools } from "@/components/CampaignTools"
+import { InvoiceTools } from "@/components/InvoiceTools"
 import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
 import { MerchantTools } from "@/components/shop/MerchantTools"
 import { getCampaignStore } from "@/lib/campaigns/store"
@@ -97,6 +98,7 @@ export default async function Dashboard({
                 products={merchantProducts}
               />
             ) : null}
+            <InvoiceTools slug={dash.recipient.slug} token={t ?? ""} />
             <CampaignTools slug={dash.recipient.slug} token={t ?? ""} campaigns={campaigns} />
             <h2>Your tip button</h2>
             <pre className="receive__snippet">

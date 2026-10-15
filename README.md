@@ -74,6 +74,9 @@ every invoice is minted by their own wallet (ADR-0014). The operator lists them 
 The store: `/shop` is a Lightning marketplace in the Shop-app shape (search, categories, a featured merchant, deals, cart);
 every order is one invoice minted by the merchant's own wallet, shipping is sealed for the merchant alone, and "find me
 a study bible" / "buy <id>" work from Signal (ADR-0016, [`docs/shop.md`](./docs/shop.md)).
+Invoices: “invoice Bob $200 for the deck due friday” returns a pay link whose Lightning invoice your own wallet minted;
+organisations create, void and export invoices from their dashboard; `pay this <link>` pays one from chat (ADR-0018,
+[`docs/invoices.md`](./docs/invoices.md)).
 Sats-back: store purchases earn 1% back, paid from the operator's wallet to the buyer's own wallet through the same
 executor and caps, never a balance held with us (ADR-0017, [`docs/rewards.md`](./docs/rewards.md)).
 Campaigns: a recipient opens a goal from their dashboard; supporters pledge from chat (“support
@@ -97,7 +100,7 @@ pnpm build       # next build
 ## Layout
 
 ```
-apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /shop/*, /rewards, /receive, LNURL-pay, /api/*
+apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /shop/*, /pay/<token>, /rewards, /receive, LNURL-pay, /api/*
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
 packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, LND on-chain, secrets
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)

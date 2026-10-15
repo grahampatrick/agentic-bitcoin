@@ -3,6 +3,8 @@
  * implementations and the seed parser live in @agentic-bitcoin/stores (shared with the web).
  */
 import {
+  type InvoiceStore,
+  type IssuedInvoice,
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
@@ -17,6 +19,7 @@ import {
 import type { FileState } from "./file"
 
 export {
+  SupabaseInvoiceStore,
   SupabaseOrderStore,
   SupabaseProductStore,
   SupabaseRewardStore,
@@ -143,5 +146,46 @@ export class FileRewardStore implements RewardStore {
   }
   async update(r: Reward) {
     this.f.set("shop", `r:${r.id}`, enc(r))
+  }
+}
+
+/** M14: issued invoices in the same file bucket, prefixed `i:`. */
+export class FileInvoiceStore implements InvoiceStore {
+  readonly kind = "file"
+  constructor(private readonly f: FileState) {}
+  private all(): IssuedInvoice[] {
+    return this.f
+      .keys("shop")
+      .filter((k) => k.startsWith("i:"))
+      .map((k) => dec<IssuedInvoice>(this.f.get("shop", k) ?? ""))
+  }
+  async get(id: string) {
+    const v = this.f.get("shop", `i:${id}`)
+    return v ? dec<IssuedInvoice>(v) : null
+  }
+  async getByToken(token: string) {
+    return this.all().find((i) => i.token === token) ?? null
+  }
+  async getByPaymentHash(hash: string) {
+    return this.all().find((i) => i.paymentHash === hash.toLowerCase()) ?? null
+  }
+  async listForIssuer(issuer: string, limit = 100) {
+    return this.all()
+      .filter((i) => i.issuer === issuer)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+      .slice(0, limit)
+  }
+  async listOpenMinted() {
+    return this.all().filter((i) => i.state === "open" && !!i.paymentHash)
+  }
+  async nextNumber(issuer: string) {
+    return `INV-${String(this.all().filter((i) => i.issuer === issuer).length + 1).padStart(4, "0")}`
+  }
+  async create(i: IssuedInvoice) {
+    if (this.f.get("shop", `i:${i.id}`)) throw new Error("invoice exists")
+    this.f.set("shop", `i:${i.id}`, enc({ ...i, paymentHash: i.paymentHash?.toLowerCase() }))
+  }
+  async update(i: IssuedInvoice) {
+    this.f.set("shop", `i:${i.id}`, enc({ ...i, paymentHash: i.paymentHash?.toLowerCase() }))
   }
 }

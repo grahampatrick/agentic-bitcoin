@@ -386,8 +386,21 @@ export const TOOLS: readonly ToolSpec[] = [
         ),
         memo: str("Short note shown on the invoice, or an empty string"),
         due_date: str("ISO date YYYY-MM-DD, or an empty string"),
+        cron: str(
+          "Five-field cron expression in UTC for a recurring invoice (e.g. '0 14 1 * *' monthly), or an empty string",
+        ),
+        due_days: int("For a recurring invoice: days until each one is due (default 14)", 0),
       },
-      required: ["invoice_kind", "payer_name", "payer_contact", "items_json", "memo", "due_date"],
+      required: [
+        "invoice_kind",
+        "payer_name",
+        "payer_contact",
+        "items_json",
+        "memo",
+        "due_date",
+        "cron",
+        "due_days",
+      ],
       additionalProperties: false,
     },
     strict: true,
@@ -787,6 +800,8 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
             .trim()
             .slice(0, 200) || undefined,
         dueAt,
+        cron: String(input.cron ?? "").trim() || undefined,
+        dueDays: Number(input.due_days ?? 0) > 0 ? Number(input.due_days) : undefined,
       }
     }
     case "list_invoices":

@@ -5,7 +5,7 @@
  */
 import type { Cents, ExchangeName, GivePurpose, Sats } from "@agentic-bitcoin/core"
 
-export type ScheduleKind = "buy" | "sweep" | "give"
+export type ScheduleKind = "buy" | "sweep" | "give" | "invoice"
 
 export interface Schedule {
   id: string
@@ -28,6 +28,15 @@ export interface Schedule {
   /** M11: the campaign a recurring gift supports, and the supporter's opt-in name. */
   campaignSlug?: string
   supporterName?: string
+  /** M14: a recurring invoice; each firing issues a fresh one due `dueDays` later. */
+  invoice?: {
+    invoiceKind: "invoice" | "request"
+    payerName: string
+    payerContactSealed?: string
+    items: { description: string; qty: number; unitCents: Cents }[]
+    memo?: string
+    dueDays: number
+  }
   cron: string
   /** Sats estimate captured at creation, re-estimated at each run from the live price when available. */
   estimatedSats: Sats

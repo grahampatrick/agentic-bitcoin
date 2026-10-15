@@ -10,6 +10,7 @@ import {
   type CampaignStore,
   type ContributionSink,
   type ExecuteResult,
+  type InvoiceContext,
   type LedgerStore,
   type Policy,
   type PriceSnapshot,
@@ -37,6 +38,8 @@ export interface RunnerDeps {
     /** M11: where a fired campaign gift is tallied, and the supporter's opaque key. */
     contributions?: ContributionSink
     supporterKey?: string
+    /** M14: issuer context so a recurring invoice can be minted on the user's wallet. */
+    invoices?: InvoiceContext
   }>
   price(): Promise<PriceSnapshot | undefined>
   /** Sweep: an exchange that can pay a Lightning invoice. Optional. */
@@ -89,7 +92,9 @@ export async function runDue(deps: RunnerDeps): Promise<RunReport> {
 type Paused = { status: "failed"; paused: string }
 
 async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteResult | Paused> {
-  const { policy, ledger, rails, contributions, supporterKey } = await deps.resolve(s.userId)
+  const { policy, ledger, rails, contributions, supporterKey, invoices } = await deps.resolve(
+    s.userId,
+  )
   const price = await deps.price()
   const key = `${s.id}:${slotOf(at)}`
   let give: Extract<Action, { kind: "give" }> | null = null
@@ -117,25 +122,41 @@ async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteRes
       requestedBy: "schedule",
     }
   }
-  const action: Action = give
-    ? give
-    : s.kind === "sweep"
+  const invoiceAction: Action | null =
+    s.kind === "invoice" && s.invoice
       ? {
-          kind: "sweep_to_cold",
-          address: s.address ?? "",
-          keepSats: s.keepSats ?? 0n,
-          maxSats: s.maxSats ?? 0n,
+          kind: "create_invoice",
+          invoiceKind: s.invoice.invoiceKind,
+          payerName: s.invoice.payerName,
+          payerContactSealed: s.invoice.payerContactSealed,
+          items: s.invoice.items,
+          memo: s.invoice.memo,
+          dueAt: new Date(at.getTime() + s.invoice.dueDays * 86_400_000).toISOString(),
           idempotencyKey: key,
           requestedBy: "schedule",
         }
-      : {
-          kind: "buy_bitcoin",
-          exchange: s.exchange,
-          usdCents: s.usdCents,
-          estimatedSats: price ? centsToSats(s.usdCents, price) : s.estimatedSats,
-          idempotencyKey: key,
-          requestedBy: "schedule",
-        }
+      : null
+  const action: Action = invoiceAction
+    ? invoiceAction
+    : give
+      ? give
+      : s.kind === "sweep"
+        ? {
+            kind: "sweep_to_cold",
+            address: s.address ?? "",
+            keepSats: s.keepSats ?? 0n,
+            maxSats: s.maxSats ?? 0n,
+            idempotencyKey: key,
+            requestedBy: "schedule",
+          }
+        : {
+            kind: "buy_bitcoin",
+            exchange: s.exchange,
+            usdCents: s.usdCents,
+            estimatedSats: price ? centsToSats(s.usdCents, price) : s.estimatedSats,
+            idempotencyKey: key,
+            requestedBy: "schedule",
+          }
   // The user confirmed the schedule itself (schedule_* always needs a yes); each firing is pre-approved.
   const result = await execute({
     action,
@@ -144,6 +165,7 @@ async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteRes
     rails,
     contributions,
     supporterKey,
+    invoices,
     now: () => at,
     context: { price },
     confirmation: {
@@ -174,6 +196,8 @@ function detailOf(r: ExecuteResult): string | undefined {
     if (x?.txid) return `swept ${x.amountSats} sats, tx ${x.txid.slice(0, 12)}…`
     const g = r.result as { recipientSlug?: string; amountSats?: bigint } | undefined
     if (g?.recipientSlug) return `gave ${g.amountSats} sats to ${g.recipientSlug}`
+    const inv = r.result as { number?: string; link?: string } | undefined
+    if (inv?.number) return `issued ${inv.number} ${inv.link ?? ""}`.trim()
     if (x?.skipped) return "nothing to sweep"
     return x?.sats !== undefined ? `${x.sats} sats for ${x.usdCents} cents` : undefined
   }
@@ -206,18 +230,44 @@ export function schedulesHook(
         active: s.active,
         lastRunAt: s.lastRunAt,
         summary:
-          s.kind === "give"
-            ? `Give ${s.usdCents > 0n ? `$${(s.usdCents / 100n).toString()}` : `${s.estimatedSats.toLocaleString("en-US")} sats`} to ${s.recipientSlug} (${s.purpose ?? "gift"}${s.campaignSlug ? `, campaign ${s.campaignSlug}` : ""})` // money-ok: label
-            : s.kind === "sweep"
-              ? `Sweep above ${s.keepSats ?? 0n} sats to cold storage`
-              : `Buy $${(s.usdCents / 100n).toString()} on ${s.exchange}`, // money-ok: label
+          s.kind === "invoice"
+            ? `Invoice ${s.invoice?.payerName ?? "?"} (${s.invoice?.items.map((i) => i.description).join(", ") ?? ""})`
+            : s.kind === "give"
+              ? `Give ${s.usdCents > 0n ? `$${(s.usdCents / 100n).toString()}` : `${s.estimatedSats.toLocaleString("en-US")} sats`} to ${s.recipientSlug} (${s.purpose ?? "gift"}${s.campaignSlug ? `, campaign ${s.campaignSlug}` : ""})` // money-ok: label
+              : s.kind === "sweep"
+                ? `Sweep above ${s.keepSats ?? 0n} sats to cold storage`
+                : `Buy $${(s.usdCents / 100n).toString()} on ${s.exchange}`, // money-ok: label
       }))
     },
     async create(
-      a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
+      a: Extract<
+        Action,
+        { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" | "create_invoice" }
+      >,
     ): Promise<string> {
-      parseCron(a.cron) // reject bad expressions before persisting
+      const cron = a.cron ?? ""
+      parseCron(cron) // reject bad expressions before persisting
       const userId = a.idempotencyKey.split(":")[0] ?? "unknown"
+      if (a.kind === "create_invoice") {
+        const s = await store.create({
+          userId,
+          kind: "invoice",
+          exchange: "strike",
+          usdCents: 0n,
+          cron,
+          estimatedSats: 0n,
+          sweepToWallet: false,
+          invoice: {
+            invoiceKind: a.invoiceKind,
+            payerName: a.payerName,
+            payerContactSealed: a.payerContactSealed,
+            items: a.items,
+            memo: a.memo,
+            dueDays: a.dueDays ?? 14,
+          },
+        })
+        return s.id
+      }
       if (a.kind === "schedule_give") {
         const s = await store.create({
           userId,

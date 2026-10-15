@@ -199,6 +199,9 @@ export interface CreateInvoice extends Base {
   items: InvoiceItem[]
   memo?: string
   dueAt?: string
+  /** Recurring: when set, a schedule is created and each firing issues a fresh invoice due `dueDays` later. */
+  cron?: string
+  dueDays?: number
 }
 
 export interface ListInvoices extends Base {
@@ -377,7 +380,7 @@ export function describeAction(action: Action): string {
     case "rewards_summary":
       return "Show sats-back rewards"
     case "create_invoice":
-      return `${action.invoiceKind === "request" ? "Request payment from" : "Invoice"} ${action.payerName}`
+      return `${action.invoiceKind === "request" ? "Request payment from" : "Invoice"} ${action.payerName}${action.cron ? ` (recurring, ${action.cron})` : ""}`
     case "list_invoices":
       return `List ${action.filter} invoices`
     case "void_invoice":

@@ -16,6 +16,7 @@ import {
   DEFAULT_REWARD_RATES,
   FakeWalletRail,
   type GoodsRail,
+  InMemoryInvoiceStore,
   InMemoryLedgerStore,
   InMemoryOrderStore,
   InMemoryProductStore,
@@ -27,7 +28,9 @@ import {
   type RewardRates,
   type WalletRail,
   contributionSink,
+  formatCents,
   formatSats,
+  invoiceStatus,
   recipientsForUser,
   rewardSink,
 } from "@agentic-bitcoin/core"
@@ -62,9 +65,11 @@ import {
 } from "./store/file"
 import { SupabaseRecipientStore, seedRecipients } from "./store/recipients"
 import {
+  FileInvoiceStore,
   FileOrderStore,
   FileProductStore,
   FileRewardStore,
+  SupabaseInvoiceStore,
   SupabaseOrderStore,
   SupabaseProductStore,
   SupabaseRewardStore,
@@ -165,6 +170,21 @@ const orderStore = db
 if (env.SHOP_FILE) {
   const n = await seedShop(productStore, env.SHOP_FILE)
   console.error(`[bot] storefront: ${n} products loaded from ${env.SHOP_FILE}`)
+}
+// M14: issued invoices; our pay links point at BOLT11s minted on the issuer's wallet.
+const invoiceStore = db
+  ? new SupabaseInvoiceStore(db)
+  : fileState
+    ? new FileInvoiceStore(fileState)
+    : new InMemoryInvoiceStore()
+const siteUrl = env.SITE_URL ?? "https://agentic-bitcoin.vercel.app"
+const payLinks = {
+  async resolve(token: string) {
+    const i = await invoiceStore.getByToken(token)
+    if (!i || i.state !== "open" || !i.bolt11 || !i.amountSats) return null
+    if (i.expiresAt && i.expiresAt < new Date().toISOString()) return null
+    return { bolt11: i.bolt11, amountSats: i.amountSats, destination: `invoice:${i.issuer}` }
+  },
 }
 // M13: sats-back. Rates are operator config; payouts come from the operator's own wallet (REWARDS_NWC_URL)
 // under the operator's own caps. Without that wallet, rewards accrue and show as payable, never paid.
@@ -293,6 +313,8 @@ async function resolveContext(userId: string): Promise<UserContext> {
     supporterKey: supporterKeyOf(userId),
     rewards,
     rewardStore,
+    invoices: { store: invoiceStore, issuer: userId, siteUrl },
+    payLinks,
   }
 }
 
@@ -368,6 +390,7 @@ const dispatcher = new Dispatcher({
   orders: orderStore,
   buyerKeyOf: supporterKeyOf,
   rewardStore,
+  invoiceStore,
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())
@@ -391,6 +414,7 @@ const runSchedules = async () => {
           rails: c.rails,
           contributions: c.contributions,
           supporterKey: c.supporterKey,
+          invoices: c.invoices,
         }
       },
       price,
@@ -405,6 +429,35 @@ const runSchedules = async () => {
     }
   } catch (err) {
     console.error("[scheduler] run failed", err)
+  }
+  // M14: watch open invoices for settlement on the issuer's own wallet; tell the issuer when one is paid.
+  try {
+    const open = (await invoiceStore.listOpenMinted())
+      .filter((i) => !i.issuer.startsWith("recipient:"))
+      .slice(0, 25)
+    for (const i of open) {
+      if (!i.paymentHash || invoiceStatus(i, new Date()) === "expired") continue
+      const w = (await railsFor(i.issuer)).wallet
+      if (w instanceof FakeWalletRail) continue
+      try {
+        const look = await w.lookupInvoice(i.paymentHash)
+        if (look.state === "settled") {
+          await invoiceStore.update({
+            ...i,
+            state: "paid",
+            paidAt: look.settledAt ?? new Date().toISOString(),
+            preimage: look.preimage,
+          })
+          await surface.send(i.issuer, {
+            text: `Paid: ${i.number} from ${i.payerName}, ${formatCents(i.totalCents)} (${formatSats(i.amountSats ?? 0n)}).`,
+          })
+        }
+      } catch {
+        /* wallet unreachable: try next minute */
+      }
+    }
+  } catch (err) {
+    console.error("[invoices] settlement check failed", err)
   }
   // M13: pay out sats-back from the operator wallet (chat buyers: an invoice on their own paired wallet).
   if (rewardsWallet) {

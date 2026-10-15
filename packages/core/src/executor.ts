@@ -58,7 +58,10 @@ export interface ExecuteInput {
   /** M5: the scheduler's persistence hook. Required for schedule_* actions. */
   schedules?: {
     create(
-      a: Extract<Action, { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" }>,
+      a: Extract<
+        Action,
+        { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" | "create_invoice" }
+      >,
     ): Promise<string>
     cancel(id: string): Promise<void>
     /** M11: the user's own schedules, summarized for the model. */
@@ -250,6 +253,11 @@ async function dispatch(
       return { result: { schedules: list }, detail: `${list.length} schedules` }
     }
     case "create_invoice": {
+      if (action.cron) {
+        const s = need(schedules, "schedules")
+        const scheduleId = await s.create(action)
+        return { result: { scheduleId }, detail: `recurring ${scheduleId}` }
+      }
       const ic = need(input.invoices, "invoices")
       const w = need(rails.wallet, "wallet")
       const now = (input.now ?? (() => new Date()))()

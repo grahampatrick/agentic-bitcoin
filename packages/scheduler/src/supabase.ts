@@ -17,6 +17,7 @@ type Row = {
   verified: boolean | null
   campaign_slug: string | null
   supporter_name: string | null
+  invoice_json: string | null
   cron: string
   estimated_sats: string
   sweep_to_wallet: boolean
@@ -40,6 +41,9 @@ const toRow = (s: Schedule): Row => ({
   verified: s.verified ?? null,
   campaign_slug: s.campaignSlug ?? null,
   supporter_name: s.supporterName ?? null,
+  invoice_json: s.invoice
+    ? JSON.stringify(s.invoice, (_k, v) => (typeof v === "bigint" ? `${v}n` : v))
+    : null,
   cron: s.cron,
   estimated_sats: s.estimatedSats.toString(),
   sweep_to_wallet: s.sweepToWallet,
@@ -62,6 +66,11 @@ const fromRow = (r: Row): Schedule => ({
   verified: r.verified ?? undefined,
   campaignSlug: r.campaign_slug ?? undefined,
   supporterName: r.supporter_name ?? undefined,
+  invoice: r.invoice_json
+    ? (JSON.parse(r.invoice_json, (_k, v) =>
+        typeof v === "string" && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v,
+      ) as Schedule["invoice"])
+    : undefined,
   cron: r.cron,
   estimatedSats: BigInt(r.estimated_sats),
   sweepToWallet: r.sweep_to_wallet,
