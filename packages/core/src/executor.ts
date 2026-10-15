@@ -9,13 +9,22 @@ import { type Action, actionHash, isSpend } from "./action"
 import { parseAddress } from "./address"
 import type { CampaignReader, ContributionSink } from "./campaign"
 import {
+  INVOICE_EXPIRY_SECONDS,
+  type InvoiceStore,
+  type IssuedInvoice,
+  invoiceStatus,
+  invoiceTotalCents,
+  newInvoiceToken,
+  payLinkFor,
+} from "./invoice"
+import {
   type LedgerEntry,
   type LedgerStore,
   findByIdempotencyKey,
   foldEntries,
   spentSince,
 } from "./ledger"
-import type { Cents } from "./money"
+import { type Cents, centsToSats } from "./money"
 import { type Decision, type EvaluateContext, type Policy, evaluate, windowStart } from "./policy"
 import { type Order, RailError, type Rails } from "./rails"
 import { givingRows } from "./recipient"
@@ -65,8 +74,18 @@ export interface ExecuteInput {
   rewards?: RewardSink
   rewardStore?: RewardStore
   userId?: string
+  /** M14: the issuer's invoice store, identity and site, for create/list/void. */
+  invoices?: InvoiceContext
   /** M9: the user-scoped recipient directory, for `find_recipient`. */
   recipients?: RecipientReader
+}
+
+export interface InvoiceContext {
+  store: InvoiceStore
+  issuer: string
+  issuerName?: string
+  siteUrl: string
+  newId?: () => string
 }
 
 export interface ScheduleSummary {
@@ -229,6 +248,110 @@ async function dispatch(
       const s = need(schedules, "schedules")
       const list = s.list ? await s.list() : []
       return { result: { schedules: list }, detail: `${list.length} schedules` }
+    }
+    case "create_invoice": {
+      const ic = need(input.invoices, "invoices")
+      const w = need(rails.wallet, "wallet")
+      const now = (input.now ?? (() => new Date()))()
+      const totalCents = invoiceTotalCents(action.items)
+      if (totalCents < 1n)
+        throw new RailError("invoices", "AMOUNT_OUT_OF_RANGE", "an invoice needs an amount")
+      const price = input.context?.price
+      if (!price)
+        throw new RailError(
+          "invoices",
+          "UNREACHABLE",
+          "no price available to size the invoice in sats",
+        )
+      const sats = centsToSats(totalCents, price)
+      const amountSats = sats < 1n ? 1n : sats
+      const memo =
+        `${action.invoiceKind === "request" ? "Payment request" : "Invoice"} for ${action.payerName}${action.memo ? `: ${action.memo}` : ""}`.slice(
+          0,
+          120,
+        )
+      const minted = await w.makeInvoice({
+        amountSats,
+        memo,
+        expirySeconds: INVOICE_EXPIRY_SECONDS,
+      })
+      const inv: IssuedInvoice = {
+        id: (
+          ic.newId ??
+          (() => `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`)
+        )(),
+        number: await ic.store.nextNumber(ic.issuer),
+        issuer: ic.issuer,
+        issuerName: ic.issuerName,
+        kind: action.invoiceKind,
+        payerName: action.payerName,
+        payerContactSealed: action.payerContactSealed,
+        items: action.items,
+        totalCents,
+        memo: action.memo,
+        dueAt: action.dueAt,
+        state: "open",
+        token: newInvoiceToken(),
+        bolt11: minted.bolt11,
+        paymentHash: minted.paymentHash.toLowerCase(),
+        amountSats,
+        usdCentsPerBtc: price.usdCentsPerBtc,
+        mintedAt: now.toISOString(),
+        expiresAt: minted.expiresAt,
+        createdAt: now.toISOString(),
+      }
+      await ic.store.create(inv)
+      return {
+        result: {
+          invoiceId: inv.id,
+          number: inv.number,
+          link: payLinkFor(ic.siteUrl, inv.token),
+          totalCents,
+          amountSats,
+          dueAt: inv.dueAt,
+        },
+        detail: `${inv.number} ${totalCents} cents (${amountSats} sats)`,
+      }
+    }
+    case "list_invoices": {
+      const ic = need(input.invoices, "invoices")
+      const now = (input.now ?? (() => new Date()))()
+      const all = await ic.store.listForIssuer(ic.issuer, 50)
+      const f = action.filter
+      const list = all
+        .map((i) => ({ ...i, status: invoiceStatus(i, now) }))
+        .filter(
+          (i) =>
+            f === "all" ||
+            (f === "open"
+              ? i.status === "open" || i.status === "overdue" || i.status === "expired"
+              : i.status === f),
+        )
+        .map((i) => ({
+          id: i.id,
+          number: i.number,
+          kind: i.kind,
+          payerName: i.payerName,
+          totalCents: i.totalCents,
+          amountSats: i.amountSats,
+          status: i.status,
+          dueAt: i.dueAt,
+          createdAt: i.createdAt,
+          paidAt: i.paidAt,
+          link: payLinkFor(ic.siteUrl, i.token),
+        }))
+      return { result: { invoices: list }, detail: `${list.length} invoices` }
+    }
+    case "void_invoice": {
+      const ic = need(input.invoices, "invoices")
+      const i = await ic.store.get(action.invoiceId)
+      if (!i || i.issuer !== ic.issuer)
+        throw new RailError("invoices", "NOT_FOUND", action.invoiceId)
+      if (i.state === "paid")
+        throw new RailError("invoices", "REJECTED", "a paid invoice cannot be voided")
+      const now = (input.now ?? (() => new Date()))()
+      await ic.store.update({ ...i, state: "void", voidedAt: now.toISOString() })
+      return { result: { voided: i.number }, detail: i.number }
     }
     case "rewards_summary": {
       const store = need(input.rewardStore, "rewards")

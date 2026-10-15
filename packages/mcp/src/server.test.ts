@@ -43,11 +43,13 @@ describe("MCP server", () => {
       "buy_product",
       "cancel_schedule",
       "confirm_action",
+      "create_invoice",
       "fetch_l402",
       "find_recipient",
       "get_balance",
       "give",
       "giving_summary",
+      "list_invoices",
       "list_schedules",
       "make_invoice",
       "pay_invoice",
@@ -58,6 +60,7 @@ describe("MCP server", () => {
       "schedule_sweep",
       "search_products",
       "sweep_to_cold",
+      "void_invoice",
     ])
     expect(tools.find((t) => t.name === "pay_lightning_address")?.inputSchema).toMatchObject({
       required: ["address", "amount_sats", "memo"],

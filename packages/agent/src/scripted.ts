@@ -46,6 +46,29 @@ function lastToolResult(
 }
 
 const num = (s: string) => Number.parseInt(s.replace(/[,_]/g, ""), 10)
+/** "friday" / "in 7 days" / "2026-10-20" → YYYY-MM-DD, relative to today (UTC). */
+function dueDate(text: string, today = new Date()): string {
+  const t = text.trim().toLowerCase()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
+  const days = /in\s+(\d+)\s+days?/.exec(t)
+  if (days) d.setUTCDate(d.getUTCDate() + Number(days[1]))
+  else if (t === "tomorrow") d.setUTCDate(d.getUTCDate() + 1)
+  else {
+    const dow = [
+      "sunday",
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday",
+      "saturday",
+    ].indexOf(t.replace(/^(next|this)\s+/, ""))
+    if (dow >= 0) d.setUTCDate(d.getUTCDate() + ((dow - d.getUTCDay() + 7) % 7 || 7))
+    else d.setUTCDate(d.getUTCDate() + 7)
+  }
+  return d.toISOString().slice(0, 10)
+}
 const dollarsToCents = (s: string) => Math.round(Number.parseFloat(s.replace(/[,_]/g, "")) * 100) // money-ok: parsing a human's "$25" in a canned demo model
 
 /** Map an utterance to a tool call. Returns null when nothing matches (the reply is then text). */
@@ -116,6 +139,43 @@ export function intentOf(text: string): { name: string; input: Record<string, un
       },
     }
   }
+  // M14: "invoice Bob $200 for the deck due friday" / "request $18 from Alice for dinner" / "my invoices" / "void inv_x"
+  const invoice =
+    /^invoice\s+(.+?)\s+\$\s?([\d.,_]+)(?:\s+for\s+(.+?))?(?:\s+due\s+(.+?))?\s*$/i.exec(t) ??
+    /^(?:request|ask)\s+\$\s?([\d.,_]+)\s+from\s+(.+?)(?:\s+for\s+(.+?))?\s*$/i.exec(t)
+  if (invoice) {
+    const isRequest = /^(?:request|ask)/i.test(t)
+    const payer = (isRequest ? invoice[2] : invoice[1]) ?? ""
+    const amount = (isRequest ? invoice[1] : invoice[2]) ?? "0"
+    const what = invoice[3] ?? (isRequest ? "Payment request" : "Invoice")
+    const due = isRequest ? "" : (invoice[4] ?? "")
+    return {
+      name: "create_invoice",
+      input: {
+        invoice_kind: isRequest ? "request" : "invoice",
+        payer_name: payer.trim(),
+        payer_contact: "",
+        items_json: JSON.stringify([
+          { description: what.trim(), qty: 1, unit_cents: dollarsToCents(amount) },
+        ]),
+        memo: "",
+        due_date: due ? dueDate(due) : "",
+      },
+    }
+  }
+  if (/\b(my|unpaid|open|overdue|paid)\s+invoices?\b|\bwho\s+(hasn'?t|has not)\s+paid\b/i.test(t)) {
+    const f = /\boverdue\b/i.test(t)
+      ? "overdue"
+      : /\bpaid\b/i.test(t) && !/\b(unpaid|hasn'?t|has not)\b/i.test(t)
+        ? "paid"
+        : "open"
+    return { name: "list_invoices", input: { filter: f } }
+  }
+  const voidInv = /\b(?:void|cancel)\s+(?:invoice\s+)?(inv_\S+)/i.exec(t)
+  if (voidInv) return { name: "void_invoice", input: { invoice_id: voidInv[1] } }
+  const payLink = /\bpay\b.*?(https?:\/\/\S+\/pay\/[a-z0-9]{24,32})/i.exec(t)
+  if (payLink)
+    return { name: "pay_invoice", input: { bolt11: payLink[1], amount_sats: 1, destination: "" } }
   // "support the ortiz family $25 a month" → a dollar pledge, re-priced each time
   const pledge =
     /^(?:support|give(?: to)?|sponsor)\s+(?:the\s+)?(.+?)\s+(?:with\s+)?\$\s?([\d.,_]+)\s+(?:a|per|every|each)\s+(month|week)\s*$/i.exec(
@@ -414,6 +474,29 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
         ? `Your recurring actions: ${live.map((s) => `${s.summary} (${s.id})`).join("; ")}. Cancel one with “cancel ${live[0]?.id}”.`
         : "You have no recurring actions."
     }
+    case "create_invoice":
+      return `Done: ${result.number} for $${(Number(result.totalCents) / 100).toFixed(2)} (${Number(result.amountSats).toLocaleString("en-US")} sats)${result.dueAt ? `, due ${String(result.dueAt).slice(0, 10)}` : ""}. Send them this link: ${result.link}` // money-ok: display in a canned demo model
+    case "list_invoices": {
+      const list = (result.invoices ?? []) as {
+        number: string
+        payerName: string
+        totalCents: bigint | string
+        status: string
+        link: string
+        id: string
+      }[]
+      const strip = (x: string) => x.replace(/<\/?untrusted>/g, "")
+      return list.length
+        ? list
+            .map(
+              (i) =>
+                `${i.number} ${strip(i.payerName)} $${(Number(i.totalCents) / 100).toFixed(2)} — ${i.status} (${i.id}) ${i.link}`,
+            )
+            .join("\n") // money-ok: display in a canned demo model
+        : "No invoices there."
+    }
+    case "void_invoice":
+      return `Voided ${result.voided}.`
     case "rewards_summary": {
       const n = (v: unknown) => Number(v).toLocaleString("en-US")
       const recent = (result.recent ?? []) as { state: string }[]

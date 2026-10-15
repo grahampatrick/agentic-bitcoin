@@ -6,6 +6,7 @@
  * retry can never pay twice.
  */
 import { createHash } from "node:crypto"
+import type { InvoiceItem } from "./invoice"
 import type { Cents, Sats } from "./money"
 import type { GivePurpose } from "./recipient"
 
@@ -186,6 +187,31 @@ export interface RewardsSummary extends Base {
   kind: "rewards_summary"
 }
 
+/**
+ * M14: issue a bill (or a one-line payment request) that someone pays over Lightning. Moves no sats:
+ * the issuer's wallet mints the BOLT11 and our pay link points at it. The payer's contact is sealed.
+ */
+export interface CreateInvoice extends Base {
+  kind: "create_invoice"
+  invoiceKind: "invoice" | "request"
+  payerName: string
+  payerContactSealed?: string
+  items: InvoiceItem[]
+  memo?: string
+  dueAt?: string
+}
+
+export interface ListInvoices extends Base {
+  kind: "list_invoices"
+  /** open | overdue | paid | void | all */
+  filter: string
+}
+
+export interface VoidInvoice extends Base {
+  kind: "void_invoice"
+  invoiceId: string
+}
+
 export type Action =
   | Give
   | ScheduleGive
@@ -193,6 +219,9 @@ export type Action =
   | ListSchedules
   | GivingSummary
   | RewardsSummary
+  | CreateInvoice
+  | ListInvoices
+  | VoidInvoice
   | PayInvoice
   | PayAddress
   | MakeInvoice
@@ -227,6 +256,9 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   list_schedules: "wallet",
   giving_summary: "wallet",
   rewards_summary: "wallet",
+  create_invoice: "wallet",
+  list_invoices: "wallet",
+  void_invoice: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -259,6 +291,9 @@ export function spendSats(action: Action): Sats {
     case "list_schedules":
     case "giving_summary":
     case "rewards_summary":
+    case "create_invoice":
+    case "list_invoices":
+    case "void_invoice":
       return 0n
   }
 }
@@ -290,6 +325,9 @@ export function destinationOf(action: Action): string | null {
     case "list_schedules":
     case "giving_summary":
     case "rewards_summary":
+    case "create_invoice":
+    case "list_invoices":
+    case "void_invoice":
       return null
   }
 }
@@ -338,6 +376,12 @@ export function describeAction(action: Action): string {
       return `Summarize giving in ${action.year}`
     case "rewards_summary":
       return "Show sats-back rewards"
+    case "create_invoice":
+      return `${action.invoiceKind === "request" ? "Request payment from" : "Invoice"} ${action.payerName}`
+    case "list_invoices":
+      return `List ${action.filter} invoices`
+    case "void_invoice":
+      return `Void invoice ${action.invoiceId}`
   }
 }
 

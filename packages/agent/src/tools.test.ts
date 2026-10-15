@@ -213,6 +213,19 @@ function sampleInput(name: string): Record<string, unknown> {
       return { year: 2026 }
     case "rewards_summary":
       return {}
+    case "create_invoice":
+      return {
+        invoice_kind: "invoice",
+        payer_name: "Bob",
+        payer_contact: "",
+        items_json: '[{"description":"Deck","qty":1,"unit_cents":20000}]',
+        memo: "",
+        due_date: "",
+      }
+    case "list_invoices":
+      return { filter: "open" }
+    case "void_invoice":
+      return { invoice_id: "inv_1" }
     case "sweep_to_cold":
       return {
         address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",

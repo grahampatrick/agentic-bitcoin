@@ -366,6 +366,62 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "create_invoice",
+    description:
+      "Issue an invoice (or a one-line payment request) that someone pays over Lightning. The user's own wallet creates the Lightning invoice; reply with the pay link. Moves no sats. Never invent amounts, items or the payer's details; ask if missing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        invoice_kind: {
+          type: "string",
+          description: "invoice (itemised, with a due date) or request (a one-liner to a person)",
+          enum: ["invoice", "request"],
+        },
+        payer_name: str("Who pays, as the user named them"),
+        payer_contact: str(
+          "Their email or phone if the user gave it, else an empty string (it is sealed, never shown)",
+        ),
+        items_json: str(
+          'JSON array of {"description","qty","unit_cents"} in integer cents; a request is one item',
+        ),
+        memo: str("Short note shown on the invoice, or an empty string"),
+        due_date: str("ISO date YYYY-MM-DD, or an empty string"),
+      },
+      required: ["invoice_kind", "payer_name", "payer_contact", "items_json", "memo", "due_date"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "list_invoices",
+    description:
+      "The user's issued invoices and payment requests with status and pay links. Read-only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        filter: {
+          type: "string",
+          description: "open (includes overdue/expired), overdue, paid, void or all",
+          enum: ["open", "overdue", "paid", "void", "all"],
+        },
+      },
+      required: ["filter"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "void_invoice",
+    description: "Cancel an unpaid invoice the user issued, by its id from list_invoices.",
+    input_schema: {
+      type: "object",
+      properties: { invoice_id: str("The invoice id") },
+      required: ["invoice_id"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "confirm_action",
     description:
       "Execute an action the user has explicitly approved after seeing its summary. Only valid with an action_hash returned earlier in this conversation.",
@@ -678,6 +734,65 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       return { kind: "giving_summary", ...base, year: input.year as number }
     case "rewards_summary":
       return { kind: "rewards_summary", ...base }
+    case "create_invoice": {
+      let raw: unknown
+      try {
+        raw = JSON.parse(String(input.items_json ?? "[]"))
+      } catch {
+        throw new ToolInputError("create_invoice: items_json is not JSON")
+      }
+      if (!Array.isArray(raw) || raw.length === 0 || raw.length > 50)
+        throw new ToolInputError("create_invoice: one to fifty items")
+      const items = raw.map((x, i) => {
+        const o = (x ?? {}) as Record<string, unknown>
+        const qty = Number(o.qty ?? 1)
+        const unit = Number(o.unit_cents)
+        const description = String(o.description ?? "")
+          .trim()
+          .slice(0, 120)
+        if (!description)
+          throw new ToolInputError(`create_invoice: item ${i + 1} needs a description`)
+        if (!Number.isInteger(qty) || qty < 1 || qty > 999)
+          throw new ToolInputError(`create_invoice: item ${i + 1} has a bad quantity`)
+        if (!Number.isInteger(unit) || unit < 0)
+          throw new ToolInputError(`create_invoice: item ${i + 1} needs unit_cents as an integer`)
+        return { description, qty, unitCents: BigInt(unit) }
+      })
+      const payerName = String(input.payer_name ?? "")
+        .trim()
+        .slice(0, 80)
+      if (!payerName) throw new ToolInputError("create_invoice: who is this for?")
+      const contact = String(input.payer_contact ?? "").trim()
+      if (contact && !ctx.seal)
+        throw new ToolInputError(
+          "create_invoice: contact details cannot be stored on this server (no SECRETS_KEY)",
+        )
+      const due = String(input.due_date ?? "").trim()
+      let dueAt: string | undefined
+      if (due) {
+        const d = new Date(`${due}T23:59:59.000Z`)
+        if (Number.isNaN(d.getTime()))
+          throw new ToolInputError("create_invoice: due_date must be YYYY-MM-DD")
+        dueAt = d.toISOString()
+      }
+      return {
+        kind: "create_invoice",
+        ...base,
+        invoiceKind: input.invoice_kind === "request" ? "request" : "invoice",
+        payerName,
+        payerContactSealed: contact && ctx.seal ? ctx.seal(contact) : undefined,
+        items,
+        memo:
+          String(input.memo ?? "")
+            .trim()
+            .slice(0, 200) || undefined,
+        dueAt,
+      }
+    }
+    case "list_invoices":
+      return { kind: "list_invoices", ...base, filter: String(input.filter ?? "open") }
+    case "void_invoice":
+      return { kind: "void_invoice", ...base, invoiceId: String(input.invoice_id ?? "") }
     case "confirm_action":
       return null
   }

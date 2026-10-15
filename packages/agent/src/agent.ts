@@ -13,6 +13,7 @@ import {
   type Confirmation,
   type ContributionSink,
   type ExecuteResult,
+  type InvoiceContext,
   type LedgerStore,
   type Policy,
   type PriceSnapshot,
@@ -24,6 +25,7 @@ import {
   execute,
   isTrustedRecipient,
   railOf,
+  tokenFromPayLink,
 } from "@agentic-bitcoin/core"
 import type { LlmClient, LlmContentBlock, LlmMessage, LlmTool } from "./llm"
 import { SYSTEM_PROMPT } from "./prompt"
@@ -77,6 +79,13 @@ export interface UserContext {
   /** M13: sats-back accrual and the user's rewards. */
   rewards?: RewardSink
   rewardStore?: RewardStore
+  /** M14: the user's invoices (as issuer) and how to resolve one of our pay links (as payer). */
+  invoices?: InvoiceContext
+  payLinks?: {
+    resolve(
+      token: string,
+    ): Promise<{ bolt11: string; amountSats: bigint; destination: string } | null>
+  }
 }
 
 export interface AgentDeps {
@@ -203,6 +212,22 @@ export async function handleToolCall(
   let action: Action | null
   let toolInput = input
   try {
+    // M14: "pay this" with one of our pay links → the issuer's BOLT11, then the normal policy path.
+    if (name === "pay_invoice" && ctx.payLinks) {
+      const inp = (input ?? {}) as Record<string, unknown>
+      const token = tokenFromPayLink(String(inp.bolt11 ?? ""))
+      if (token) {
+        const r = await ctx.payLinks.resolve(token)
+        if (!r)
+          throw new ToolInputError("pay_invoice: that pay link is unknown, paid, expired or void")
+        toolInput = {
+          ...inp,
+          bolt11: r.bolt11,
+          amount_sats: Number(r.amountSats),
+          destination: r.destination,
+        }
+      }
+    }
     // give / schedule_give: resolve the slug server-side so the Action carries the real recipient.
     let recipient: { recipient: Recipient; trusted: boolean } | null | undefined
     let campaign: Campaign | null | undefined
@@ -268,6 +293,7 @@ export async function handleToolCall(
     rewards: ctx.rewards,
     rewardStore: ctx.rewardStore,
     userId: ctx.userId,
+    invoices: ctx.invoices,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -311,6 +337,7 @@ export async function confirmPending(
     rewards: ctx.rewards,
     rewardStore: ctx.rewardStore,
     userId: ctx.userId,
+    invoices: ctx.invoices,
     now: opts.now,
     context: { price: opts.price },
     confirmation,
@@ -393,6 +420,13 @@ function sanitize(result: unknown): unknown {
   const r = { ...(result as Record<string, unknown>) }
   if (typeof r.preimage === "string") r.preimage = `${r.preimage.slice(0, 8)}…`
   if (typeof r.body === "string") r.body = quoteUntrusted(r.body)
+  if (Array.isArray(r.invoices)) {
+    r.invoices = r.invoices.map((x) => {
+      const o = { ...(x as Record<string, unknown>) }
+      if (typeof o.payerName === "string") o.payerName = quoteUntrusted(o.payerName, 120)
+      return o
+    })
+  }
   if (Array.isArray(r.products)) {
     // Product titles are merchant-written: data, never instructions.
     r.products = r.products.map((p) => {
