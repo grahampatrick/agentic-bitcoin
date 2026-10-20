@@ -3,6 +3,7 @@
 import type { OrderView } from "@/lib/shop/service"
 import QRCode from "qrcode"
 import { useEffect, useState } from "react"
+import { PayButtons } from "../PayButtons"
 import { usd } from "./ProductCard"
 
 export function OrderStatus({ id, initial }: { id: string; initial?: OrderView | null }) {
@@ -14,13 +15,15 @@ export function OrderStatus({ id, initial }: { id: string; initial?: OrderView |
 
   useEffect(() => {
     let alive = true
+    const started = Date.now()
     const tick = async () => {
       const res = await fetch(`/api/shop/orders/${id}`, { cache: "no-store" })
       if (!alive) return
       if (!res.ok) return setO(null)
       const j = (await res.json()) as OrderView
       setO(j)
-      if (j.state === "unpaid") setTimeout(tick, 4000)
+      // poll fast for the first minute after the page opens, then relax
+      if (j.state === "unpaid") setTimeout(tick, Date.now() - started < 60_000 ? 2000 : 5000)
     }
     void tick()
     return () => {

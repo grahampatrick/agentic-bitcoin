@@ -3,6 +3,7 @@
 import type { PayView } from "@/lib/invoices/service"
 import QRCode from "qrcode"
 import { useEffect, useState } from "react"
+import { PayButtons } from "./PayButtons"
 
 const usd = (c: number) => `$${(c / 100).toFixed(2)}` // money-ok: display of an integer-cent value
 
@@ -19,9 +20,11 @@ export function PayInvoice({ token, initial }: { token: string; initial: PayView
       if (!alive || !res.ok) return
       const j = (await res.json()) as PayView
       setV(j)
-      if (j.status === "open" || j.status === "overdue") setTimeout(tick, 5000)
+      if (j.status === "open" || j.status === "overdue")
+        setTimeout(tick, Date.now() - started < 60_000 ? 2000 : 5000)
     }
-    const t = setTimeout(tick, 5000)
+    const started = Date.now()
+    const t = setTimeout(tick, 2000)
     return () => {
       alive = false
       clearTimeout(t)
@@ -72,6 +75,18 @@ export function PayInvoice({ token, initial }: { token: string; initial: PayView
         <p>This Lightning invoice has expired. Ask {v.issuerName} to renew the link.</p>
       ) : payable ? (
         <div className="give__invoice">
+          <PayButtons
+            bolt11={v.bolt11 ?? ""}
+            label={`Pay ${usd(v.totalCents)}`}
+            onPreimage={async (preimage) => {
+              const res = await fetch(`/api/pay/${token}`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ preimage }),
+              })
+              if (res.ok) window.location.reload()
+            }}
+          />
           {qr ? <img src={qr} alt="Lightning invoice QR code" width={256} height={256} /> : null}
           <p className="small">
             Lightning invoice created by {v.issuerName}&rsquo;s wallet

@@ -74,6 +74,9 @@ every invoice is minted by their own wallet (ADR-0014). The operator lists them 
 The store: `/shop` is a Lightning marketplace in the Shop-app shape (search, categories, a featured merchant, deals, cart);
 every order is one invoice minted by the merchant's own wallet, shipping is sealed for the merchant alone, and "find me
 a study bible" / "buy <id>" work from Signal (ADR-0016, [`docs/shop.md`](./docs/shop.md)).
+Paying is one tap: `lightning:` links, browser wallets via WebLN with the preimage posted back as proof, named wallet
+buttons; `/connect` pairs your own Alby Hub or Coinos with a budget pre-filled; `/address yourname` gives you
+`yourname@anvard.ai` paying straight into your wallet (ADR-0019, [`docs/wallets.md`](./docs/wallets.md)).
 Invoices: “invoice Bob $200 for the deck due friday” returns a pay link whose Lightning invoice your own wallet minted;
 organisations create, void and export invoices from their dashboard; `pay this <link>` pays one from chat (ADR-0018,
 [`docs/invoices.md`](./docs/invoices.md)).

@@ -11,6 +11,7 @@ import {
   isLightningAddress,
   slugify,
 } from "@agentic-bitcoin/core"
+import { type LightningAddressStore, preimageMatches } from "@agentic-bitcoin/core"
 import {
   type LnurlPayRequest,
   NwcWalletRail,
@@ -32,6 +33,8 @@ export const INVOICES_PER_MINUTE = 30
 
 export interface ReceiveDeps {
   store: ReceiveStore
+  /** M15: paired users' addresses (`name@host`), served by the same LNURL endpoint. */
+  addresses?: LightningAddressStore
   baseUrl: string
   fetchImpl?: typeof fetch
   now?: () => Date
@@ -89,14 +92,41 @@ function sourceFor(r: Recipient, d: ReturnType<typeof defaults>): ReceiveSource 
   return { kind: "proxy", lightningAddress: r.lightningAddress }
 }
 
+/**
+ * A slug is a directory recipient, or (M15) a paired user's address. An address becomes a synthetic
+ * recipient whose wallet is the user's own; its invoices are recorded under `addr:<name>`.
+ */
+async function resolvePayee(
+  deps: ReceiveDeps,
+  slug: string,
+): Promise<{ r: Recipient; invoiceSlug: string } | null> {
+  const r = await deps.store.getRecipient(slug)
+  if (r) return { r, invoiceSlug: r.slug }
+  const a = deps.addresses ? await deps.addresses.get(slug) : null
+  if (!a || (!a.nwcSealed && !a.forwardTo)) return null
+  const host = new URL(deps.baseUrl).host
+  return {
+    r: {
+      slug: a.name,
+      kind: "creator",
+      name: a.name,
+      lightningAddress: a.forwardTo ?? `${a.name}@${host}`,
+      verified: { how: "operator", at: a.createdAt },
+      nwcReceive: a.forwardTo ? undefined : a.nwcSealed,
+    },
+    invoiceSlug: `addr:${a.name}`,
+  }
+}
+
 /** GET /.well-known/lnurlp/<slug> */
 export async function payRequestFor(
   deps: ReceiveDeps,
   slug: string,
 ): Promise<LnurlPayRequest | ReturnType<typeof lnurlError>> {
   const d = defaults(deps)
-  const r = await deps.store.getRecipient(slug)
-  if (!r) return lnurlError("unknown recipient")
+  const payee = await resolvePayee(deps, slug)
+  if (!payee) return lnurlError("unknown recipient")
+  const { r } = payee
   try {
     const src = sourceFor(r, d)
     try {
@@ -124,10 +154,11 @@ export async function invoiceFor(
   campaignSlug?: string,
 ): Promise<{ pr: string; routes: []; paymentHash: string } | ReturnType<typeof lnurlError>> {
   const d = defaults(deps)
-  const r = await deps.store.getRecipient(slug)
-  if (!r) return lnurlError("unknown recipient")
+  const payee = await resolvePayee(deps, slug)
+  if (!payee) return lnurlError("unknown recipient")
+  const { r, invoiceSlug } = payee
   const since = new Date(d.now().getTime() - 60_000).toISOString()
-  if ((await deps.store.countInvoicesSince(r.slug, since)) >= INVOICES_PER_MINUTE)
+  if ((await deps.store.countInvoicesSince(invoiceSlug, since)) >= INVOICES_PER_MINUTE)
     return lnurlError("too many requests for this recipient; try again in a minute")
   try {
     const src = sourceFor(r, d)
@@ -141,7 +172,7 @@ export async function invoiceFor(
       })
       await deps.store.recordInvoice({
         paymentHash: inv.paymentHash,
-        slug: r.slug,
+        slug: invoiceSlug,
         amountMsats: inv.amountMsats,
         comment: comment?.slice(0, 200) || undefined,
         source: inv.source,
@@ -355,4 +386,25 @@ export function siteBaseUrl(req?: Request): string {
     return `${proto}://${host}`
   }
   return "http://localhost:3900"
+}
+
+/** POST /api/lnurlp/<slug>/paid: the payer's browser wallet returned the preimage; prove and settle. */
+export async function claimReceivePaid(
+  deps: ReceiveDeps,
+  slug: string,
+  paymentHash: string,
+  preimage: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const d = defaults(deps)
+  const payee = await resolvePayee(deps, slug)
+  if (!payee) return { ok: false, error: "unknown recipient" }
+  const hash = paymentHash.trim().toLowerCase()
+  const list = await deps.store.listInvoices(payee.invoiceSlug, 500)
+  const inv = list.find((i) => i.paymentHash === hash)
+  if (!inv) return { ok: false, error: "no such invoice" }
+  if (inv.settledAt) return { ok: true }
+  if (!preimageMatches(preimage.trim(), hash))
+    return { ok: false, error: "That preimage does not match this invoice." }
+  await deps.store.markSettled(hash, d.now().toISOString(), preimage.trim().toLowerCase())
+  return { ok: true }
 }

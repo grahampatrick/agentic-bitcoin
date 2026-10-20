@@ -1,3 +1,4 @@
+import { getAddressStore } from "@/lib/receive/addresses"
 import { invoiceFor, siteBaseUrl } from "@/lib/receive/service"
 import { getReceiveStore } from "@/lib/receive/store"
 import { NextResponse } from "next/server"
@@ -19,7 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       { status: 400 },
     )
   const body = await invoiceFor(
-    { store: getReceiveStore(), baseUrl: siteBaseUrl(req) },
+    { store: getReceiveStore(), addresses: getAddressStore(), baseUrl: siteBaseUrl(req) },
     slug,
     amount,
     comment,

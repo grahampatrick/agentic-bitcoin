@@ -10,6 +10,7 @@ import {
   DEFAULT_POLICY,
   type InvoiceStore,
   type IssuedInvoice,
+  type LightningAddressStore,
   type OrderStore,
   type Policy,
   type Recipient,
@@ -26,6 +27,7 @@ import {
   invoicesCsv,
   isLightningAddress,
   isTrustedRecipient,
+  normalizeAddressName,
   parseAddress,
   readEntries,
   satsToCents,
@@ -78,6 +80,8 @@ export interface DispatcherDeps {
   rewardStore?: RewardStore
   /** M14: the user's issued invoices. */
   invoiceStore?: InvoiceStore
+  /** M15: lightning addresses for paired users. */
+  addresses?: LightningAddressStore
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -288,6 +292,8 @@ export class Dispatcher {
         return this.verify(userId, args, reply)
       case "/campaigns":
         return this.campaigns(userId, reply)
+      case "/address":
+        return this.address(userId, args, reply)
       case "/invoices": {
         const store = this.deps.invoiceStore
         if (!store) return reply("Invoices are not enabled on this server.")
@@ -545,6 +551,62 @@ export class Dispatcher {
     return reply(`Verified ${r.name} (${r.slug}). It is now listed and can receive gifts.`)
   }
 
+  /**
+   * `/address <name>` claims name@<host> pointing at the user's own paired wallet; `/address forward <ln address>`
+   * forwards instead; `/address` shows it; `/address remove` drops it.
+   */
+  private async address(
+    userId: string,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const store = this.deps.addresses
+    const host = this.deps.siteUrl ? new URL(this.deps.siteUrl).host : "anvard.ai"
+    if (!store) return reply("Lightning addresses are not enabled on this server.")
+    const current = await store.getForUser(userId)
+    const [sub, ...rest] = args
+    if (!sub) {
+      return reply(
+        current
+          ? `Your Lightning address is ${current.name}@${host}${current.forwardTo ? ` (forwards to ${current.forwardTo})` : " (invoices are created by your paired wallet)"}. Share it anywhere; the sats land in your wallet. /address remove to drop it.`
+          : `No address yet. Claim one with /address <name> — e.g. /address graham gives you graham@${host}, paying straight into your paired wallet.`,
+      )
+    }
+    if (sub.toLowerCase() === "remove") {
+      if (!current) return reply("You have no address.")
+      await store.remove(current.name)
+      return reply(`Removed ${current.name}@${host}.`)
+    }
+    if (sub.toLowerCase() === "forward") {
+      const to = rest[0]?.toLowerCase() ?? ""
+      if (!isLightningAddress(to))
+        return reply("Usage: /address forward <lightning address you already have>")
+      if (!current) return reply("Claim a name first: /address <name>")
+      if (this.deps.probeAddress) {
+        const p = await this.deps.probeAddress(to)
+        if (!p.ok) return reply(`${to} does not answer Lightning payments (${p.error}).`)
+      }
+      await store.update({ ...current, forwardTo: to, nwcSealed: undefined })
+      return reply(`${current.name}@${host} now forwards to ${to}.`)
+    }
+    const name = normalizeAddressName(sub)
+    if (!name)
+      return reply(
+        "Names are 2–32 characters: letters, digits, dot, dash, underscore. Some names are reserved.",
+      )
+    if (current)
+      return reply(
+        `You already have ${current.name}@${host}. /address remove first if you want ${name}.`,
+      )
+    if (await store.get(name)) return reply(`${name}@${host} is taken.`)
+    const blob = await this.deps.secrets.get(userId, "nwc")
+    if (!blob) return reply("Pair your wallet first (/pair): your address pays straight into it.")
+    await store.create({ name, userId, nwcSealed: blob, createdAt: this.now().toISOString() })
+    return reply(
+      `${name}@${host} is yours. Anyone can pay it from any Lightning wallet; each invoice is created by your own wallet and the sats land there. I will tell you when something arrives. Keep your wallet reachable (Alby Hub on, or Coinos).`,
+    )
+  }
+
   /** `/statement [year]`: the year's succeeded gifts as CSV. We are not the donee; the recipient issues receipts. */
   private async statement(
     userId: string,
@@ -643,7 +705,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

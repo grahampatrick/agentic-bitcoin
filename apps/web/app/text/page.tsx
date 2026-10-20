@@ -53,8 +53,8 @@ export default async function TextPage() {
             which things I may do.
           </li>
           <li>
-            In your own wallet (Alby Hub, Coinos, Primal, Zeus), create a Nostr Wallet Connect
-            connection <strong>with a budget and an expiry</strong>. Send it as{" "}
+            <a href="/connect">Connect your own wallet</a> (Alby Hub, Coinos, Primal, Zeus) with a
+            budget and an expiry pre-filled, then send the string as{" "}
             <code>/pair &lt;string&gt;</code>. I refuse strings without a budget.
           </li>
           <li>

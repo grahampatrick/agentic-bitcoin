@@ -18,6 +18,7 @@ import {
   type GoodsRail,
   InMemoryInvoiceStore,
   InMemoryLedgerStore,
+  InMemoryLightningAddressStore,
   InMemoryOrderStore,
   InMemoryProductStore,
   InMemoryRecipientStore,
@@ -66,12 +67,15 @@ import {
 import { SupabaseRecipientStore, seedRecipients } from "./store/recipients"
 import {
   FileInvoiceStore,
+  FileLightningAddressStore,
   FileOrderStore,
   FileProductStore,
   FileRewardStore,
   SupabaseInvoiceStore,
+  SupabaseLightningAddressStore,
   SupabaseOrderStore,
   SupabaseProductStore,
+  SupabaseReceiveInvoiceWatch,
   SupabaseRewardStore,
   seedShop,
 } from "./store/shop"
@@ -186,6 +190,15 @@ const payLinks = {
     return { bolt11: i.bolt11, amountSats: i.amountSats, destination: `invoice:${i.issuer}` }
   },
 }
+// M15: lightning addresses (name@host → the user's own wallet). The web mints; the bot watches settlement.
+const addressStore = db
+  ? new SupabaseLightningAddressStore(db)
+  : fileState
+    ? new FileLightningAddressStore(fileState)
+    : new InMemoryLightningAddressStore()
+const receiveWatch = db ? new SupabaseReceiveInvoiceWatch(db) : null
+if (!db)
+  console.warn("[bot] no SUPABASE env — /address claims work only once the web shares the database")
 // M13: sats-back. Rates are operator config; payouts come from the operator's own wallet (REWARDS_NWC_URL)
 // under the operator's own caps. Without that wallet, rewards accrue and show as payable, never paid.
 const rewardStore = db
@@ -391,6 +404,7 @@ const dispatcher = new Dispatcher({
   buyerKeyOf: supporterKeyOf,
   rewardStore,
   invoiceStore,
+  addresses: addressStore,
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")
     .map((u) => u.trim())
@@ -429,6 +443,36 @@ const runSchedules = async () => {
     }
   } catch (err) {
     console.error("[scheduler] run failed", err)
+  }
+  // M15: payments to name@host arrive in the user's own wallet; notice them there and say so.
+  if (receiveWatch) {
+    try {
+      const since = new Date(Date.now() - 7 * 86_400_000).toISOString()
+      for (const inv of await receiveWatch.listUnsettled("addr:", since, 25)) {
+        const name = inv.slug.slice("addr:".length)
+        const a = await addressStore.get(name)
+        if (!a || a.forwardTo) continue
+        const w = (await railsFor(a.userId)).wallet
+        if (w instanceof FakeWalletRail) continue
+        try {
+          const look = await w.lookupInvoice(inv.paymentHash)
+          if (look.state === "settled") {
+            await receiveWatch.markSettled(
+              inv.paymentHash,
+              look.settledAt ?? new Date().toISOString(),
+              look.preimage,
+            )
+            await surface.send(a.userId, {
+              text: `Received ${formatSats(BigInt(Math.floor(inv.amountMsats / 1000)))} at ${name}@${new URL(siteUrl).host}${inv.comment ? ` — “${inv.comment.slice(0, 120)}”` : ""}.`,
+            })
+          }
+        } catch {
+          /* wallet unreachable: next minute */
+        }
+      }
+    } catch (err) {
+      console.error("[addresses] settlement check failed", err)
+    }
   }
   // M14: watch open invoices for settlement on the issuer's own wallet; tell the issuer when one is paid.
   try {

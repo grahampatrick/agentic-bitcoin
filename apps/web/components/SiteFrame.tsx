@@ -25,6 +25,7 @@ export function LegalLinks() {
         <Link href="/give">{f.give}</Link>
         <Link href="/receive">{f.receive}</Link>
         <Link href="/shop">{f.shop}</Link>
+        <Link href="/connect">{f.connect}</Link>
         <a href={f.sourceUrl} rel="noopener">
           {f.source}
         </a>

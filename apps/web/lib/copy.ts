@@ -59,6 +59,7 @@ export const COPY = {
     give: "Give",
     receive: "Receive",
     shop: "Shop",
+    connect: "Connect a wallet",
     sourceUrl: "https://github.com/grahampatrick/agentic-bitcoin",
     note: "Phrases from the Bitcoin whitepaper, 2008. Not financial advice. Non-custodial.",
   },

@@ -6,6 +6,8 @@ import { readFileSync } from "node:fs"
 import {
   type InvoiceStore,
   type IssuedInvoice,
+  type LightningAddressRecord,
+  type LightningAddressStore,
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
@@ -534,5 +536,107 @@ export class SupabaseInvoiceStore implements InvoiceStore {
   }
   async update(i: IssuedInvoice) {
     await q(this.db.from("invoices").update(invoiceToRow(i)).eq("id", i.id), "invoice update")
+  }
+}
+
+// --- lightning addresses (M15) ------------------------------------------------------------------
+
+type AddressRow = {
+  name: string
+  user_id: string
+  nwc_sealed: string | null
+  forward_to: string | null
+  created_at: string
+}
+const addrFromRow = (r: AddressRow): LightningAddressRecord => ({
+  name: r.name,
+  userId: r.user_id,
+  nwcSealed: r.nwc_sealed ?? undefined,
+  forwardTo: r.forward_to ?? undefined,
+  createdAt: r.created_at,
+})
+const addrToRow = (r: LightningAddressRecord): AddressRow => ({
+  name: r.name,
+  user_id: r.userId,
+  nwc_sealed: r.nwcSealed ?? null,
+  forward_to: r.forwardTo ?? null,
+  created_at: r.createdAt,
+})
+
+export class SupabaseLightningAddressStore implements LightningAddressStore {
+  readonly kind = "supabase"
+  constructor(private readonly db: SupabaseClient) {}
+  async get(name: string) {
+    const d = await q<AddressRow | null>(
+      this.db.from("lightning_addresses").select("*").eq("name", name.toLowerCase()).maybeSingle(),
+      "address read",
+    )
+    return d ? addrFromRow(d) : null
+  }
+  async getForUser(userId: string) {
+    const d = await q<AddressRow | null>(
+      this.db.from("lightning_addresses").select("*").eq("user_id", userId).maybeSingle(),
+      "address read",
+    )
+    return d ? addrFromRow(d) : null
+  }
+  async create(r: LightningAddressRecord) {
+    const { error } = await this.db.from("lightning_addresses").insert(addrToRow(r))
+    if (error)
+      throw new Error(
+        error.code === "23505" ? "name taken" : `address write failed: ${error.message}`,
+      )
+  }
+  async update(r: LightningAddressRecord) {
+    await q(
+      this.db.from("lightning_addresses").update(addrToRow(r)).eq("name", r.name),
+      "address update",
+    )
+  }
+  async remove(name: string) {
+    await q(this.db.from("lightning_addresses").delete().eq("name", name), "address delete")
+  }
+}
+
+/** The bot's view of invoices our LNURL endpoint minted for addresses: settle them from the user's own wallet. */
+export interface ReceiveInvoiceWatch {
+  listUnsettled(
+    slugPrefix: string,
+    sinceIso: string,
+    limit?: number,
+  ): Promise<{ paymentHash: string; slug: string; amountMsats: number; comment?: string }[]>
+  markSettled(paymentHash: string, settledAt: string, preimage?: string): Promise<void>
+}
+
+export class SupabaseReceiveInvoiceWatch implements ReceiveInvoiceWatch {
+  constructor(private readonly db: SupabaseClient) {}
+  async listUnsettled(slugPrefix: string, sinceIso: string, limit = 50) {
+    const rows = await q<
+      { payment_hash: string; slug: string; amount_msats: string; comment: string | null }[]
+    >(
+      this.db
+        .from("receive_invoices")
+        .select("payment_hash,slug,amount_msats,comment")
+        .like("slug", `${slugPrefix}%`)
+        .is("settled_at", null)
+        .gte("created_at", sinceIso)
+        .limit(limit),
+      "receive invoices",
+    )
+    return rows.map((r) => ({
+      paymentHash: r.payment_hash,
+      slug: r.slug,
+      amountMsats: Number(r.amount_msats),
+      comment: r.comment ?? undefined,
+    }))
+  }
+  async markSettled(paymentHash: string, settledAt: string, preimage?: string) {
+    await q(
+      this.db
+        .from("receive_invoices")
+        .update({ settled_at: settledAt, preimage: preimage ?? null })
+        .eq("payment_hash", paymentHash),
+      "receive settle",
+    )
   }
 }

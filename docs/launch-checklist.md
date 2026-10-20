@@ -12,7 +12,7 @@ Everything below must be true before the Signal number goes on the landing page.
 ## Infrastructure
 - [ ] Vercel env for the receive side (M10): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SECRETS_KEY` (same key as the bot), `NEXT_PUBLIC_SITE_URL`
 - [ ] Rewards (M13): `REWARDS_NWC_URL` (a budgeted NWC string for the operator rewards wallet) + `REWARDS_DAILY_CAP_SATS` in the bot env; `REWARDS_BPS_DIRECTORY` on Vercel too
-- [ ] Supabase project: migrations 0001–0009 applied; `SUPABASE_URL` + service-role key in the bot env and Vercel
+- [ ] Supabase project: migrations 0001–0010 applied; `SUPABASE_URL` + service-role key in the bot env and Vercel
 - [ ] `SECRETS_KEY` generated (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`), stored only in the bot env and a password manager
 - [ ] signal-cli daemon registered on the dedicated number per docs/signal.md (OQ-6); data dir backed up; survives reboot; `/api/v1/check` answers
 - [ ] Bot deployed (`docker compose up -d`), restarts on failure, logs shipped somewhere; scheduler ticks once a minute

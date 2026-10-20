@@ -2,6 +2,7 @@
 
 import QRCode from "qrcode"
 import { useEffect, useState } from "react"
+import { PayButtons } from "./PayButtons"
 
 type Props = {
   slug: string
@@ -22,6 +23,8 @@ export function GiveWidget({ slug, name, mode, lightningAddress, verified, campa
   const [sats, setSats] = useState<number>(PRESETS[mode][1] ?? 1000)
   const [note, setNote] = useState("")
   const [pr, setPr] = useState<string | null>(null)
+  const [hash, setHash] = useState<string | null>(null)
+  const [paid, setPaid] = useState(false)
   const [qr, setQr] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -43,9 +46,11 @@ export function GiveWidget({ slug, name, mode, lightningAddress, verified, campa
       if (note.trim()) q.set("comment", note.trim().slice(0, 200))
       if (campaignSlug) q.set("campaign", campaignSlug)
       const res = await fetch(`/api/lnurlp/${slug}/callback?${q}`)
-      const j = (await res.json()) as { pr?: string; reason?: string }
+      const j = (await res.json()) as { pr?: string; reason?: string; paymentHash?: string }
       if (!res.ok || !j.pr) throw new Error(j.reason ?? "could not create an invoice")
       setPr(j.pr)
+      setHash(j.paymentHash ?? null)
+      setPaid(false)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -90,22 +95,30 @@ export function GiveWidget({ slug, name, mode, lightningAddress, verified, campa
           : `${mode === "tip" ? "Tip" : "Give"} ${sats.toLocaleString("en-US")} sats`}
       </button>
       {err ? <p className="give__err">{err}</p> : null}
-      {pr ? (
+      {paid ? (
+        <p>
+          <strong>Paid.</strong> Thank you. The sats are in {name}&rsquo;s wallet.
+        </p>
+      ) : pr ? (
         <div className="give__invoice">
+          <PayButtons
+            bolt11={pr}
+            label={`${mode === "tip" ? "Tip" : "Give"} ${sats.toLocaleString("en-US")} sats`}
+            onPreimage={async (preimage) => {
+              if (!hash) return
+              const res = await fetch(`/api/lnurlp/${slug}/paid`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ paymentHash: hash, preimage }),
+              })
+              if (res.ok) setPaid(true)
+            }}
+          />
           {qr ? <img src={qr} alt="Lightning invoice QR code" width={256} height={256} /> : null}
           <p className="small">
-            Invoice created by {name}&rsquo;s wallet. Scan it or{" "}
-            <a href={`lightning:${pr}`}>open in your wallet</a>.
+            Invoice created by {name}&rsquo;s wallet. Scan it from another device, or use a button
+            above.
           </p>
-          <button
-            type="button"
-            className="demo__cancel"
-            onClick={() => {
-              void navigator.clipboard?.writeText(pr).then(() => setCopied(true))
-            }}
-          >
-            {copied ? "Copied" : "Copy invoice"}
-          </button>
         </div>
       ) : null}
       <p className="small">

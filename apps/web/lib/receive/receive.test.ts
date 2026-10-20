@@ -1,8 +1,9 @@
-import type { Recipient } from "@agentic-bitcoin/core"
+import { InMemoryLightningAddressStore, type Recipient } from "@agentic-bitcoin/core"
 import { SPEC_INVOICE } from "@agentic-bitcoin/fixtures"
 import { encryptSecret, parseKey } from "@agentic-bitcoin/rails"
 import { describe, expect, it } from "vitest"
 import {
+  claimReceivePaid,
   dashboardFor,
   hashToken,
   invoiceFor,
@@ -242,5 +243,60 @@ describe("nwc recipient: minting and dashboard", () => {
     expect(tipSnippet(`${BASE}/`, "gm", "GM")).toBe(
       `<a href="${BASE}/tip/gm"><img src="${BASE}/api/tip-badge/gm" alt="Tip GM in bitcoin" height="32"></a>`,
     )
+  })
+})
+
+describe("lightning addresses for paired users (M15)", () => {
+  it("name@host mints on the user's own wallet, records under addr:, settles by preimage; forwards when asked", async () => {
+    const fw = fakeWallet()
+    const store = new InMemoryReceiveStore()
+    const addresses = new InMemoryLightningAddressStore()
+    await addresses.create({
+      name: "graham",
+      userId: "u1",
+      nwcSealed: encryptSecret(NWC, KEY),
+      createdAt: now().toISOString(),
+    })
+    await addresses.create({
+      name: "fwd",
+      userId: "u2",
+      forwardTo: "gm@getalby.com",
+      createdAt: now().toISOString(),
+    })
+    const deps = {
+      store,
+      addresses,
+      baseUrl: BASE,
+      fetchImpl,
+      now,
+      secretsKey: KEY,
+      walletFor: fw.walletFor,
+    }
+    const pr = await payRequestFor(deps, "graham")
+    expect(pr).toMatchObject({
+      tag: "payRequest",
+      callback: `${BASE}/api/lnurlp/graham/callback`,
+      metadata: expect.stringContaining("graham@agentic-bitcoin.vercel.app"),
+    })
+    const inv = await invoiceFor(deps, "graham", 21_000)
+    expect(inv).toMatchObject({ pr: "lnbc21minted" })
+    expect(store.invoices[0]).toMatchObject({ slug: "addr:graham", source: "nwc" })
+    const { createHash } = await import("node:crypto")
+    const preimage = "ab".repeat(32)
+    const real = createHash("sha256").update(Buffer.from(preimage, "hex")).digest("hex")
+    const first = store.invoices[0]
+    if (first) first.paymentHash = real
+    expect(await claimReceivePaid(deps, "graham", real, "00".repeat(32))).toMatchObject({
+      ok: false,
+    })
+    expect(await claimReceivePaid(deps, "graham", real, preimage)).toEqual({ ok: true })
+    expect(store.invoices[0]?.settledAt).toBeDefined()
+    const fwd = await invoiceFor(deps, "fwd", Number(SPEC_INVOICE.amountSats) * 1000)
+    expect(fwd).toMatchObject({ pr: SPEC_INVOICE.bolt11 })
+    expect(store.invoices[1]).toMatchObject({ slug: "addr:fwd", source: "proxy" })
+    expect(await payRequestFor(deps, "nobody")).toEqual({
+      status: "ERROR",
+      reason: "unknown recipient",
+    })
   })
 })

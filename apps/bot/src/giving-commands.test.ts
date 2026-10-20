@@ -8,6 +8,7 @@ import {
   FakeWalletRail,
   InMemoryCampaignStore,
   InMemoryLedgerStore,
+  InMemoryLightningAddressStore,
   InMemoryRecipientStore,
   recipientsForUser,
 } from "@agentic-bitcoin/core"
@@ -31,6 +32,8 @@ function setup(probeOk = true) {
   const policies = new InMemoryPolicyStore()
   const recipients = new InMemoryRecipientStore(Object.values(RECIPIENTS))
   const campaigns = new InMemoryCampaignStore(Object.values(CAMPAIGNS))
+  const addresses = new InMemoryLightningAddressStore()
+  const secrets = new InMemorySecretStore()
   const ledger = new InMemoryLedgerStore()
   const policy = {
     dailyCapSats: 100_000n,
@@ -55,8 +58,10 @@ function setup(probeOk = true) {
     }),
     policies,
     history: new InMemoryHistoryStore(),
-    secrets: new InMemorySecretStore(),
+    secrets,
     secretsKey: KEY,
+    addresses,
+    siteUrl: "https://anvard.ai",
     probeWallet: async () => ({ methods: [] }),
     recipients,
     probeAddress: async () => (probeOk ? { ok: true } : { ok: false, error: "HTTP 404" }),
@@ -65,7 +70,7 @@ function setup(probeOk = true) {
     now: clockAt("2026-10-11T12:00:00.000Z"),
   })
   const last = () => surface.sent.at(-1)?.m.text ?? ""
-  return { surface, policies, recipients, campaigns, ledger, d, last }
+  return { surface, policies, recipients, campaigns, addresses, secrets, ledger, d, last }
 }
 const withPolicy = async (s: ReturnType<typeof setup>, u: string) =>
   s.policies.set(u, {
@@ -242,5 +247,34 @@ describe("/campaigns, /follow, /unfollow and update delivery", () => {
     expect(await s.campaigns.followers("grace-well")).toEqual([])
     await s.surface.receive({ userId: "u1", text: "/follow nope" })
     expect(s.last()).toContain("Which campaign?")
+  })
+})
+
+describe("/address (M15)", () => {
+  it("needs a paired wallet, claims a unique name, shows it, forwards, removes", async () => {
+    const s = setup()
+    await withPolicy(s, "u1")
+    await withPolicy(s, "u2")
+    await s.d.start()
+    await s.surface.receive({ userId: "u1", text: "/address graham" })
+    expect(s.last()).toContain("Pair your wallet first")
+    await s.secrets.set("u1", "nwc", "sealed-nwc-blob")
+    await s.surface.receive({ userId: "u1", text: "/address Admin" })
+    expect(s.last()).toContain("reserved")
+    await s.surface.receive({ userId: "u1", text: "/address graham" })
+    expect(s.last()).toContain("graham@anvard.ai is yours")
+    expect(await s.addresses.get("graham")).toMatchObject({
+      userId: "u1",
+      nwcSealed: "sealed-nwc-blob",
+    })
+    await s.secrets.set("u2", "nwc", "other-blob")
+    await s.surface.receive({ userId: "u2", text: "/address graham" })
+    expect(s.last()).toContain("is taken")
+    await s.surface.receive({ userId: "u1", text: "/address" })
+    expect(s.last()).toContain("Your Lightning address is graham@anvard.ai")
+    await s.surface.receive({ userId: "u1", text: "/address forward gm@getalby.com" })
+    expect((await s.addresses.get("graham"))?.forwardTo).toBe("gm@getalby.com")
+    await s.surface.receive({ userId: "u1", text: "/address remove" })
+    expect(await s.addresses.get("graham")).toBeNull()
   })
 })

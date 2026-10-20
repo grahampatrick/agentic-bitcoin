@@ -280,3 +280,21 @@
   padding: 0.5rem 0;
   border-top: 1px solid var(--rule, rgba(0, 0, 0, 0.12));
 }
+
+/* one-tap pay (M15) */
+.paybtns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+.paybtns .cta {
+  display: inline-block;
+}
+.paybtns__list {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

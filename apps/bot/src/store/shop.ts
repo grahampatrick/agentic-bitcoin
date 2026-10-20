@@ -5,6 +5,8 @@
 import {
   type InvoiceStore,
   type IssuedInvoice,
+  type LightningAddressRecord,
+  type LightningAddressStore,
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
@@ -20,6 +22,8 @@ import type { FileState } from "./file"
 
 export {
   SupabaseInvoiceStore,
+  SupabaseLightningAddressStore,
+  SupabaseReceiveInvoiceWatch,
   SupabaseOrderStore,
   SupabaseProductStore,
   SupabaseRewardStore,
@@ -187,5 +191,34 @@ export class FileInvoiceStore implements InvoiceStore {
   }
   async update(i: IssuedInvoice) {
     this.f.set("shop", `i:${i.id}`, enc({ ...i, paymentHash: i.paymentHash?.toLowerCase() }))
+  }
+}
+
+/** M15: lightning addresses in the file bucket, prefixed `a:`. (Only useful with the web on the same DB; kept for parity.) */
+export class FileLightningAddressStore implements LightningAddressStore {
+  readonly kind = "file"
+  constructor(private readonly f: FileState) {}
+  private all(): LightningAddressRecord[] {
+    return this.f
+      .keys("shop")
+      .filter((k) => k.startsWith("a:"))
+      .map((k) => dec<LightningAddressRecord>(this.f.get("shop", k) ?? ""))
+  }
+  async get(name: string) {
+    const v = this.f.get("shop", `a:${name.toLowerCase()}`)
+    return v ? dec<LightningAddressRecord>(v) : null
+  }
+  async getForUser(userId: string) {
+    return this.all().find((r) => r.userId === userId) ?? null
+  }
+  async create(r: LightningAddressRecord) {
+    if (this.f.get("shop", `a:${r.name}`)) throw new Error("name taken")
+    this.f.set("shop", `a:${r.name}`, enc(r))
+  }
+  async update(r: LightningAddressRecord) {
+    this.f.set("shop", `a:${r.name}`, enc(r))
+  }
+  async remove(name: string) {
+    this.f.set("shop", `a:${name}`, null)
   }
 }
