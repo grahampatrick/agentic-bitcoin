@@ -200,21 +200,32 @@ export class CompositeGoodsRail implements GoodsRail {
   constructor(
     private readonly directory: DirectoryGoodsRail,
     private readonly bitrefill?: GoodsRail,
+    /** M16: remote shops speaking the protocol, keyed by merchant slug. */
+    private readonly remotes: ReadonlyMap<string, GoodsRail & { slug: string }> = new Map(),
   ) {}
   private pick(id: string): GoodsRail {
     if (id.startsWith("dir:") || id.startsWith("ord_dir_")) return this.directory
+    const rm = /^rm:([a-z0-9-]+):/.exec(id) ?? /^([a-z0-9-]+)\//.exec(id)
+    if (rm) {
+      const r = this.remotes.get(rm[1] as string)
+      if (r) return r
+      throw new RailError(this.kind, "NOT_FOUND", `unknown shop ${rm[1]}`)
+    }
     if (!this.bitrefill)
       throw new RailError(this.kind, "BAD_CONFIG", "no Bitrefill key: /key bitrefill <key>")
     return this.bitrefill
   }
   async searchProducts(query: string): Promise<Product[]> {
-    const [a, b] = await Promise.all([
+    const [a, b, ...rest] = await Promise.all([
       this.directory.searchProducts(query),
       this.bitrefill
         ? this.bitrefill.searchProducts(query).catch(() => [] as Product[])
         : Promise.resolve([] as Product[]),
+      ...[...this.remotes.values()].map((r) =>
+        r.searchProducts(query).catch(() => [] as Product[]),
+      ),
     ])
-    return [...a, ...b]
+    return [...a, ...rest.flat(), ...b]
   }
   async createOrder(input: Parameters<GoodsRail["createOrder"]>[0]) {
     return this.pick(input.productId).createOrder(input)

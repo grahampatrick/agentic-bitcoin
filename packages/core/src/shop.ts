@@ -10,6 +10,7 @@ import { type Cents, type PriceSnapshot, type Sats, centsToSats } from "./money"
 export type ProductKind = "digital" | "physical"
 
 export const SHOP_CATEGORIES = [
+  "tcg",
   "books",
   "apparel",
   "gift-cards",
@@ -22,6 +23,22 @@ export const SHOP_CATEGORIES = [
   "other",
 ] as const
 export type ShopCategory = (typeof SHOP_CATEGORIES)[number]
+
+/** M16: trading-card fields. All merchant-written; data to the agent. */
+export interface TcgFields {
+  /** e.g. "pokemon", "mtg", "yugioh", "lorcana", "one-piece" */
+  game: string
+  set: string
+  /** Collector number as printed, e.g. "4/102" or "123". */
+  number?: string
+  /** NM, LP, MP, HP, DMG, or a grading company + grade ("PSA 10"). */
+  condition?: string
+  grade?: string
+  finish?: string
+  language?: string
+  /** A record on the provenance protocol (tcg-provenance), when the shop attached one. */
+  provenanceUrl?: string
+}
 
 export interface ShopProduct {
   /** Merchant-scoped id, `[a-z0-9-]`; the global id is `dir:<merchantSlug>:<id>`. */
@@ -39,6 +56,7 @@ export interface ShopProduct {
   inStock: boolean
   /** ISO 3166 alpha-2 codes; empty = anywhere (digital goods ignore it). */
   shipsTo?: string[]
+  tcg?: TcgFields
 }
 
 export type ShopOrderState = "unpaid" | "paid" | "fulfilled" | "cancelled"
@@ -121,7 +139,9 @@ export function effectivePriceCents(p: Pick<ShopProduct, "priceCents" | "dealCen
 export function productMatches(p: ShopProduct, query: string): boolean {
   const q = query.toLowerCase().trim()
   if (!q) return true
-  const hay = `${p.title} ${p.description ?? ""} ${p.category} ${p.merchantSlug}`.toLowerCase()
+  const t = p.tcg
+  const hay =
+    `${p.title} ${p.description ?? ""} ${p.category} ${p.merchantSlug} ${t ? `${t.game} ${t.set} ${t.number ?? ""} ${t.condition ?? ""} ${t.grade ?? ""} ${t.finish ?? ""} ${t.language ?? ""}` : ""}`.toLowerCase()
   return q
     .split(/\s+/)
     .filter((t) => t.length > 1 && !["the", "a", "an", "for", "me", "some", "from"].includes(t))

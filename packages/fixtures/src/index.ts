@@ -404,3 +404,71 @@ export const SHOP = {
     },
   ],
 } as const
+
+/** M16: a card shop as a remote merchant (manifest + feed) and a TCGplayer-style CSV export. */
+export const TCG = {
+  manifest: {
+    anvard: "0.1",
+    merchant: {
+      slug: "cardboard-castle",
+      name: "Cardboard Castle",
+      website: "https://cardboard-castle.example",
+      country: "US",
+      description: "Singles and sealed, Denver.",
+    },
+    endpoints: {
+      products: "https://cardboard-castle.example/anvard/products",
+      checkout: "https://cardboard-castle.example/anvard/checkout",
+      order: "https://cardboard-castle.example/anvard/orders/{id}",
+    },
+  },
+  feed: {
+    anvard: "0.1",
+    merchant: "cardboard-castle",
+    updatedAt: NOW,
+    products: [
+      {
+        id: "charizard-base-4-102-lp",
+        title: "Charizard (Base Set) 4/102",
+        category: "tcg",
+        priceCents: 42_000,
+        kind: "physical",
+        inStock: true,
+        tcg: {
+          game: "pokemon",
+          set: "Base Set",
+          number: "4/102",
+          condition: "LP",
+          provenanceUrl: "https://tcg-provenance.vercel.app/r/abc123",
+        },
+      },
+      {
+        id: "black-lotus-proxy",
+        title: "Black Lotus (Collector's Edition)",
+        category: "tcg",
+        priceSats: 900_000,
+        kind: "physical",
+        inStock: true,
+        tcg: { game: "mtg", set: "Collectors' Edition", condition: "MP" },
+      },
+      {
+        id: "booster-box-obf",
+        title: "Obsidian Flames booster box",
+        category: "tcg",
+        priceCents: 11_999,
+        dealCents: 10_999,
+        kind: "physical",
+        inStock: true,
+        tcg: { game: "pokemon", set: "Obsidian Flames" },
+      },
+      { id: "bad-row", title: "", category: "tcg", priceCents: 1, kind: "physical", inStock: true },
+    ],
+  },
+  csv: [
+    "TCGplayer Id,Product Line,Set Name,Product Name,Number,Rarity,Condition,TCG Marketplace Price,Total Quantity,Photo URL",
+    '42,Pokemon,Base Set,"Charizard, Holo",4/102,Holo Rare,Lightly Played,420.00,1,https://img.example/charizard.jpg',
+    "43,Pokemon,Base Set,Blastoise,2/102,Holo Rare,Near Mint,150.50,0,",
+    "44,Magic,Alpha,Lightning Bolt,,Common,Played,2500,2,",
+    ",,,,,,,not a price,1,",
+  ].join("\n"),
+} as const
