@@ -1,6 +1,7 @@
 import { CampaignTools } from "@/components/CampaignTools"
 import { InvoiceTools } from "@/components/InvoiceTools"
 import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
+import { ImportTools } from "@/components/shop/ImportTools"
 import { MerchantTools } from "@/components/shop/MerchantTools"
 import { getCampaignStore } from "@/lib/campaigns/store"
 import { dashboardFor, siteBaseUrl, tipSnippet } from "@/lib/receive/service"
@@ -92,11 +93,14 @@ export default async function Dashboard({
               ))}
             </ol>
             {dash.recipient.kind === "merchant" ? (
-              <MerchantTools
-                slug={dash.recipient.slug}
-                token={t ?? ""}
-                products={merchantProducts}
-              />
+              <>
+                <MerchantTools
+                  slug={dash.recipient.slug}
+                  token={t ?? ""}
+                  products={merchantProducts}
+                />
+                <ImportTools slug={dash.recipient.slug} token={t ?? ""} />
+              </>
             ) : null}
             <InvoiceTools slug={dash.recipient.slug} token={t ?? ""} />
             <CampaignTools slug={dash.recipient.slug} token={t ?? ""} campaigns={campaigns} />

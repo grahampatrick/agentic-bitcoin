@@ -53,6 +53,15 @@ export const DEMO_MERCHANTS: Recipient[] = [
     country: "US",
     description: "Trail, climb, run.",
   },
+  {
+    slug: "cardboard-castle",
+    kind: "merchant",
+    name: "Cardboard Castle",
+    lightningAddress: "pay@cardboard-castle.example",
+    verified: { how: "operator", at },
+    country: "US",
+    description: "Singles and sealed. Denver.",
+  },
 ]
 
 const p = (
@@ -74,6 +83,40 @@ const p = (
 })
 
 export const DEMO_PRODUCTS: ShopProduct[] = [
+  p("cardboard-castle", "charizard-base-4-102-lp", "Charizard (Base Set) 4/102", "tcg", 420_00, {
+    tcg: {
+      game: "pokemon",
+      set: "Base Set",
+      number: "4/102",
+      condition: "LP",
+      provenanceUrl: "https://tcg-provenance.vercel.app",
+    },
+  }),
+  p("cardboard-castle", "blastoise-base-2-102-nm", "Blastoise (Base Set) 2/102", "tcg", 150_50, {
+    tcg: { game: "pokemon", set: "Base Set", number: "2/102", condition: "NM" },
+  }),
+  p(
+    "cardboard-castle",
+    "obsidian-flames-booster-box",
+    "Obsidian Flames booster box",
+    "tcg",
+    119_99,
+    { dealCents: 109_99n, tcg: { game: "pokemon", set: "Obsidian Flames" } },
+  ),
+  p("cardboard-castle", "lightning-bolt-alpha-pl", "Lightning Bolt (Alpha)", "tcg", 2_500_00, {
+    tcg: { game: "mtg", set: "Alpha", condition: "PL" },
+  }),
+  p("cardboard-castle", "sol-ring-cmd-nm", "Sol Ring (Commander 2021)", "tcg", 2_50, {
+    tcg: { game: "mtg", set: "Commander 2021", condition: "NM" },
+  }),
+  p(
+    "cardboard-castle",
+    "elsa-spirit-tfc",
+    "Elsa, Spirit of Winter (The First Chapter)",
+    "tcg",
+    48_00,
+    { tcg: { game: "lorcana", set: "The First Chapter", number: "41/204", condition: "NM" } },
+  ),
   p("reformation-books", "esv-study-bible", "ESV Study Bible", "books", 49_99, {
     dealCents: 39_99n,
     description: "Hardcover, 2,752 pages of notes, maps and articles.",

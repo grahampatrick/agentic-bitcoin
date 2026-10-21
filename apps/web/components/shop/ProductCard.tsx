@@ -19,6 +19,15 @@ export function ProductCard({ p }: { p: ProductView }) {
           <strong>{usd(p.payCents)}</strong>
           {p.saveCents ? <s>{usd(p.priceCents)}</s> : null}
         </p>
+        {p.tcg ? (
+          <p className="card__sats">
+            {p.tcg.set}
+            {p.tcg.number ? ` · ${p.tcg.number}` : ""}
+            {p.tcg.condition ? ` · ${p.tcg.condition}` : ""}
+            {p.tcg.grade ? ` · ${p.tcg.grade}` : ""}
+            {p.tcg.provenanceUrl ? " · provenance ✓" : ""}
+          </p>
+        ) : null}
         <p className="card__sats">
           {sats(p.paySats)} · {p.merchantName}
         </p>

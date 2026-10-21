@@ -16,6 +16,7 @@
     "@agentic-bitcoin/scheduler": "workspace:*",
     "@agentic-bitcoin/stores": "workspace:*",
     "@supabase/supabase-js": "2.47.10",
+    "discord.js": "14.16.3",
     "grammy": "1.46.0"
   },
   "devDependencies": {

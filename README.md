@@ -71,6 +71,10 @@ gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.e
 Receiving: a church, missionary or creator onboards at `/receive` with a Lightning address or a
 receive-only wallet connection and gets `slug@<host>`, `/give/<slug>`, `/tip/<slug>` and a tip button;
 every invoice is minted by their own wallet (ADR-0014). The operator lists them with `/verify <slug>`.
+The commerce protocol: four endpoints any Lightning shop can serve so any agent can buy from it, with the shop's own
+invoice and the preimage as receipt; Anvard serves it for its merchants and consumes it from remote shops, mirrors their
+feeds, and imports CSV/Shopify inventory; trading cards carry set, condition, grade and provenance
+([`docs/protocol/anvard-commerce.md`](./docs/protocol/anvard-commerce.md), ADR-0020). Discord is the player surface, DMs only.
 The store: `/shop` is a Lightning marketplace in the Shop-app shape (search, categories, a featured merchant, deals, cart);
 every order is one invoice minted by the merchant's own wallet, shipping is sealed for the merchant alone, and "find me
 a study bible" / "buy <id>" work from Signal (ADR-0016, [`docs/shop.md`](./docs/shop.md)).

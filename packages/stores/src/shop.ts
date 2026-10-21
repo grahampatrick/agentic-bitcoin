@@ -39,6 +39,7 @@ type ProductRow = {
   kind: string
   in_stock: boolean
   ships_to: string[] | null
+  tcg_json?: string | null
 }
 const productFromRow = (r: ProductRow): ShopProduct => ({
   id: r.id,
@@ -52,6 +53,7 @@ const productFromRow = (r: ProductRow): ShopProduct => ({
   kind: r.kind as ShopProduct["kind"],
   inStock: r.in_stock,
   shipsTo: r.ships_to ?? undefined,
+  tcg: r.tcg_json ? (JSON.parse(r.tcg_json) as ShopProduct["tcg"]) : undefined,
 })
 type OrderRow = {
   id: string
@@ -189,6 +191,7 @@ export class SupabaseProductStore implements ProductStore {
         kind: p.kind,
         in_stock: p.inStock,
         ships_to: p.shipsTo ?? null,
+        tcg_json: p.tcg ? JSON.stringify(p.tcg) : null,
       }),
       "product write",
     )

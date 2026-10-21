@@ -41,9 +41,11 @@ import {
   DirectoryGoodsRail,
   LndOnChainRail,
   NwcWalletRail,
+  RemoteMerchantRail,
   StrikeExchangeRail,
   decryptSecret,
   encryptSecret,
+  fetchManifest,
   parseKey,
   probeLightningAddress,
 } from "@agentic-bitcoin/rails"
@@ -93,6 +95,7 @@ import {
   SupabaseSecretStore,
   supabaseClient,
 } from "./store/supabase"
+import { DiscordSurface } from "./surfaces/discord"
 import { SignalSurface } from "./surfaces/signal"
 import { TelegramSurface } from "./surfaces/telegram"
 
@@ -190,6 +193,39 @@ const payLinks = {
     return { bolt11: i.bolt11, amountSats: i.amountSats, destination: `invoice:${i.issuer}` }
   },
 }
+// M16: remote shops (recipients with a manifest host) become goods rails; their feeds are mirrored into the catalogue.
+const remoteRails = new Map<string, RemoteMerchantRail>()
+async function loadRemoteShops(): Promise<void> {
+  const shops = (await recipientStore.list()).filter(
+    (r) => r.kind === "merchant" && r.verified && r.manifestHost,
+  )
+  for (const r of shops) {
+    try {
+      if (!remoteRails.has(r.slug)) {
+        const manifest = await fetchManifest(r.manifestHost as string)
+        remoteRails.set(
+          r.slug,
+          new RemoteMerchantRail({
+            manifest,
+            price,
+            siteUrl: env.SITE_URL ?? "https://agentic-bitcoin.vercel.app",
+          }),
+        )
+      }
+      const rail = remoteRails.get(r.slug) as RemoteMerchantRail
+      const products = await rail.products()
+      const existing = await productStore.listForMerchant(r.slug)
+      const keep = new Set(products.map((p) => p.id))
+      for (const p of products) await productStore.upsert(p)
+      for (const e of existing) if (!keep.has(e.id)) await productStore.remove(r.slug, e.id)
+      console.error(`[shops] ${r.slug}: ${products.length} products from ${r.manifestHost}`)
+    } catch (err) {
+      console.error(`[shops] ${r.slug}: ${(err as Error).message}`)
+    }
+  }
+}
+await loadRemoteShops()
+let shopSyncAt = Date.now()
 // M15: lightning addresses (name@host → the user's own wallet). The web mints; the bot watches settlement.
 const addressStore = db
   ? new SupabaseLightningAddressStore(db)
@@ -286,6 +322,7 @@ async function railsFor(userId: string) {
         buyerKey: supporterKeyOf(userId),
       }),
       bitrefillKey ? new BitrefillGoodsRail({ apiKey: bitrefillKey }) : undefined,
+      remoteRails,
     ),
   }
   railCache.set(userId, built)
@@ -349,16 +386,26 @@ async function price(): Promise<PriceSnapshot | undefined> {
 }
 
 const surface =
-  env.SURFACE === "signal"
-    ? new SignalSurface({
-        daemonUrl: env.SIGNAL_DAEMON_URL ?? "http://localhost:8080",
-        account: env.SIGNAL_ACCOUNT ?? "",
-        multiAccount: env.SIGNAL_MULTI_ACCOUNT === "1",
-        noteToSelf: env.SIGNAL_NOTE_TO_SELF === "1",
-      })
-    : new TelegramSurface(env.TELEGRAM_BOT_TOKEN ?? "")
+  env.SURFACE === "discord"
+    ? new DiscordSurface(env.DISCORD_BOT_TOKEN ?? "")
+    : env.SURFACE === "signal"
+      ? new SignalSurface({
+          daemonUrl: env.SIGNAL_DAEMON_URL ?? "http://localhost:8080",
+          account: env.SIGNAL_ACCOUNT ?? "",
+          multiAccount: env.SIGNAL_MULTI_ACCOUNT === "1",
+          noteToSelf: env.SIGNAL_NOTE_TO_SELF === "1",
+        })
+      : new TelegramSurface(env.TELEGRAM_BOT_TOKEN ?? "")
 if (surface.kind === "telegram" && !env.TELEGRAM_BOT_TOKEN) {
-  console.error("Set TELEGRAM_BOT_TOKEN (or SURFACE=signal with SIGNAL_ACCOUNT)")
+  console.error(
+    "Set TELEGRAM_BOT_TOKEN (or SURFACE=signal with SIGNAL_ACCOUNT, or SURFACE=discord with DISCORD_BOT_TOKEN)",
+  )
+  process.exit(2)
+}
+if (surface.kind === "discord" && !env.DISCORD_BOT_TOKEN) {
+  console.error(
+    "Set DISCORD_BOT_TOKEN (Discord Developer Portal → Bot → token; enable the Message Content intent)",
+  )
   process.exit(2)
 }
 if (surface instanceof SignalSurface) {
@@ -443,6 +490,11 @@ const runSchedules = async () => {
     }
   } catch (err) {
     console.error("[scheduler] run failed", err)
+  }
+  // M16: refresh remote shop feeds every 30 minutes.
+  if (Date.now() - shopSyncAt > 30 * 60_000) {
+    shopSyncAt = Date.now()
+    await loadRemoteShops()
   }
   // M15: payments to name@host arrive in the user's own wallet; notice them there and say so.
   if (receiveWatch) {

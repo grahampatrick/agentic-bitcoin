@@ -42,6 +42,8 @@ export interface Recipient {
   nwcReceive?: string
   /** When the recipient onboarded themselves (web /receive); null/undefined for operator-seeded entries. */
   submittedAt?: string
+  /** M16: a remote shop speaking the Anvard commerce protocol at https://<host>/.well-known/anvard.json. */
+  manifestHost?: string
 }
 
 /** A user-scoped view: the directory plus that user's private recipients. */

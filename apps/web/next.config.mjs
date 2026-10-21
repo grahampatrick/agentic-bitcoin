@@ -13,7 +13,10 @@ const nextConfig = {
   serverExternalPackages: ["@anthropic-ai/sdk", "@getalby/sdk", "@getalby/lightning-tools"],
   async rewrites() {
     // LNURL-pay discovery lives at a dotted path the app router cannot express.
-    return [{ source: "/.well-known/lnurlp/:slug", destination: "/api/lnurlp/:slug" }]
+    return [
+      { source: "/.well-known/lnurlp/:slug", destination: "/api/lnurlp/:slug" },
+      { source: "/.well-known/anvard.json", destination: "/api/commerce/index" },
+    ]
   },
 }
 

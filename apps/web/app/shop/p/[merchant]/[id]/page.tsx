@@ -45,6 +45,24 @@ export default async function ProductPage({
             <br />
             <span className="card__sats">{sats(p.paySats)} at today&rsquo;s price</span>
           </p>
+          {p.tcg ? (
+            <p className="muted">
+              <strong style={{ textTransform: "capitalize" }}>{p.tcg.game}</strong> · {p.tcg.set}
+              {p.tcg.number ? ` · #${p.tcg.number}` : ""}
+              {p.tcg.condition ? ` · ${p.tcg.condition}` : ""}
+              {p.tcg.grade ? ` · ${p.tcg.grade}` : ""}
+              {p.tcg.finish ? ` · ${p.tcg.finish}` : ""}
+              {p.tcg.language ? ` · ${p.tcg.language}` : ""}
+              {p.tcg.provenanceUrl ? (
+                <>
+                  {" · "}
+                  <a href={p.tcg.provenanceUrl} rel="noopener">
+                    provenance record ✓
+                  </a>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           {p.description ? <p>{p.description}</p> : null}
           <p className="muted">
             {physical

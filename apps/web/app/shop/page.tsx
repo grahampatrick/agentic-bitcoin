@@ -8,6 +8,7 @@ import Link from "next/link"
 export const dynamic = "force-dynamic"
 
 const LABEL: Record<string, string> = {
+  tcg: "Cards",
   books: "Books",
   apparel: "Apparel",
   "gift-cards": "Gift cards",

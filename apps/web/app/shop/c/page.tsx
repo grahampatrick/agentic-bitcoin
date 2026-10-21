@@ -23,6 +23,12 @@ export default async function Categories() {
           </li>
         ))}
       </ul>
+      <p>
+        <Link href="/shop/gaming">
+          <strong>Gaming gift cards</strong>{" "}
+          <span className="muted">Steam, PlayStation, Xbox, Nintendo via Bitrefill</span>
+        </Link>
+      </p>
       <h2 style={{ fontSize: 22, marginTop: 32 }}>Merchants</h2>
       <ul style={{ listStyle: "none", padding: 0, display: "grid", gap: 8 }}>
         {merchants.map((m) => (

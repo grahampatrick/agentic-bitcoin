@@ -23,10 +23,19 @@ import {
   summarizeRewards,
 } from "@agentic-bitcoin/core"
 import {
+  type ImportReport,
+  type MerchantManifest,
+  importProductsCsv,
+  importShopifyProducts,
+  orderTotalCents,
+} from "@agentic-bitcoin/core"
+import {
   DirectoryGoodsRail,
   NwcWalletRail,
+  RemoteMerchantRail,
   decryptSecret,
   encryptSecret,
+  fetchManifest,
   parseKey,
 } from "@agentic-bitcoin/rails"
 import { hashToken } from "../receive/service"
@@ -64,6 +73,8 @@ export interface Shipping {
 
 /** What a page may show. Prices in cents plus sats at the current price. */
 export interface ProductView extends Omit<ShopProduct, "priceCents" | "dealCents"> {
+  /** M16: the product lives on a remote shop (checkout goes to them). */
+  remote?: boolean
   gid: string
   priceCents: number
   dealCents?: number
@@ -100,9 +111,189 @@ export async function viewProducts(
           : undefined,
       merchantName: m.name,
       url: `${deps.baseUrl}/shop/p/${p.merchantSlug}/${p.id}`,
+      remote: !!m.manifestHost,
     })
   }
   return out
+}
+
+// --- remote shops (M16) ---------------------------------------------------------------------------
+
+type ManifestCache = Map<string, { at: number; m: MerchantManifest }>
+const g = globalThis as { __anvardManifests?: ManifestCache }
+if (!g.__anvardManifests) g.__anvardManifests = new Map()
+const manifests: ManifestCache = g.__anvardManifests
+
+export async function manifestFor(deps: ShopDeps, host: string): Promise<MerchantManifest> {
+  const hit = manifests.get(host)
+  const now = (deps.now ?? (() => new Date()))().getTime()
+  if (hit && now - hit.at < 10 * 60_000) return hit.m
+  const m = await fetchManifest(host, (deps.fetchImpl ?? fetch) as never)
+  manifests.set(host, { at: now, m })
+  return m
+}
+
+export async function remoteRailFor(
+  deps: ShopDeps,
+  r: Recipient,
+  buyerRef?: string,
+): Promise<RemoteMerchantRail | null> {
+  if (!r.manifestHost) return null
+  const m = await manifestFor(deps, r.manifestHost)
+  return new RemoteMerchantRail({
+    manifest: m,
+    price: deps.price,
+    fetchImpl: deps.fetchImpl as never,
+    now: deps.now,
+    siteUrl: deps.baseUrl,
+    buyerRef,
+  })
+}
+
+/** Pull a remote shop's feed into our catalogue (replace its products). Returns how many. */
+export async function syncRemoteShop(
+  deps: ShopDeps,
+  slug: string,
+): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const r = await deps.receive.getRecipient(slug)
+  if (!r?.manifestHost) return { ok: false, error: "not a remote shop" }
+  try {
+    const rail = await remoteRailFor(deps, r)
+    const products = rail ? await rail.products() : []
+    const existing = await deps.products.listForMerchant(slug)
+    const keep = new Set(products.map((p) => p.id))
+    for (const p of products) await deps.products.upsert({ ...p, merchantSlug: slug })
+    for (const e of existing) if (!keep.has(e.id)) await deps.products.remove(slug, e.id)
+    return { ok: true, count: products.length }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+}
+
+/** Our side of the protocol: a directory merchant's feed, served to any agent. */
+export async function feedFor(deps: ShopDeps, slug: string) {
+  const r = await deps.receive.getRecipient(slug)
+  if (!r || r.kind !== "merchant" || !r.verified) return null
+  const products = await deps.products.listForMerchant(slug)
+  return {
+    anvard: "0.1" as const,
+    merchant: slug,
+    updatedAt: (deps.now ?? (() => new Date()))().toISOString(),
+    products: products.map((p) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      imageUrl: p.imageUrl,
+      category: p.category,
+      priceCents: Number(p.priceCents),
+      dealCents: p.dealCents === undefined ? undefined : Number(p.dealCents),
+      kind: p.kind,
+      inStock: p.inStock,
+      shipsTo: p.shipsTo,
+      tcg: p.tcg,
+    })),
+  }
+}
+
+export async function manifestOf(deps: ShopDeps, slug: string): Promise<MerchantManifest | null> {
+  const r = await deps.receive.getRecipient(slug)
+  if (!r || r.kind !== "merchant" || !r.verified) return null
+  const b = deps.baseUrl.replace(/\/$/, "")
+  return {
+    anvard: "0.1",
+    merchant: {
+      slug,
+      name: r.name,
+      website: r.website,
+      country: r.country,
+      description: r.description,
+      lightningAddress: r.lightningAddress,
+    },
+    endpoints: {
+      products: `${b}/api/commerce/${slug}/products`,
+      checkout: `${b}/api/commerce/${slug}/checkout`,
+      order: `${b}/api/commerce/orders/{id}`,
+    },
+  }
+}
+
+// --- merchant imports (M16) ----------------------------------------------------------------------
+
+export async function importForMerchant(
+  deps: ShopDeps,
+  slug: string,
+  token: string,
+  input: {
+    csv?: string
+    shopifyUrl?: string
+    manifestHost?: string
+    defaultGame?: string
+    replace?: boolean
+  },
+): Promise<
+  | { ok: true; imported: number; skipped: ImportReport["skipped"]; remote?: boolean }
+  | { ok: false; error: string }
+> {
+  const m = await merchantAuthed(deps, slug, token)
+  if (!m) return { ok: false, error: "Not authorized." }
+  let report: ImportReport | null = null
+  if (input.manifestHost?.trim()) {
+    const host = input.manifestHost
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "")
+    try {
+      const man = await manifestFor(deps, host)
+      if (man.merchant.slug !== slug)
+        return {
+          ok: false,
+          error: `That shop's manifest says its slug is "${man.merchant.slug}", not "${slug}".`,
+        }
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Could not read https://${host}/.well-known/anvard.json: ${(err as Error).message}`,
+      }
+    }
+    await deps.receive.setManifestHost(slug, host)
+    const r = await syncRemoteShop(deps, slug)
+    return r.ok
+      ? { ok: true, imported: r.count, skipped: [], remote: true }
+      : { ok: false, error: r.error }
+  }
+  if (input.csv)
+    report = importProductsCsv(input.csv.slice(0, 5_000_000), slug, {
+      defaultGame: input.defaultGame,
+    })
+  else if (input.shopifyUrl?.trim()) {
+    let url: URL
+    try {
+      url = new URL(input.shopifyUrl.trim())
+      if (url.protocol !== "https:") throw new Error()
+    } catch {
+      return { ok: false, error: "The Shopify link must be https://" }
+    }
+    const feed = url.pathname.endsWith("products.json")
+      ? url.toString()
+      : `${url.origin}/products.json?limit=250`
+    try {
+      const res = await (deps.fetchImpl ?? fetch)(feed, { signal: AbortSignal.timeout(15_000) })
+      if (!res.ok) return { ok: false, error: `Shopify answered HTTP ${res.status}` }
+      report = importShopifyProducts(await res.json(), slug, { defaultGame: input.defaultGame })
+    } catch (err) {
+      return { ok: false, error: (err as Error).message }
+    }
+  } else
+    return {
+      ok: false,
+      error: "Send a CSV, a Shopify store link, or a shop host that speaks the Anvard protocol.",
+    }
+  if (input.replace)
+    for (const e of await deps.products.listForMerchant(slug))
+      await deps.products.remove(slug, e.id)
+  for (const p of report.products) await deps.products.upsert(p)
+  return { ok: true, imported: report.products.length, skipped: report.skipped.slice(0, 50) }
 }
 
 export interface MerchantView {
@@ -241,6 +432,54 @@ export async function checkout(deps: ShopDeps, input: CheckoutInput): Promise<Ch
   if (rewardAddress && !isLightningAddress(rewardAddress))
     return { ok: false, error: "The sats-back address must be a Lightning address (name@domain)." }
   try {
+    const merchant = await deps.receive.getRecipient(input.merchantSlug)
+    if (merchant?.manifestHost) {
+      // M16: a remote shop mints its own invoice; shipping goes to the shop in plain text over HTTPS.
+      const rr = await remoteRailFor(deps, merchant, input.buyerKey)
+      if (!rr) return { ok: false, error: "That shop is not reachable." }
+      const ro = await rr.createRemoteOrder({
+        items: lines.map((l) => ({ productId: l.productId, qty: Math.floor(Number(l.qty)) })),
+        shipping: needsShipping
+          ? (input.shipping as {
+              name: string
+              address: string
+              city: string
+              region?: string
+              postal?: string
+              country: string
+            })
+          : undefined,
+        contact: contact || undefined,
+      })
+      const now = (deps.now ?? (() => new Date()))()
+      const price = await deps.price()
+      await deps.orders.create({
+        id: `rm_${ro.orderId.replace(/[^a-z0-9]+/gi, "-")}`,
+        merchantSlug: input.merchantSlug,
+        items,
+        totalCents: orderTotalCents(items),
+        totalSats: ro.amountSats,
+        usdCentsPerBtc: price?.usdCentsPerBtc ?? 0n,
+        bolt11: ro.bolt11,
+        paymentHash: ro.paymentHash ?? "",
+        state: "unpaid",
+        createdAt: now.toISOString(),
+        shippingSealed,
+        contactSealed,
+        buyerKey: input.buyerKey,
+        rewardAddress: rewardAddress || undefined,
+        note: `remote:${ro.orderId}`,
+      })
+      return {
+        ok: true,
+        orderId: `rm_${ro.orderId.replace(/[^a-z0-9]+/gi, "-")}`,
+        bolt11: ro.bolt11,
+        paymentHash: ro.paymentHash ?? "",
+        totalCents: Number(orderTotalCents(items)),
+        totalSats: Number(ro.amountSats),
+        expiresInSeconds: 600,
+      }
+    }
     const o = await rail(deps, input.buyerKey).createCartOrder({
       merchantSlug: input.merchantSlug,
       items,
@@ -288,6 +527,31 @@ export async function orderStatus(deps: ShopDeps, id: string): Promise<OrderView
   let o = await deps.orders.get(id)
   if (!o) return null
   const m = await deps.receive.getRecipient(o.merchantSlug)
+  if (
+    m?.manifestHost &&
+    o.note?.startsWith("remote:") &&
+    (o.state === "unpaid" || o.state === "paid")
+  ) {
+    try {
+      const rr = await remoteRailFor(deps, m)
+      const st = rr ? await rr.getOrder(o.note.slice("remote:".length)) : null
+      if (st && st.state !== "unpaid" && st.state !== o.state) {
+        const now = (deps.now ?? (() => new Date()))().toISOString()
+        o = {
+          ...o,
+          state:
+            st.state === "delivered" ? "fulfilled" : st.state === "failed" ? "cancelled" : "paid",
+          paidAt: o.paidAt ?? now,
+          fulfilledAt: st.state === "delivered" ? now : o.fulfilledAt,
+          note: st.redemption ? `${o.note} ${st.redemption}`.slice(0, 500) : o.note,
+        }
+        await deps.orders.update(o)
+        await accrueReward(deps, o)
+      }
+    } catch {
+      /* the shop's status endpoint is theirs; try again next poll */
+    }
+  }
   const k = key(deps)
   const canVerify = !!(m?.nwcReceive && k)
   if (o.state === "unpaid" && canVerify && m?.nwcReceive && k) {

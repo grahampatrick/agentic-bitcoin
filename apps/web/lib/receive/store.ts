@@ -23,6 +23,8 @@ export interface ReceiveStore {
   /** Directory recipients only (no owner). Includes the sealed nwc blob and token hash. */
   getRecipient(slug: string): Promise<(Recipient & { dashboardTokenHash?: string }) | null>
   createRecipient(r: Recipient & { dashboardTokenHash: string; contact?: string }): Promise<void>
+  /** M16: mark a merchant as a remote shop (or clear it). */
+  setManifestHost(slug: string, host: string | null): Promise<void>
   recordInvoice(inv: ReceiveInvoice): Promise<void>
   countInvoicesSince(slug: string, sinceIso: string): Promise<number>
   listInvoices(slug: string, limit: number): Promise<ReceiveInvoice[]>
@@ -46,6 +48,10 @@ export class InMemoryReceiveStore implements ReceiveStore {
   async createRecipient(r: Recipient & { dashboardTokenHash: string; contact?: string }) {
     if (this.recipients.has(r.slug)) throw new Error("slug taken")
     this.recipients.set(r.slug, r)
+  }
+  async setManifestHost(slug: string, host: string | null) {
+    const r = this.recipients.get(slug)
+    if (r) this.recipients.set(slug, { ...r, manifestHost: host ?? undefined })
   }
   async recordInvoice(inv: ReceiveInvoice) {
     this.invoices.push(inv)
@@ -82,6 +88,7 @@ type RecipientRow = {
   nwc_receive: string | null
   dashboard_token_hash: string | null
   submitted_at: string | null
+  manifest_host?: string | null
 }
 type InvoiceRow = {
   payment_hash: string
@@ -125,6 +132,7 @@ export class SupabaseReceiveStore implements ReceiveStore {
       description: r.description ?? undefined,
       nwcReceive: r.nwc_receive ?? undefined,
       submittedAt: r.submitted_at ?? undefined,
+      manifestHost: r.manifest_host ?? undefined,
       dashboardTokenHash: r.dashboard_token_hash ?? undefined,
     }
   }
@@ -149,6 +157,13 @@ export class SupabaseReceiveStore implements ReceiveStore {
       throw new Error(
         error.code === "23505" ? "slug taken" : `recipient write failed: ${error.message}`,
       )
+  }
+  async setManifestHost(slug: string, host: string | null) {
+    const { error } = await this.db
+      .from("recipients")
+      .update({ manifest_host: host })
+      .eq("slug", slug)
+    if (error) throw new Error(`recipient update failed: ${error.message}`)
   }
   async recordInvoice(inv: ReceiveInvoice) {
     const { error } = await this.db.from("receive_invoices").insert({
