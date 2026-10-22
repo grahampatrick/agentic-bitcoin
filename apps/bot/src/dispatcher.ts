@@ -7,6 +7,7 @@
 import { type AgentDeps, type UserContext, confirmPending, runTurn } from "@agentic-bitcoin/agent"
 import {
   type CampaignStore,
+  type CardStore,
   DEFAULT_POLICY,
   type InvoiceStore,
   type IssuedInvoice,
@@ -17,7 +18,9 @@ import {
   type RecipientStore,
   type RewardStore,
   SLUG_RE,
+  type VirtualCard,
   campaignProgress,
+  cardSpentSince,
   centsToSats,
   formatCents,
   formatSats,
@@ -29,6 +32,8 @@ import {
   isTrustedRecipient,
   normalizeAddressName,
   parseAddress,
+  periodEnd,
+  periodStart,
   readEntries,
   satsToCents,
   slugify,
@@ -82,6 +87,8 @@ export interface DispatcherDeps {
   invoiceStore?: InvoiceStore
   /** M15: lightning addresses for paired users. */
   addresses?: LightningAddressStore
+  /** M17a: virtual cards. */
+  cards?: CardStore
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -294,6 +301,8 @@ export class Dispatcher {
         return this.campaigns(userId, reply)
       case "/address":
         return this.address(userId, args, reply)
+      case "/cards":
+        return this.cards(userId, args, reply)
       case "/invoices": {
         const store = this.deps.invoiceStore
         if (!store) return reply("Invoices are not enabled on this server.")
@@ -605,6 +614,47 @@ export class Dispatcher {
     return reply(
       `${name}@${host} is yours. Anyone can pay it from any Lightning wallet; each invoice is created by your own wallet and the sats land there. I will tell you when something arrives. Keep your wallet reachable (Alby Hub on, or Coinos).`,
     )
+  }
+
+  /**
+   * `/cards` lists the user's virtual cards with this month's spend; `/cards pause|resume|close <id>`
+   * changes one (resume asks the agent path for a yes — here it is the user typing, so it applies).
+   */
+  private async cards(
+    userId: string,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const store = this.deps.cards
+    if (!store) return reply("Virtual cards are not enabled on this server.")
+    const ctx = await this.deps.resolveContext(userId)
+    const now = this.now()
+    const [sub, id] = args
+    if (sub && id) {
+      const op = sub.toLowerCase()
+      if (!["pause", "resume", "close"].includes(op))
+        return reply("Usage: /cards · /cards pause <id> · /cards resume <id> · /cards close <id>")
+      const c = await store.get(id)
+      if (!c || c.userId !== userId) return reply(`No card ${id}.`)
+      await store.update({
+        ...c,
+        state: op === "pause" ? "paused" : op === "close" ? "closed" : "active",
+      })
+      return reply(
+        `Card “${c.name}” is now ${op === "pause" ? "paused" : op === "close" ? "closed" : "active"}.`,
+      )
+    }
+    const entries = await readEntries(ctx.ledger)
+    const cards = (await store.listForUser(userId)).filter((c) => c.state !== "closed")
+    if (!cards.length)
+      return reply(
+        "No virtual cards. Say e.g. “create a virtual card for steam with a 50,000 sat monthly limit”. A card is a monthly budget on your own wallet for one kind of spend; nothing moves into it.",
+      )
+    const line = (c: VirtualCard) => {
+      const spent = cardSpentSince(entries, c.id, periodStart(c, now))
+      return `• ${c.name} (${c.id}) — ${c.state} · ${formatSats(spent)} of ${formatSats(c.monthlyCapSats)} this month · pays ${c.scope.join(", ")} · resets ${periodEnd(c, now).slice(0, 10)}${this.deps.siteUrl ? ` · ${this.deps.siteUrl}/card/${c.id}` : ""}`
+    }
+    return reply(`${cards.map(line).join("\n")}\n/cards pause <id> to freeze one instantly.`)
   }
 
   /** `/statement [year]`: the year's succeeded gifts as CSV. We are not the donee; the recipient issues receipts. */

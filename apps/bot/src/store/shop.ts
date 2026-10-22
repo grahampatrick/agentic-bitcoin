@@ -3,6 +3,7 @@
  * implementations and the seed parser live in @agentic-bitcoin/stores (shared with the web).
  */
 import {
+  type CardStore,
   type InvoiceStore,
   type IssuedInvoice,
   type LightningAddressRecord,
@@ -15,12 +16,14 @@ import {
   type ShopCategory,
   type ShopOrder,
   type ShopProduct,
+  type VirtualCard,
   globalProductId,
   productMatches,
 } from "@agentic-bitcoin/core"
 import type { FileState } from "./file"
 
 export {
+  SupabaseCardStore,
   SupabaseInvoiceStore,
   SupabaseLightningAddressStore,
   SupabaseReceiveInvoiceWatch,
@@ -195,6 +198,33 @@ export class FileInvoiceStore implements InvoiceStore {
 }
 
 /** M15: lightning addresses in the file bucket, prefixed `a:`. (Only useful with the web on the same DB; kept for parity.) */
+export class FileCardStore implements CardStore {
+  readonly kind = "file"
+  constructor(private readonly f: FileState) {}
+  private all(): VirtualCard[] {
+    return this.f
+      .keys("shop")
+      .filter((k) => k.startsWith("c:"))
+      .map((k) => dec<VirtualCard>(this.f.get("shop", k) ?? ""))
+  }
+  async get(id: string) {
+    const v = this.f.get("shop", `c:${id}`)
+    return v ? dec<VirtualCard>(v) : null
+  }
+  async listForUser(userId: string) {
+    return this.all()
+      .filter((c) => c.userId === userId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  }
+  async create(c: VirtualCard) {
+    if (this.f.get("shop", `c:${c.id}`)) throw new Error("card exists")
+    this.f.set("shop", `c:${c.id}`, enc(c))
+  }
+  async update(c: VirtualCard) {
+    this.f.set("shop", `c:${c.id}`, enc(c))
+  }
+}
+
 export class FileLightningAddressStore implements LightningAddressStore {
   readonly kind = "file"
   constructor(private readonly f: FileState) {}

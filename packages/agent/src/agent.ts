@@ -10,6 +10,7 @@ import {
   type Action,
   type Campaign,
   type CampaignReader,
+  type CardContext,
   type Confirmation,
   type ContributionSink,
   type ExecuteResult,
@@ -81,6 +82,8 @@ export interface UserContext {
   rewardStore?: RewardStore
   /** M14: the user's invoices (as issuer) and how to resolve one of our pay links (as payer). */
   invoices?: InvoiceContext
+  /** M17a: the user's virtual cards. */
+  cards?: CardContext
   payLinks?: {
     resolve(
       token: string,
@@ -294,6 +297,7 @@ export async function handleToolCall(
     rewardStore: ctx.rewardStore,
     userId: ctx.userId,
     invoices: ctx.invoices,
+    cards: ctx.cards,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -338,6 +342,7 @@ export async function confirmPending(
     rewardStore: ctx.rewardStore,
     userId: ctx.userId,
     invoices: ctx.invoices,
+    cards: ctx.cards,
     now: opts.now,
     context: { price: opts.price },
     confirmation,
@@ -373,7 +378,13 @@ async function outcomeOf(
       const hint =
         result.decision.reason === "RAIL_DISABLED"
           ? `The ${railOf(action)} rail is off in your limits. Turn it on with: /budget rail ${railOf(action)} on`
-          : undefined
+          : result.decision.reason === "CARD_MONTHLY_CAP"
+            ? "This spend landed on one of the user's virtual cards and would exceed its monthly limit. Say which card and what is left; the user can raise it (update_card set_limit) or wait for the reset."
+            : result.decision.reason === "CARD_PAUSED"
+              ? "The matching virtual card is paused. The user can resume it (update_card resume) or say /cards."
+              : result.decision.reason === "CARD_PER_ACTION_CAP"
+                ? "The matching virtual card caps a single spend below this amount."
+                : undefined
       return {
         status: "denied",
         content: toToolJson({

@@ -406,6 +406,65 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "create_card",
+    description:
+      "Create a virtual Lightning card: a named monthly budget on the user's own wallet, scoped to what it may pay. Moves no sats and never raises the user's limits. Scope patterns: product:<text> (gift cards or products whose name contains the text, e.g. product:steam), merchant:bitrefill, shop:<store slug>, a Lightning address, *@domain, a host for paid APIs, rail:<wallet|exchange|goods|compute|onchain>, or * for everything. The user must confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: str("Card name as the user said it, e.g. 'Steam purchases'"),
+        scope: str("Comma-separated scope patterns, e.g. 'product:steam, merchant:bitrefill'"),
+        monthly_cap_sats: int("Monthly limit in whole sats", 1),
+        per_action_cap_sats: int("Max sats for one spend on this card, or 0 for none", 0),
+        confirm_above_sats: int(
+          "Ask the user above this many sats on this card, or 0 to inherit their usual threshold",
+          0,
+        ),
+        reset_day: int(
+          "Day of month (1–28, UTC) the budget resets; 1 unless the user says otherwise",
+          1,
+        ),
+      },
+      required: [
+        "name",
+        "scope",
+        "monthly_cap_sats",
+        "per_action_cap_sats",
+        "confirm_above_sats",
+        "reset_day",
+      ],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "list_cards",
+    description:
+      "The user's virtual Lightning cards with what each has spent and has left this month.",
+    input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  {
+    name: "update_card",
+    description:
+      "Pause, resume, close, or change the monthly limit of one of the user's virtual cards (card_id from list_cards). Pausing is immediate; resuming or raising a limit needs the user's confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        card_id: str("The card id, e.g. card_abc123"),
+        op: {
+          type: "string",
+          description: "pause | resume | close | set_limit",
+          enum: ["pause", "resume", "close", "set_limit"],
+        },
+        monthly_cap_sats: int("New monthly limit in sats for set_limit; 0 otherwise", 0),
+      },
+      required: ["card_id", "op", "monthly_cap_sats"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "list_invoices",
     description:
       "The user's issued invoices and payment requests with status and pay links. Read-only.",
@@ -808,6 +867,44 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       return { kind: "list_invoices", ...base, filter: String(input.filter ?? "open") }
     case "void_invoice":
       return { kind: "void_invoice", ...base, invoiceId: String(input.invoice_id ?? "") }
+    case "create_card": {
+      const name = String(input.name ?? "")
+        .trim()
+        .slice(0, 60)
+      if (!name) throw new ToolInputError("create_card: the card needs a name")
+      const scope = String(input.scope ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (!scope.length) throw new ToolInputError("create_card: what may the card pay? (scope)")
+      const per = Number(input.per_action_cap_sats ?? 0)
+      const conf = Number(input.confirm_above_sats ?? 0)
+      return {
+        kind: "create_card",
+        ...base,
+        name,
+        scope,
+        monthlyCapSats: BigInt(Number(input.monthly_cap_sats)),
+        perActionCapSats: per > 0 ? BigInt(per) : undefined,
+        confirmAboveSats: conf > 0 ? BigInt(conf) : undefined,
+        resetDay: Number(input.reset_day ?? 1) || 1,
+      }
+    }
+    case "list_cards":
+      return { kind: "list_cards", ...base }
+    case "update_card": {
+      const op = String(input.op ?? "")
+      if (!["pause", "resume", "close", "set_limit"].includes(op))
+        throw new ToolInputError("update_card: op must be pause, resume, close or set_limit")
+      const cap = Number(input.monthly_cap_sats ?? 0)
+      return {
+        kind: "update_card",
+        ...base,
+        cardId: String(input.card_id ?? "").trim(),
+        op: op as "pause" | "resume" | "close" | "set_limit",
+        monthlyCapSats: cap > 0 ? BigInt(cap) : undefined,
+      }
+    }
     case "confirm_action":
       return null
   }

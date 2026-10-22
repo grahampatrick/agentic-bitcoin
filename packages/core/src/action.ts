@@ -19,6 +19,8 @@ interface Base {
   /** Caller-chosen stable id. The same key must never execute twice. */
   idempotencyKey: string
   requestedBy: Requester
+  /** M17a: set by the executor when a spend lands on one of the user's virtual cards. */
+  cardId?: string
 }
 
 export interface PayInvoice extends Base {
@@ -215,6 +217,32 @@ export interface VoidInvoice extends Base {
   invoiceId: string
 }
 
+/**
+ * M17a: a virtual Lightning card — a named, scoped monthly budget on the user's own wallet. Creating
+ * one moves no sats and never loosens the user's policy; it only narrows what matching spends may do.
+ */
+export interface CreateCard extends Base {
+  kind: "create_card"
+  name: string
+  scope: readonly string[]
+  monthlyCapSats: Sats
+  perActionCapSats?: Sats
+  confirmAboveSats?: Sats
+  /** 1–28 (UTC). */
+  resetDay: number
+}
+
+export interface ListCards extends Base {
+  kind: "list_cards"
+}
+
+export interface UpdateCard extends Base {
+  kind: "update_card"
+  cardId: string
+  op: "pause" | "resume" | "close" | "set_limit"
+  monthlyCapSats?: Sats
+}
+
 export type Action =
   | Give
   | ScheduleGive
@@ -225,6 +253,9 @@ export type Action =
   | CreateInvoice
   | ListInvoices
   | VoidInvoice
+  | CreateCard
+  | ListCards
+  | UpdateCard
   | PayInvoice
   | PayAddress
   | MakeInvoice
@@ -262,6 +293,9 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   create_invoice: "wallet",
   list_invoices: "wallet",
   void_invoice: "wallet",
+  create_card: "wallet",
+  list_cards: "wallet",
+  update_card: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -297,6 +331,9 @@ export function spendSats(action: Action): Sats {
     case "create_invoice":
     case "list_invoices":
     case "void_invoice":
+    case "create_card":
+    case "list_cards":
+    case "update_card":
       return 0n
   }
 }
@@ -331,6 +368,9 @@ export function destinationOf(action: Action): string | null {
     case "create_invoice":
     case "list_invoices":
     case "void_invoice":
+    case "create_card":
+    case "list_cards":
+    case "update_card":
       return null
   }
 }
@@ -385,7 +425,19 @@ export function describeAction(action: Action): string {
       return `List ${action.filter} invoices`
     case "void_invoice":
       return `Void invoice ${action.invoiceId}`
+    case "create_card":
+      return `Create virtual card “${action.name}” (${action.scope.join(", ")}) with a ${formatSatsPlain(action.monthlyCapSats)} monthly limit`
+    case "list_cards":
+      return "List virtual cards"
+    case "update_card":
+      return action.op === "set_limit"
+        ? `Set card ${action.cardId} monthly limit to ${formatSatsPlain(action.monthlyCapSats ?? 0n)}`
+        : `${action.op[0]?.toUpperCase()}${action.op.slice(1)} card ${action.cardId}`
   }
+}
+
+function formatSatsPlain(n: bigint): string {
+  return `${n.toLocaleString("en-US")} sats`
 }
 
 // --- serialisation: bigint ↔ decimal string -----------------------------------------------

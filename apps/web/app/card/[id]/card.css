@@ -1,0 +1,92 @@
+.vcard {
+  margin: 28px 0;
+  border: 1px solid var(--rule, #e6e0da);
+  border-radius: 16px;
+  padding: 20px 22px;
+  background: var(--paper, #fff);
+}
+.vcard__head h2 {
+  margin: 0;
+  font-size: 22px;
+}
+.vcard__pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #eee9e4;
+  color: #5f5e5a;
+}
+.vcard__pill.is-on {
+  background: #e1f5ee;
+  color: #085041;
+}
+.vcard__plastic {
+  margin: 18px auto;
+  max-width: 360px;
+  aspect-ratio: 1.586;
+  border-radius: 18px;
+  padding: 20px 22px;
+  background: #1f2322;
+  color: #f4efec;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.vcard__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.vcard__brand {
+  letter-spacing: 0.2em;
+  font-weight: 600;
+  font-size: 14px;
+}
+.vcard__bolt {
+  font-size: 22px;
+}
+.vcard__sub {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+.vcard__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  opacity: 0.9;
+}
+.vcard__meter {
+  height: 6px;
+  border-radius: 999px;
+  background: #eee9e4;
+  overflow: hidden;
+  margin: 8px 0 14px;
+}
+.vcard__meter span {
+  display: block;
+  height: 100%;
+  background: #1f2322;
+}
+.vcard__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+}
+.vcard__facts dt {
+  font-size: 12px;
+  color: #6b6965;
+}
+.vcard__facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.vcard__actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}

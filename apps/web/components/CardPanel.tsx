@@ -1,0 +1,111 @@
+"use client"
+
+import { useState } from "react"
+
+export interface CardPanelProps {
+  id: string
+  name: string
+  state: "active" | "paused"
+  scope: readonly string[]
+  monthlyCapSats: string
+  spentSats: string
+  resetsAt: string
+  perActionCapSats?: string
+  confirmAboveSats?: string
+  canManage: boolean
+  token?: string
+}
+
+const sats = (s: string) => `${Number(s).toLocaleString("en-US")} sats` // money-ok: display of an integer string
+
+export function CardPanel(p: CardPanelProps) {
+  const [state, setState] = useState(p.state)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const spent = Number(p.spentSats)
+  const cap = Number(p.monthlyCapSats)
+  const pct = cap > 0 ? Math.min(100, Math.round((spent / cap) * 100)) : 0 // money-ok: a progress bar width
+  async function toggle() {
+    setBusy(true)
+    setErr(null)
+    const res = await fetch(`/api/card/${p.id}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: p.token, op: state === "active" ? "pause" : "resume" }),
+    })
+    const j = (await res.json()) as { ok: boolean; state?: "active" | "paused"; error?: string }
+    setBusy(false)
+    if (j.ok && j.state) setState(j.state)
+    else setErr(j.error ?? "failed")
+  }
+  return (
+    <section className="vcard">
+      <header className="vcard__head">
+        <div>
+          <h2>{p.name}</h2>
+          <p className="small">
+            Virtual Lightning card{" "}
+            <span className={`vcard__pill${state === "active" ? " is-on" : ""}`}>
+              {state === "active" ? "Active" : "Paused"}
+            </span>
+          </p>
+        </div>
+      </header>
+      <div className="vcard__plastic" aria-hidden="true">
+        <div className="vcard__row">
+          <span className="vcard__brand">ANVARD</span>
+          <span className="vcard__bolt">⚡</span>
+        </div>
+        <p className="vcard__sub">lightning debit · a policy on your wallet, not a balance</p>
+        <div className="vcard__row vcard__row--bottom">
+          <span className="vcard__mono">{p.id}</span>
+          <span className="vcard__mono">resets {p.resetsAt.slice(0, 10)}</span>
+        </div>
+      </div>
+      {p.canManage ? (
+        <>
+          <div className="vcard__meter" aria-hidden="true">
+            <span style={{ width: `${pct}%` }} />
+          </div>
+          <dl className="vcard__facts">
+            <div>
+              <dt>Spent this month</dt>
+              <dd>
+                {sats(p.spentSats)} of {sats(p.monthlyCapSats)}
+              </dd>
+            </div>
+            <div>
+              <dt>Pays</dt>
+              <dd>{p.scope.join(", ")}</dd>
+            </div>
+            <div>
+              <dt>Funds held by</dt>
+              <dd>Your own wallet</dd>
+            </div>
+            <div>
+              <dt>Asks you above</dt>
+              <dd>{p.confirmAboveSats ? sats(p.confirmAboveSats) : "your usual threshold"}</dd>
+            </div>
+            {p.perActionCapSats ? (
+              <div>
+                <dt>Max per payment</dt>
+                <dd>{sats(p.perActionCapSats)}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <div className="vcard__actions">
+            <button type="button" className="cta" disabled={busy} onClick={toggle}>
+              {state === "active" ? "Pause card" : "Resume card"}
+            </button>
+            <span className="small">Pausing is instant. Resume from here or in chat.</span>
+          </div>
+          {err ? <p className="small">{err}</p> : null}
+        </>
+      ) : (
+        <p className="small">
+          Open this page from the link the assistant gave you to see the budget and manage the card.
+        </p>
+      )}
+    </section>
+  )
+}

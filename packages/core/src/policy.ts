@@ -15,6 +15,7 @@ import {
   railOf,
   spendSats,
 } from "./action"
+import type { VirtualCard } from "./cards"
 import { type PriceSnapshot, type Sats, formatCents, formatSats, satsToCents } from "./money"
 
 export interface Policy {
@@ -57,6 +58,10 @@ export type DenyReason =
   | "MISSING_IDEMPOTENCY_KEY"
   /** A gift to a recipient that is neither a verified directory entry nor the user's own. */
   | "RECIPIENT_UNVERIFIED"
+  /** M17a: the spend landed on a virtual card that is paused, or exceeds its limits. */
+  | "CARD_PAUSED"
+  | "CARD_PER_ACTION_CAP"
+  | "CARD_MONTHLY_CAP"
 
 export type Decision =
   | { type: "allow"; summary: string }
@@ -71,6 +76,8 @@ export interface LedgerWindow {
 export interface EvaluateContext {
   /** Price at decision time, for the fiat half of the summary. Optional for reads. */
   price?: PriceSnapshot
+  /** M17a: the virtual card this spend landed on, with what it has spent this period. */
+  card?: { card: VirtualCard; spentSats: Sats }
 }
 
 /** The window is a rolling 24 hours. */
@@ -87,11 +94,20 @@ export function evaluate(
   ctx: EvaluateContext = {},
 ): Decision {
   const amount = spendSats(action)
-  const summary = summarize(action, amount, ctx.price)
+  const summary = ctx.card
+    ? `${summarize(action, amount, ctx.price)} · card “${ctx.card.card.name}”`
+    : summarize(action, amount, ctx.price)
 
   if (policy.killSwitch) return deny("KILL_SWITCH", summary)
   if (!policy.rails[railOf(action)]) return deny("RAIL_DISABLED", summary)
 
+  // Creating a card or widening one is a limit change the human must see (ADR-0021); pausing is instant.
+  if (
+    action.kind === "create_card" ||
+    (action.kind === "update_card" && action.op !== "pause" && action.op !== "close")
+  ) {
+    return { type: "needs_confirmation", summary, actionHash: actionHash(action) }
+  }
   if (!isSpend(action)) return { type: "allow", summary }
 
   if (!action.idempotencyKey.trim()) return deny("MISSING_IDEMPOTENCY_KEY", summary)
@@ -121,13 +137,24 @@ export function evaluate(
   if (amount > policy.perActionCapSats) return deny("PER_ACTION_CAP", summary)
   if (window.spentSats + amount > policy.dailyCapSats) return deny("DAILY_CAP", summary)
 
+  // M17a: a card narrows, never widens. Its own caps apply on top of the user's.
+  let confirmAbove = policy.confirmAboveSats
+  if (ctx.card) {
+    const { card, spentSats } = ctx.card
+    if (card.state !== "active") return deny("CARD_PAUSED", summary)
+    if (card.perActionCapSats !== undefined && amount > card.perActionCapSats)
+      return deny("CARD_PER_ACTION_CAP", summary)
+    if (spentSats + amount > card.monthlyCapSats) return deny("CARD_MONTHLY_CAP", summary)
+    if (card.confirmAboveSats !== undefined) confirmAbove = card.confirmAboveSats
+  }
+
   // Purchases from a merchant and cold-storage sweeps always need a human yes (ADR-0011, ADR-0012).
   if (
     action.kind === "buy_product" ||
     action.kind === "sweep_to_cold" ||
     action.kind === "schedule_sweep" ||
     action.kind === "schedule_give" ||
-    amount >= policy.confirmAboveSats
+    amount >= confirmAbove
   ) {
     return { type: "needs_confirmation", summary, actionHash: actionHash(action) }
   }

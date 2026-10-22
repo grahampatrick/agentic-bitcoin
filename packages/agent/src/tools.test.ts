@@ -228,6 +228,19 @@ function sampleInput(name: string): Record<string, unknown> {
       return { filter: "open" }
     case "void_invoice":
       return { invoice_id: "inv_1" }
+    case "create_card":
+      return {
+        name: "Steam purchases",
+        scope: "product:steam, merchant:bitrefill",
+        monthly_cap_sats: 50000,
+        per_action_cap_sats: 0,
+        confirm_above_sats: 0,
+        reset_day: 1,
+      }
+    case "list_cards":
+      return {}
+    case "update_card":
+      return { card_id: "card_1", op: "pause", monthly_cap_sats: 0 }
     case "sweep_to_cold":
       return {
         address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",

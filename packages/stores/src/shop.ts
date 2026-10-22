@@ -4,6 +4,7 @@
  */
 import { readFileSync } from "node:fs"
 import {
+  type CardStore,
   type InvoiceStore,
   type IssuedInvoice,
   type LightningAddressRecord,
@@ -17,6 +18,7 @@ import {
   type ShopCategory,
   type ShopOrder,
   type ShopProduct,
+  type VirtualCard,
   productMatches,
 } from "@agentic-bitcoin/core"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -598,6 +600,80 @@ export class SupabaseLightningAddressStore implements LightningAddressStore {
   }
   async remove(name: string) {
     await q(this.db.from("lightning_addresses").delete().eq("name", name), "address delete")
+  }
+}
+
+// --- M17a: virtual cards ------------------------------------------------------------------------
+
+interface CardRow {
+  id: string
+  user_id: string
+  name: string
+  scope: string[]
+  monthly_cap_sats: number
+  per_action_cap_sats: number | null
+  confirm_above_sats: number | null
+  reset_day: number
+  state: string
+  created_at: string
+  view_token_hash: string | null
+  spent_sats: number | null
+  period_start: string | null
+}
+const cardFromRow = (r: CardRow): VirtualCard => ({
+  id: r.id,
+  userId: r.user_id,
+  name: r.name,
+  scope: r.scope ?? [],
+  monthlyCapSats: BigInt(r.monthly_cap_sats),
+  perActionCapSats: r.per_action_cap_sats === null ? undefined : BigInt(r.per_action_cap_sats),
+  confirmAboveSats: r.confirm_above_sats === null ? undefined : BigInt(r.confirm_above_sats),
+  resetDay: r.reset_day,
+  state: r.state as VirtualCard["state"],
+  createdAt: r.created_at,
+  viewTokenHash: r.view_token_hash ?? undefined,
+  spentSats: r.spent_sats === null ? undefined : BigInt(r.spent_sats),
+  periodStart: r.period_start ?? undefined,
+})
+const cardToRow = (c: VirtualCard): CardRow => ({
+  id: c.id,
+  user_id: c.userId,
+  name: c.name,
+  scope: [...c.scope],
+  monthly_cap_sats: Number(c.monthlyCapSats),
+  per_action_cap_sats: c.perActionCapSats === undefined ? null : Number(c.perActionCapSats),
+  confirm_above_sats: c.confirmAboveSats === undefined ? null : Number(c.confirmAboveSats),
+  reset_day: c.resetDay,
+  state: c.state,
+  created_at: c.createdAt,
+  view_token_hash: c.viewTokenHash ?? null,
+  spent_sats: c.spentSats === undefined ? null : Number(c.spentSats),
+  period_start: c.periodStart ?? null,
+}) // money-ok: integer sats stored as bigint columns
+
+export class SupabaseCardStore implements CardStore {
+  readonly kind = "supabase"
+  constructor(private readonly db: SupabaseClient) {}
+  async get(id: string) {
+    const d = await q<CardRow | null>(
+      this.db.from("virtual_cards").select("*").eq("id", id).maybeSingle(),
+      "card read",
+    )
+    return d ? cardFromRow(d) : null
+  }
+  async listForUser(userId: string) {
+    const d = await q<CardRow[]>(
+      this.db.from("virtual_cards").select("*").eq("user_id", userId).order("created_at"),
+      "cards read",
+    )
+    return (d ?? []).map(cardFromRow)
+  }
+  async create(c: VirtualCard) {
+    const { error } = await this.db.from("virtual_cards").insert(cardToRow(c))
+    if (error) throw new Error(`card write failed: ${error.message}`)
+  }
+  async update(c: VirtualCard) {
+    await q(this.db.from("virtual_cards").update(cardToRow(c)).eq("id", c.id), "card update")
   }
 }
 

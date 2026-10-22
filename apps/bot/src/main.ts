@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 /**
  * Bot entrypoint. SURFACE=telegram|signal. With SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY the
  * stores are durable; otherwise everything is in memory (dev). NWC_URL is the single dev wallet
@@ -16,6 +16,7 @@ import {
   DEFAULT_REWARD_RATES,
   FakeWalletRail,
   type GoodsRail,
+  InMemoryCardStore,
   InMemoryInvoiceStore,
   InMemoryLedgerStore,
   InMemoryLightningAddressStore,
@@ -68,11 +69,13 @@ import {
 } from "./store/file"
 import { SupabaseRecipientStore, seedRecipients } from "./store/recipients"
 import {
+  FileCardStore,
   FileInvoiceStore,
   FileLightningAddressStore,
   FileOrderStore,
   FileProductStore,
   FileRewardStore,
+  SupabaseCardStore,
   SupabaseInvoiceStore,
   SupabaseLightningAddressStore,
   SupabaseOrderStore,
@@ -226,6 +229,16 @@ async function loadRemoteShops(): Promise<void> {
 }
 await loadRemoteShops()
 let shopSyncAt = Date.now()
+// M17a: virtual cards — scoped monthly budgets on the user's own wallet (ADR-0021).
+const cardStore = db
+  ? new SupabaseCardStore(db)
+  : fileState
+    ? new FileCardStore(fileState)
+    : new InMemoryCardStore()
+const newViewToken = () => {
+  const token = randomBytes(16).toString("hex")
+  return { token, hash: createHash("sha256").update(token).digest("hex") }
+}
 // M15: lightning addresses (name@host → the user's own wallet). The web mints; the bot watches settlement.
 const addressStore = db
   ? new SupabaseLightningAddressStore(db)
@@ -364,6 +377,7 @@ async function resolveContext(userId: string): Promise<UserContext> {
     rewards,
     rewardStore,
     invoices: { store: invoiceStore, issuer: userId, siteUrl },
+    cards: { store: cardStore, siteUrl, newViewToken },
     payLinks,
   }
 }
@@ -451,6 +465,7 @@ const dispatcher = new Dispatcher({
   buyerKeyOf: supporterKeyOf,
   rewardStore,
   invoiceStore,
+  cards: cardStore,
   addresses: addressStore,
   inviteCode: env.BOT_INVITE_CODE,
   allowedUsers: env.BOT_ALLOWED_USERS?.split(",")

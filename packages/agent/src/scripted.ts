@@ -167,6 +167,48 @@ export function intentOf(text: string): { name: string; input: Record<string, un
       },
     }
   }
+  // M17a: "create a virtual card for steam with a 50,000 sat monthly limit" / "my cards" / "pause card card_x"
+  const card =
+    /^(?:create|make|set\s+up|open)\s+(?:a\s+)?(?:new\s+)?(?:virtual\s+)?(?:lightning\s+)?card\s+(?:for|called|named)\s+(.+?)\s+(?:with|at)\s+(?:a\s+)?([\d,_]+)\s*(?:k\s+)?sats?(?:\s+(?:a|per)\s+month|\s+monthly)?(?:\s+limit|\s+cap|\s+budget)?\s*$/i.exec(
+      t,
+    )
+  if (card) {
+    const what = (card[1] ?? "").trim()
+    const low2 = what.toLowerCase()
+    const scope = /\S+@\S+/.test(what)
+      ? what.toLowerCase()
+      : /^(everything|all|anything)$/.test(low2)
+        ? "*"
+        : `product:${low2.replace(/\s+(purchases|gift\s*cards?|cards?|stuff|things)$/, "")}, merchant:bitrefill`
+    const name = /\S+@\S+/.test(what) ? what : `${what[0]?.toUpperCase()}${what.slice(1)}`
+    return {
+      name: "create_card",
+      input: {
+        name,
+        scope,
+        monthly_cap_sats: num(card[2] ?? "0"),
+        per_action_cap_sats: 0,
+        confirm_above_sats: 0,
+        reset_day: 1,
+      },
+    }
+  }
+  if (/\b(my|list|show)\s+(virtual\s+)?cards\b|what'?s\s+left\s+on\s+my\s+.+\bcard\b/i.test(t))
+    return { name: "list_cards", input: {} }
+  const upd =
+    /^(pause|freeze|resume|unpause|unfreeze|close|cancel)\s+(?:my\s+)?(?:the\s+)?card\s+(card_[a-z0-9]+)\s*$/i.exec(
+      t,
+    )
+  if (upd) {
+    const v = (upd[1] ?? "").toLowerCase()
+    const op =
+      v === "pause" || v === "freeze"
+        ? "pause"
+        : v === "close" || v === "cancel"
+          ? "close"
+          : "resume"
+    return { name: "update_card", input: { card_id: upd[2], op, monthly_cap_sats: 0 } }
+  }
   if (/\b(my|unpaid|open|overdue|paid)\s+invoices?\b|\bwho\s+(hasn'?t|has not)\s+paid\b/i.test(t)) {
     const f = /\boverdue\b/i.test(t)
       ? "overdue"
@@ -482,6 +524,29 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
       if (result.scheduleId)
         return `Scheduled: a fresh invoice goes out each time (${result.scheduleId}); cancel with “cancel ${result.scheduleId}”.`
       return `Done: ${result.number} for $${(Number(result.totalCents) / 100).toFixed(2)} (${Number(result.amountSats).toLocaleString("en-US")} sats)${result.dueAt ? `, due ${String(result.dueAt).slice(0, 10)}` : ""}. Send them this link: ${result.link}` // money-ok: display in a canned demo model
+    case "create_card": {
+      const c = result.card as
+        | { name: string; monthlyCapSats: bigint | string; resetsAt: string }
+        | undefined
+      if (!c) return "Card created."
+      return `Card “${c.name}” is active: ${Number(c.monthlyCapSats).toLocaleString("en-US")} sats a month on your own wallet, resets ${String(c.resetsAt).slice(0, 10)}.${result.link ? ` Card page: ${result.link}` : ""}` // money-ok: display in a canned demo model
+    }
+    case "list_cards": {
+      const cards = (result.cards ?? []) as {
+        id: string
+        name: string
+        state: string
+        spentSats: bigint | string
+        monthlyCapSats: bigint | string
+      }[]
+      return cards.length
+        ? `Your cards: ${cards.map((c) => `${c.name} (${c.id}, ${c.state}) ${Number(c.spentSats).toLocaleString("en-US")} / ${Number(c.monthlyCapSats).toLocaleString("en-US")} sats`).join("; ")}.` // money-ok: display in a canned demo model
+        : "You have no virtual cards. Say e.g. “create a virtual card for steam with a 50,000 sat monthly limit”."
+    }
+    case "update_card": {
+      const c = result.card as { name: string; state: string } | undefined
+      return c ? `Card “${c.name}” is now ${c.state}.` : "Card updated."
+    }
     case "list_invoices": {
       const list = (result.invoices ?? []) as {
         number: string

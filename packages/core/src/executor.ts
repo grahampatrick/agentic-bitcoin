@@ -5,9 +5,21 @@
  * Nothing else in the codebase may call a rail's spending method. The LLM layer and the scheduler
  * both call `execute`.
  */
-import { type Action, actionHash, isSpend } from "./action"
+import { type Action, actionHash, isSpend, spendSats } from "./action"
 import { parseAddress } from "./address"
 import type { CampaignReader, ContributionSink } from "./campaign"
+import {
+  CardError,
+  type CardStore,
+  MAX_CARDS_PER_USER,
+  type VirtualCard,
+  cardFor,
+  cardSpentSince,
+  newCardId,
+  normalizeScope,
+  periodEnd,
+  periodStart,
+} from "./cards"
 import {
   INVOICE_EXPIRY_SECONDS,
   type InvoiceStore,
@@ -81,6 +93,16 @@ export interface ExecuteInput {
   invoices?: InvoiceContext
   /** M9: the user-scoped recipient directory, for `find_recipient`. */
   recipients?: RecipientReader
+  /** M17a: the user's virtual cards. Spends that match a card's scope are budgeted against it. */
+  cards?: CardContext
+}
+
+export interface CardContext {
+  store: CardStore
+  /** Where a card's page lives (`<siteUrl>/card/<id>?t=<token>`). */
+  siteUrl?: string
+  /** Mints the view token for a new card; the hash is stored, the token returned once. */
+  newViewToken?: () => { token: string; hash: string }
 }
 
 export interface InvoiceContext {
@@ -117,9 +139,22 @@ const defaultNewId = () => `act_${Date.now().toString(36)}_${(++counter).toStrin
 export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
   const now = input.now ?? (() => new Date())
   const newId = input.newId ?? defaultNewId
-  const { action, policy, ledger, rails } = input
+  const { policy, ledger, rails } = input
+  let action = input.action
 
   const entries = foldEntries(await ledger.events())
+
+  // M17a: does this spend land on one of the user's virtual cards? Tag it and budget it.
+  let cardCtx: { card: VirtualCard; spentSats: bigint } | undefined
+  if (isSpend(action) && input.cards && input.userId && !action.cardId) {
+    const card = cardFor(action, await input.cards.store.listForUser(input.userId))
+    if (card) action = { ...action, cardId: card.id }
+  }
+  if (isSpend(action) && action.cardId && input.cards) {
+    const card = await input.cards.store.get(action.cardId)
+    if (card)
+      cardCtx = { card, spentSats: cardSpentSince(entries, card.id, periodStart(card, now())) }
+  }
 
   // 1. Idempotent replay: a key that already succeeded or is in flight is never executed again.
   if (isSpend(action)) {
@@ -140,7 +175,7 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
     action,
     policy,
     { spentSats: spentSince(entries, windowStart(now())) },
-    input.context,
+    { ...input.context, card: cardCtx },
   )
   const id = newId()
   const at = now().toISOString()
@@ -176,6 +211,17 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
       detail,
       sealed,
     })
+    if (cardCtx && input.cards) {
+      // display snapshot only; enforcement reads the ledger
+      const spent = cardCtx.spentSats + (isSpend(action) ? spendSatsOf(action) : 0n)
+      await input.cards.store
+        .update({
+          ...cardCtx.card,
+          spentSats: spent,
+          periodStart: periodStart(cardCtx.card, now()),
+        })
+        .catch(() => undefined)
+    }
     return { status: "succeeded", id, decision, result }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -187,6 +233,27 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
     }
     return { status: "failed", id, decision, error: message, code }
   }
+}
+
+/** What the model and the web see of a card: no token hash, numbers as bigint. */
+export function cardView(card: VirtualCard, spentSats: bigint, now: Date) {
+  return {
+    id: card.id,
+    name: card.name,
+    scope: card.scope,
+    state: card.state,
+    monthlyCapSats: card.monthlyCapSats,
+    spentSats,
+    remainingSats: card.monthlyCapSats > spentSats ? card.monthlyCapSats - spentSats : 0n,
+    perActionCapSats: card.perActionCapSats,
+    confirmAboveSats: card.confirmAboveSats,
+    resetsAt: periodEnd(card, now),
+    createdAt: card.createdAt,
+  }
+}
+
+function spendSatsOf(action: Action): bigint {
+  return spendSats(action)
 }
 
 function priorResult(e: LedgerEntry): unknown {
@@ -475,6 +542,88 @@ async function dispatch(
     case "cancel_schedule": {
       await need(schedules, "schedules").cancel(action.scheduleId)
       return { result: { cancelled: action.scheduleId }, detail: action.scheduleId }
+    }
+    case "create_card": {
+      const cc = need(input.cards, "cards")
+      const userId = need(input.userId, "userId")
+      const now = (input.now ?? (() => new Date()))()
+      const mine = await cc.store.listForUser(userId)
+      if (mine.filter((c) => c.state !== "closed").length >= MAX_CARDS_PER_USER)
+        throw new CardError(
+          "LIMIT",
+          `you already have ${MAX_CARDS_PER_USER} cards; close one first`,
+        )
+      const name = action.name.trim().slice(0, 60)
+      if (!name) throw new CardError("INVALID", "a card needs a name")
+      if (mine.some((c) => c.state !== "closed" && c.name.toLowerCase() === name.toLowerCase()))
+        throw new CardError("INVALID", `you already have a card called “${name}”`)
+      if (action.monthlyCapSats < 1n)
+        throw new CardError("INVALID", "the monthly limit must be at least 1 sat")
+      const tok = cc.newViewToken?.()
+      const card: VirtualCard = {
+        id: newCardId(now, mine.length + 1),
+        userId,
+        name,
+        scope: normalizeScope(action.scope),
+        monthlyCapSats: action.monthlyCapSats,
+        perActionCapSats: action.perActionCapSats,
+        confirmAboveSats: action.confirmAboveSats,
+        resetDay: Math.min(28, Math.max(1, Math.floor(action.resetDay) || 1)),
+        state: "active",
+        createdAt: now.toISOString(),
+        viewTokenHash: tok?.hash,
+        spentSats: 0n,
+        periodStart: periodStart({ resetDay: action.resetDay }, now),
+      }
+      await cc.store.create(card)
+      const link =
+        cc.siteUrl && tok
+          ? `${cc.siteUrl.replace(/\/$/, "")}/card/${card.id}?t=${tok.token}`
+          : undefined
+      return {
+        result: { card: cardView(card, 0n, now), link },
+        detail: `${card.id} ${card.name}`,
+      }
+    }
+    case "list_cards": {
+      const cc = need(input.cards, "cards")
+      const userId = need(input.userId, "userId")
+      const now = (input.now ?? (() => new Date()))()
+      const entries = foldEntries(await input.ledger.events())
+      const cards = (await cc.store.listForUser(userId)).filter((c) => c.state !== "closed")
+      return {
+        result: {
+          cards: cards.map((c) =>
+            cardView(c, cardSpentSince(entries, c.id, periodStart(c, now)), now),
+          ),
+        },
+      }
+    }
+    case "update_card": {
+      const cc = need(input.cards, "cards")
+      const userId = need(input.userId, "userId")
+      const now = (input.now ?? (() => new Date()))()
+      const card = await cc.store.get(action.cardId)
+      if (!card || card.userId !== userId)
+        throw new CardError("NOT_FOUND", `no card ${action.cardId}`)
+      if (card.state === "closed") throw new CardError("INVALID", "that card is closed")
+      let next: VirtualCard = card
+      if (action.op === "pause") next = { ...card, state: "paused" }
+      else if (action.op === "resume") next = { ...card, state: "active" }
+      else if (action.op === "close") next = { ...card, state: "closed" }
+      else {
+        if (!action.monthlyCapSats || action.monthlyCapSats < 1n)
+          throw new CardError("INVALID", "set_limit needs the new monthly limit in sats")
+        next = { ...card, monthlyCapSats: action.monthlyCapSats }
+      }
+      await cc.store.update(next)
+      const entries = foldEntries(await input.ledger.events())
+      return {
+        result: {
+          card: cardView(next, cardSpentSince(entries, next.id, periodStart(next, now)), now),
+        },
+        detail: `${action.op} ${card.id}`,
+      }
     }
     case "buy_product": {
       const g = need(rails.goods, "goods")
