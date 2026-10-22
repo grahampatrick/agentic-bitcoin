@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { VirtualCardFace } from "./VirtualCardFace"
 
 export interface CardPanelProps {
   id: string
@@ -51,17 +52,15 @@ export function CardPanel(p: CardPanelProps) {
           </p>
         </div>
       </header>
-      <div className="vcard__plastic" aria-hidden="true">
-        <div className="vcard__row">
-          <span className="vcard__brand">ANVARD</span>
-          <span className="vcard__bolt">⚡</span>
-        </div>
-        <p className="vcard__sub">lightning debit · a policy on your wallet, not a balance</p>
-        <div className="vcard__row vcard__row--bottom">
-          <span className="vcard__mono">{p.id}</span>
-          <span className="vcard__mono">resets {p.resetsAt.slice(0, 10)}</span>
-        </div>
-      </div>
+      <VirtualCardFace
+        id={p.id}
+        name={p.name}
+        state={state}
+        scope={p.scope}
+        monthlyCapSats={p.monthlyCapSats}
+        spentSats={p.spentSats}
+        resetsAt={p.resetsAt}
+      />
       {p.canManage ? (
         <>
           <div className="vcard__meter" aria-hidden="true">

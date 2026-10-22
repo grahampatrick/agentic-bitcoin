@@ -22,41 +22,6 @@
   background: #e1f5ee;
   color: #085041;
 }
-.vcard__plastic {
-  margin: 18px auto;
-  max-width: 360px;
-  aspect-ratio: 1.586;
-  border-radius: 18px;
-  padding: 20px 22px;
-  background: #1f2322;
-  color: #f4efec;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-.vcard__row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.vcard__brand {
-  letter-spacing: 0.2em;
-  font-weight: 600;
-  font-size: 14px;
-}
-.vcard__bolt {
-  font-size: 22px;
-}
-.vcard__sub {
-  margin: 0;
-  font-size: 12px;
-  opacity: 0.75;
-}
-.vcard__mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  opacity: 0.9;
-}
 .vcard__meter {
   height: 6px;
   border-radius: 999px;
@@ -89,4 +54,235 @@
   align-items: center;
   margin-top: 18px;
   flex-wrap: wrap;
+}
+
+/* --- the card face ------------------------------------------------------------------------- */
+.vcf {
+  --ink: #1f2322;
+  --paper: #f4efec;
+  display: block;
+  width: min(100%, 400px);
+  aspect-ratio: 1.586;
+  margin: 22px auto 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.vcf:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 6px;
+  border-radius: 20px;
+}
+.vcf__inner {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* a flat flip: the faces crossfade with a slight squeeze, which every renderer draws the same way */
+.vcf__face {
+  transition: opacity 0.32s ease, transform 0.32s ease;
+}
+.vcf__back {
+  opacity: 0;
+  transform: scaleX(0.96);
+  pointer-events: none;
+}
+.vcf.is-back .vcf__front {
+  opacity: 0;
+  transform: scaleX(0.96);
+  pointer-events: none;
+}
+.vcf.is-back .vcf__back {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .vcf__face {
+    transition: none;
+  }
+}
+.vcf__face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+  padding: 22px 24px 20px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px -22px rgba(31, 35, 34, 0.55);
+}
+.vcf__front {
+  background: var(--ink);
+  color: var(--paper);
+}
+.vcf__back {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid #e3ddd6;
+  padding: 0 0 18px;
+}
+/* engraved-line finish: fine horizontal rules fading toward the right */
+.vcf__lines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(244, 239, 236, 0.055) 0 1px,
+    transparent 1px 5px
+  );
+  mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.25));
+  -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.25));
+  pointer-events: none;
+}
+.vcf__ghost {
+  position: absolute;
+  right: 18px;
+  bottom: -14px;
+  width: 92px;
+  color: var(--paper);
+  opacity: 0.07;
+  pointer-events: none;
+}
+.vcf__top,
+.vcf__bottom {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.vcf__bottom {
+  align-items: flex-end;
+}
+.vcf__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.vcf__wordmark {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+}
+.vcf__kind {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+.vcf__bolt {
+  width: 34px;
+  height: 34px;
+  color: var(--paper);
+}
+.vcf__chip {
+  position: relative;
+  width: 40px;
+  height: 29px;
+  color: var(--paper);
+  opacity: 0.85;
+  margin-top: -6px;
+}
+.vcf__name {
+  position: relative;
+  font-family: var(--font-serif);
+  font-size: clamp(22px, 6.2cqw, 30px);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  max-width: 72%;
+  overflow-wrap: anywhere;
+}
+.vcf__number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  opacity: 0.92;
+}
+.vcf__limit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.vcf__limit-sats {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.vcf__limit-sub {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  opacity: 0.7;
+}
+.vcf__stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(-14deg);
+  padding: 6px 16px;
+  border: 2px solid var(--paper);
+  border-radius: 6px;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.vcf.is-paused .vcf__front > :not(.vcf__stamp, .vcf__ghost, .vcf__lines) {
+  opacity: 0.45;
+}
+.vcf.is-paused .vcf__front .vcf__ghost {
+  opacity: 0.035;
+}
+.vcf__stripe {
+  display: block;
+  height: 44px;
+  margin-top: 22px;
+  background: var(--ink);
+}
+.vcf__back-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 24px;
+}
+.vcf__motto {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 1.15;
+  margin-bottom: 4px;
+}
+.vcf__back-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.vcf__back-k {
+  color: #6b6965;
+}
+.vcf__back-v {
+  overflow-wrap: anywhere;
+}
+.vcf__back-foot {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+.vcf__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #6b6965;
 }
