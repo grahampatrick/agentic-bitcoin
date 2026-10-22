@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { Logo } from "./Logo"
 
 export interface VirtualCardFaceProps {
   id: string
@@ -20,112 +19,75 @@ const shortDate = (iso: string) => {
   const d = new Date(iso)
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`
 }
-/** card_abc123 → "ABC1 23" style grouping for the number line. */
+/** card_abc123 → "ABC1 2300 …" grouped like an embossed number. */
 const groups = (id: string) => {
   const raw = id
     .replace(/^card_/, "")
     .toUpperCase()
-    .padEnd(8, "0")
-    .slice(0, 12)
+    .replace(/[^A-Z0-9]/g, "")
+    .padEnd(16, "0")
+    .slice(0, 16)
   return raw.match(/.{1,4}/g)?.join(" ") ?? raw
 }
 
-function Bolt({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <circle cx="24" cy="24" r="22" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M26.5 9 14 27h9.2L21.5 39 34 21h-9.2z" fill="currentColor" />
-    </svg>
-  )
-}
-
+/** The chip, with the bolt etched into it the way the reference etches its mark. */
 function Chip() {
   return (
-    <svg className="vcf__chip" viewBox="0 0 44 32" aria-hidden="true" focusable="false">
-      <rect
-        x="0.7"
-        y="0.7"
-        width="42.6"
-        height="30.6"
-        rx="5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
+    <svg className="mini__chip" viewBox="0 0 40 30" aria-hidden="true" focusable="false">
+      <rect x="0.5" y="0.5" width="39" height="29" rx="5" fill="#c9c6c0" stroke="#8f8b85" />
       <path
-        d="M0.7 11h13a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4h-13M43.3 11h-13a4 4 0 0 0-4 4v2a4 4 0 0 0 4 4h13M17.7 0.7v30.6M26.3 0.7v30.6"
+        d="M0.5 10h11a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-11M39.5 10h-11a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h11"
         fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
+        stroke="#8f8b85"
+        strokeWidth="0.9"
       />
+      <path d="M21.6 6.5 16 15h3.9l-1.4 8.5L24 14h-3.9z" fill="#5e5b56" />
     </svg>
   )
 }
 
 /**
- * The card itself: ink front with the engraved-line finish, a paper back with the one sentence that
- * matters. Click or press Enter to flip. The face carries the budget, never a balance.
+ * A matte black mini tag, after the small hardware cards people already carry: bevelled rim, a
+ * keyring hole, one chip, and the card number debossed along the bottom edge. Nothing else on the
+ * face. Click or press Enter to turn it over; the back carries the one sentence that matters.
  */
 export function VirtualCardFace(p: VirtualCardFaceProps) {
   const [back, setBack] = useState(false)
   const paused = p.state === "paused"
   return (
-    <button
-      type="button"
-      className={`vcf${back ? " is-back" : ""}${paused ? " is-paused" : ""}`}
-      onClick={() => setBack((b) => !b)}
-      aria-pressed={back}
-      aria-label={`${p.name} virtual Lightning card, ${paused ? "paused" : "active"}. ${back ? "Showing the back." : "Showing the front."} Press to flip.`}
-    >
-      <span className="vcf__inner">
-        <span className="vcf__face vcf__front">
-          <span className="vcf__lines" aria-hidden="true" />
-          <Logo className="vcf__ghost" />
-          <span className="vcf__top">
-            <span className="vcf__brand">
-              <span className="vcf__wordmark">ANVARD</span>
-              <span className="vcf__kind">lightning debit</span>
-            </span>
-            <Bolt className="vcf__bolt" />
+    <div className="stage">
+      <button
+        type="button"
+        className={`mini${back ? " is-back" : ""}${paused ? " is-paused" : ""}`}
+        onClick={() => setBack((b) => !b)}
+        aria-pressed={back}
+        aria-label={`${p.name} virtual Lightning card, ${paused ? "paused" : "active"}. ${back ? "Showing the back." : "Showing the front."} Press to flip.`}
+      >
+        <span className="mini__body">
+          <span className="mini__face mini__front">
+            <span className="mini__hole" aria-hidden="true" />
+            <Chip />
+            <span className="mini__number">{groups(p.id)}</span>
           </span>
-          <Chip />
-          <span className="vcf__name">{p.name}</span>
-          <span className="vcf__bottom">
-            <span className="vcf__number">{groups(p.id)}</span>
-            <span className="vcf__limit">
-              <span className="vcf__limit-sats">{sats(p.monthlyCapSats)} sats</span>
-              <span className="vcf__limit-sub">a month · resets {shortDate(p.resetsAt)}</span>
+          <span className="mini__face mini__back">
+            <span className="mini__hole" aria-hidden="true" />
+            <span className="mini__etched mini__motto">
+              A policy on your wallet, not a balance.
             </span>
-          </span>
-          {paused ? <span className="vcf__stamp">Paused</span> : null}
-        </span>
-        <span className="vcf__face vcf__back">
-          <span className="vcf__stripe" aria-hidden="true" />
-          <span className="vcf__back-body">
-            <span className="vcf__motto">A policy on your wallet, not a balance.</span>
-            <span className="vcf__back-row">
-              <span className="vcf__back-k">Pays</span>
-              <span className="vcf__back-v">{p.scope.length ? p.scope.join(" · ") : "—"}</span>
+            <span className="mini__etched mini__spec">
+              {sats(p.monthlyCapSats)} sats a month · resets {shortDate(p.resetsAt)}
+              <br />
+              {sats(p.spentSats)} spent · pays {p.scope.length ? p.scope.join(", ") : "—"}
             </span>
-            <span className="vcf__back-row">
-              <span className="vcf__back-k">This month</span>
-              <span className="vcf__back-v">
-                {sats(p.spentSats)} of {sats(p.monthlyCapSats)} sats
-              </span>
-            </span>
-            <span className="vcf__back-row">
-              <span className="vcf__back-k">Funds</span>
-              <span className="vcf__back-v">
-                Stay in your wallet until you pay. Pausing is instant.
-              </span>
-            </span>
-          </span>
-          <span className="vcf__back-foot">
-            <span className="vcf__mono">{p.id}</span>
-            <span className="vcf__mono">born at block 970,396</span>
+            <span className="mini__etched mini__foot">anvard.ai · born at block 970,396</span>
           </span>
         </span>
+      </button>
+      <span className="stage__caption">
+        <span className="stage__pill">{paused ? "Paused" : "Active"}</span>
+        <span className="stage__title">{p.name}</span>
+        <span className="stage__hint">Tap the card to turn it over</span>
       </span>
-    </button>
+    </div>
   )
 }

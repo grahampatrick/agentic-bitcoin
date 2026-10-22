@@ -41,17 +41,6 @@ export function CardPanel(p: CardPanelProps) {
   }
   return (
     <section className="vcard">
-      <header className="vcard__head">
-        <div>
-          <h2>{p.name}</h2>
-          <p className="small">
-            Virtual Lightning card{" "}
-            <span className={`vcard__pill${state === "active" ? " is-on" : ""}`}>
-              {state === "active" ? "Active" : "Paused"}
-            </span>
-          </p>
-        </div>
-      </header>
       <VirtualCardFace
         id={p.id}
         name={p.name}
