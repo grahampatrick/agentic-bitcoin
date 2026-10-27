@@ -33,15 +33,15 @@ const groups = (id: string) => {
 /** The chip, with the bolt etched into it the way the reference etches its mark. */
 function Chip() {
   return (
-    <svg className="mini__chip" viewBox="0 0 40 30" aria-hidden="true" focusable="false">
-      <rect x="0.5" y="0.5" width="39" height="29" rx="5" fill="#c9c6c0" stroke="#8f8b85" />
+    <svg className="mini__chip" viewBox="0 0 48 36" aria-hidden="true" focusable="false">
+      <rect x="0.5" y="0.5" width="47" height="35" rx="6" fill="#d9d5ce" stroke="#9a958e" />
       <path
-        d="M0.5 10h11a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-11M39.5 10h-11a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h11"
+        d="M0.5 12h10a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-10M47.5 12h-10a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h10"
         fill="none"
-        stroke="#8f8b85"
+        stroke="#9a958e"
         strokeWidth="0.9"
       />
-      <path d="M21.6 6.5 16 15h3.9l-1.4 8.5L24 14h-3.9z" fill="#5e5b56" />
+      <path d="M26.4 5 17 20h6.2L21.6 31 31 16h-6.2z" fill="#0b0b0b" />
     </svg>
   )
 }

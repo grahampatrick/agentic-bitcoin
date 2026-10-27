@@ -144,15 +144,15 @@
   display: block;
   box-sizing: border-box;
   border-radius: 22px;
-  background: #171919;
-  /* the bevelled rim: a raised outer lip and a recessed plate */
+  background: #0b0b0b;
+  /* the bevelled rim: a raised outer lip and a recessed plate, in true black */
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
-    inset 0 0 0 9px #141616,
-    inset 0 0 0 10px rgba(255, 255, 255, 0.05),
-    inset 0 1px 0 11px rgba(0, 0, 0, 0.5),
-    0 30px 50px -20px rgba(0, 0, 0, 0.8),
-    0 2px 0 rgba(255, 255, 255, 0.04);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    inset 0 0 0 9px #050505,
+    inset 0 0 0 10px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 11px rgba(0, 0, 0, 0.7),
+    0 30px 50px -20px rgba(0, 0, 0, 0.9),
+    0 2px 0 rgba(255, 255, 255, 0.05);
   transition: opacity 0.32s ease, transform 0.32s ease;
 }
 .mini__back {
@@ -186,8 +186,8 @@
   position: absolute;
   left: 30px;
   top: 44%;
-  width: 40px;
-  height: 30px;
+  width: 48px;
+  height: 36px;
   transform: translateY(-50%);
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.08));
 }
@@ -215,7 +215,7 @@
   font-size: 10.5px;
   letter-spacing: 0.06em;
   line-height: 1.45;
-  color: #343838;
+  color: #262626;
 }
 .mini__motto {
   top: 30px;
@@ -224,13 +224,13 @@
   font-size: 14px;
   letter-spacing: 0;
   line-height: 1.2;
-  color: #444848;
+  color: #343434;
 }
 .mini__spec {
   top: auto;
   bottom: 50px;
   overflow-wrap: anywhere;
-  color: #3d4141;
+  color: #2c2c2c;
 }
 .mini__foot {
   bottom: 22px;
