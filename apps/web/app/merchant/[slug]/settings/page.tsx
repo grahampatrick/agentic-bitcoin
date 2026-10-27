@@ -1,4 +1,5 @@
 import { Empty, Panel, PortalShell, Rows, portalHref } from "@/components/merchant/PortalShell"
+import { ProfileForm } from "@/components/merchant/ProfileForm"
 import { fmtDate, fmtSats, fmtUsd } from "@/lib/merchant/service"
 import Link from "next/link"
 import { NotFound, loadPortal } from "../_shared"
@@ -20,24 +21,16 @@ export default async function Page({ params, searchParams }: P) {
   void Empty
   return (
     <PortalShell portal={portal} active="settings" title="Settings">
-      <Panel title="Profile" wide>
+      <Panel
+        title="Profile"
+        wide
+        action={<span className="mp__muted">shown on your pages and in the directory</span>}
+      >
         <Rows
           rows={[
-            ["Name", portal.recipient.name],
             ["Kind", portal.recipient.kind],
             ["Slug", <code key="s">{portal.slug}</code>],
-            [
-              "Website",
-              portal.recipient.website ? (
-                <a key="w" href={portal.recipient.website}>
-                  {portal.recipient.website}
-                </a>
-              ) : (
-                "—"
-              ),
-            ],
-            ["Country", portal.recipient.country ?? "—"],
-            ["About", portal.recipient.description ?? "—"],
+            ["Lightning address", <code key="a">{portal.recipient.lightningAddress}</code>],
             [
               "Verified",
               portal.recipient.verifiedDetail
@@ -46,10 +39,14 @@ export default async function Page({ params, searchParams }: P) {
             ],
           ]}
         />
-        <p className="mp__muted">
-          Profile edits go through the operator for now; reply to your onboarding message or text
-          the assistant.
-        </p>
+        <ProfileForm
+          slug={portal.slug}
+          token={portal.token}
+          name={portal.recipient.name}
+          website={portal.recipient.website}
+          country={portal.recipient.country}
+          description={portal.recipient.description}
+        />
       </Panel>
       <Panel title="Access" wide>
         <p className="mp__muted">

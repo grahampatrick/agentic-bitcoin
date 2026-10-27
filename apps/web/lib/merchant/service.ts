@@ -8,6 +8,7 @@ import { invoiceDepsFor } from "@/lib/invoices/deps"
 import { recipientInvoices } from "@/lib/invoices/service"
 import { type PriceQuote, getPrice } from "@/lib/price/feed"
 import { type PublicRecipient, hashToken, publicView, siteBaseUrl } from "@/lib/receive/service"
+import type { ProfilePatch } from "@/lib/receive/store"
 import { type ReceiveInvoice, getReceiveStore } from "@/lib/receive/store"
 import { shopDepsFor } from "@/lib/shop/deps"
 import { type MerchantOrderView, merchantOrders } from "@/lib/shop/service"
@@ -114,3 +115,37 @@ export const fmtSats = (n: number) => `${n.toLocaleString("en-US")} sats` // mon
 export const fmtUsd = (cents: number) =>
   `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` // money-ok: display
 export const fmtDate = (iso?: string) => (iso ? iso.slice(0, 10) : "—")
+
+/** M18: a recipient edits their own public profile. The slug, address and verification never change here. */
+export async function updateProfile(
+  slug: string,
+  token: string,
+  form: { name?: string; website?: string; country?: string; description?: string },
+): Promise<{ ok: true; profile: ProfilePatch } | { ok: false; error: string }> {
+  getProductStore()
+  const receive = getReceiveStore()
+  const r = await receive.getRecipient(slug.toLowerCase())
+  if (!r || !r.dashboardTokenHash || !token || hashToken(token) !== r.dashboardTokenHash)
+    return { ok: false, error: "Not authorized." }
+  const name = (form.name ?? "").trim().slice(0, 80)
+  if (name.length < 2)
+    return { ok: false, error: "Give yourself a name (at least two characters)." }
+  let website: string | undefined
+  const w = (form.website ?? "").trim()
+  if (w) {
+    try {
+      const u = new URL(w.startsWith("http") ? w : `https://${w}`)
+      if (u.protocol !== "https:") throw new Error()
+      website = u.toString().replace(/\/$/, "")
+    } catch {
+      return { ok: false, error: "The website must be an https:// address." }
+    }
+  }
+  const country = (form.country ?? "").trim().toUpperCase() || undefined
+  if (country && !/^[A-Z]{2}$/.test(country))
+    return { ok: false, error: "Country is two letters, like US." }
+  const description = (form.description ?? "").trim().slice(0, 200) || undefined
+  const patch: ProfilePatch = { name, website, country, description }
+  await receive.updateProfile(r.slug, patch)
+  return { ok: true, profile: patch }
+}

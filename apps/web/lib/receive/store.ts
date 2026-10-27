@@ -18,6 +18,13 @@ export interface ReceiveInvoice {
   campaignSlug?: string
 }
 
+export interface ProfilePatch {
+  name: string
+  website?: string
+  country?: string
+  description?: string
+}
+
 export interface ReceiveStore {
   readonly kind: string
   /** Directory recipients only (no owner). Includes the sealed nwc blob and token hash. */
@@ -25,6 +32,8 @@ export interface ReceiveStore {
   createRecipient(r: Recipient & { dashboardTokenHash: string; contact?: string }): Promise<void>
   /** M16: mark a merchant as a remote shop (or clear it). */
   setManifestHost(slug: string, host: string | null): Promise<void>
+  /** M18: the public profile fields a recipient may edit themselves. */
+  updateProfile(slug: string, p: ProfilePatch): Promise<void>
   recordInvoice(inv: ReceiveInvoice): Promise<void>
   countInvoicesSince(slug: string, sinceIso: string): Promise<number>
   listInvoices(slug: string, limit: number): Promise<ReceiveInvoice[]>
@@ -52,6 +61,10 @@ export class InMemoryReceiveStore implements ReceiveStore {
   async setManifestHost(slug: string, host: string | null) {
     const r = this.recipients.get(slug)
     if (r) this.recipients.set(slug, { ...r, manifestHost: host ?? undefined })
+  }
+  async updateProfile(slug: string, p: ProfilePatch) {
+    const r = this.recipients.get(slug)
+    if (r) this.recipients.set(slug, { ...r, ...p })
   }
   async recordInvoice(inv: ReceiveInvoice) {
     this.invoices.push(inv)
@@ -162,6 +175,18 @@ export class SupabaseReceiveStore implements ReceiveStore {
     const { error } = await this.db
       .from("recipients")
       .update({ manifest_host: host })
+      .eq("slug", slug)
+    if (error) throw new Error(`recipient update failed: ${error.message}`)
+  }
+  async updateProfile(slug: string, p: ProfilePatch) {
+    const { error } = await this.db
+      .from("recipients")
+      .update({
+        name: p.name,
+        website: p.website ?? null,
+        country: p.country ?? null,
+        description: p.description ?? null,
+      })
       .eq("slug", slug)
     if (error) throw new Error(`recipient update failed: ${error.message}`)
   }
