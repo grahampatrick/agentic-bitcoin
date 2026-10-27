@@ -55,6 +55,7 @@ import {
   SupabaseScheduleStore,
   makeSweep,
   runDue,
+  runReplacementsFor,
   runRewardPayouts,
   schedulesHook,
 } from "@agentic-bitcoin/scheduler"
@@ -444,8 +445,37 @@ if (surface instanceof SignalSurface) {
   }
 }
 
+const sweep = makeSweep((rails) =>
+  rails.exchange instanceof StrikeExchangeRail ? rails.exchange : null,
+)
+// M19: replace the bitcoin you spend. After any spend, buy it back on the user's own exchange (ADR-0022).
+const replaceAfter = async (userId: string) => {
+  try {
+    const r = await runReplacementsFor(userId, {
+      resolve: async (u) => {
+        const c = await resolveContext(u)
+        return { policy: c.policy, ledger: c.ledger, rails: c.rails }
+      },
+      price,
+      sweep,
+      log: (l) => console.error(`[replace] ${l}`),
+    })
+    for (const d of r.done) {
+      await surface.send(userId, {
+        text:
+          d.status === "succeeded"
+            ? `Replaced: bought ${formatSats(d.boughtSats ?? 0n)} for ${formatCents(d.usdCents ?? 0n)} after your ${formatSats(d.spentSats)} spend${d.swept ? ", swept into your wallet" : ""}.${d.detail ? ` ${d.detail}` : ""}`
+            : `Replace skipped for your ${formatSats(d.spentSats)} spend: ${d.detail ?? d.status}. It will not be retried.`,
+      })
+    }
+  } catch (err) {
+    console.error("[replace] run failed", err)
+  }
+}
+
 const dispatcher = new Dispatcher({
   surface,
+  afterSpend: replaceAfter,
   agent: { llm: liveModel ? new AnthropicLlmClient() : new ScriptedLlmClient(), price },
   resolveContext,
   policies,
@@ -475,9 +505,6 @@ const dispatcher = new Dispatcher({
 await dispatcher.start()
 
 // Scheduler: once a minute, fire due recurring buys through the same policy + ledger (ADR-0010).
-const sweep = makeSweep((rails) =>
-  rails.exchange instanceof StrikeExchangeRail ? rails.exchange : null,
-)
 const runSchedules = async () => {
   try {
     const r = await runDue({
@@ -503,6 +530,7 @@ const runSchedules = async () => {
         text: `Scheduled action ${f.status}${f.detail ? `: ${f.detail}` : ""}.`,
       })
     }
+    for (const u of new Set(r.fired.map((f) => f.userId))) await replaceAfter(u)
   } catch (err) {
     console.error("[scheduler] run failed", err)
   }

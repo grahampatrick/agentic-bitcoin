@@ -17,6 +17,7 @@ import {
 } from "./action"
 import type { VirtualCard } from "./cards"
 import { type PriceSnapshot, type Sats, formatCents, formatSats, satsToCents } from "./money"
+import type { ReplaceSetting } from "./replace"
 
 export interface Policy {
   /** Max sats that may leave in any rolling 24h window. */
@@ -34,6 +35,8 @@ export interface Policy {
   /** When on, nothing moves — not even reads. */
   killSwitch: boolean
   rails: { wallet: boolean; exchange: boolean; goods: boolean; compute: boolean; onchain: boolean }
+  /** M19: buy back what you spend, as a standing rule (ADR-0022). Absent = off. */
+  replaceSpend?: ReplaceSetting
 }
 
 /** A sane starting policy: small caps, confirm anything over 10k sats, goods need a yes. */

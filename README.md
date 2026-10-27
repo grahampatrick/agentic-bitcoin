@@ -75,6 +75,9 @@ Virtual Lightning cards: "create a card for steam with a 50,000 sat monthly limi
 the user's own wallet (never a balance), enforced by the executor and tagged in the ledger, with a card page to pause it;
 the store's `/shop/cards` builder makes one on the web, claimed from chat with `/cards claim`
 ([`docs/cards.md`](./docs/cards.md), ADR-0021).
+Replace the bitcoin you spend: `/replace on` buys the value of every spend back on the user's own Strike account and
+sweeps it into their wallet, derived from the ledger so each spend is replaced at most once
+([`docs/replace.md`](./docs/replace.md), ADR-0022).
 The commerce protocol: four endpoints any Lightning shop can serve so any agent can buy from it, with the shop's own
 invoice and the preimage as receipt; Anvard serves it for its merchants and consumes it from remote shops, mirrors their
 feeds, and imports CSV/Shopify inventory; trading cards carry set, condition, grade and provenance

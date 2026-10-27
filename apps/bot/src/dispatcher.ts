@@ -37,6 +37,7 @@ import {
   periodEnd,
   periodStart,
   readEntries,
+  replaceSetting,
   satsToCents,
   slugify,
   spentSince,
@@ -91,6 +92,8 @@ export interface DispatcherDeps {
   addresses?: LightningAddressStore
   /** M17a: virtual cards. */
   cards?: CardStore
+  /** M19: runs after a turn or a confirmation that may have spent (replace-the-bitcoin-you-spend). */
+  afterSpend?: (userId: string) => Promise<void>
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -161,6 +164,7 @@ export class Dispatcher {
         result.pending ? { actionHash: result.pending.actionHash } : undefined,
       )
       for (const d of result.deliveries) await reply(d)
+      await this.deps.afterSpend?.(m.userId)
     } catch (err) {
       console.error("[dispatcher]", err instanceof Error ? err.message : err)
       await reply("Something went wrong on my side. Nothing was sent. Try again in a moment.")
@@ -216,6 +220,7 @@ export class Dispatcher {
         `Done. ${parsed.summary ?? ""}${parsed.result?.preimage ? ` Preimage ${parsed.result.preimage}` : ""}`.trim(),
       )
       if (out.deliverToUser) await reply(out.deliverToUser)
+      await this.deps.afterSpend?.(userId)
       return
     }
     if (parsed.status === "no_pending_action")
@@ -305,6 +310,12 @@ export class Dispatcher {
         return this.address(userId, args, reply)
       case "/cards":
         return this.cards(userId, args, reply)
+      case "/replace": {
+        const r = applyReplaceArgs(ctx.policy, args, this.now(), !!ctx.rails.exchange)
+        if (!r.ok) return reply(r.error)
+        if (r.policy !== ctx.policy) await this.deps.policies.set(userId, r.policy)
+        return reply(r.text)
+      }
       case "/invoices": {
         const store = this.deps.invoiceStore
         if (!store) return reply("Invoices are not enabled on this server.")
@@ -778,7 +789,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)
@@ -793,6 +804,7 @@ export function describePolicy(p: Policy): string {
       : "Allow: anyone not denied",
     p.denyDestinations.length ? `Deny: ${p.denyDestinations.join(", ")}` : "",
     p.coldStorageAddresses.length ? `Cold storage: ${p.coldStorageAddresses.join(", ")}` : "",
+    p.replaceSpend?.enabled ? `Replace what you spend: ${describeReplace(p.replaceSpend)}` : "",
     "Set with: /budget daily 50000 · /budget action 20000 · /budget confirm 5000 · /budget allow name@domain · /budget deny *.evil.example · /budget rail exchange on",
   ]
     .filter(Boolean)
@@ -872,3 +884,87 @@ export function applyBudgetArgs(
 }
 
 export { DEFAULT_POLICY }
+
+export function describeReplace(r: NonNullable<Policy["replaceSpend"]>): string {
+  return `${r.percent}% of every spend bought back on ${r.exchange}${r.toWallet ? " and swept into your wallet" : ""} · spends under ${formatCents(r.minUsdCents)} skipped · at most ${formatCents(r.dailyCapUsdCents)} a day`
+}
+
+/**
+ * `/replace` · `/replace on [percent]` · `/replace off` · `/replace cap <dollars>` · `/replace min <dollars>` ·
+ * `/replace wallet on|off`. Pure. Turning it on needs an exchange key; it also switches the exchange rail on,
+ * because that is what the person just asked for.
+ */
+export function applyReplaceArgs(
+  p: Policy,
+  args: string[],
+  now: Date,
+  hasExchange: boolean,
+): { ok: true; policy: Policy; text: string } | { ok: false; error: string } {
+  const [key, ...rest] = args
+  const cur = p.replaceSpend
+  const usage =
+    "Usage: /replace on [percent] · /replace off · /replace cap <dollars per day> · /replace min <dollars> · /replace wallet on|off"
+  const show = (r: NonNullable<Policy["replaceSpend"]>) =>
+    r.enabled
+      ? `Replace is ON: ${describeReplace(r)}.
+/replace off to stop.`
+      : "Replace is off. /replace on buys back what you spend on your own Strike account; /replace on 50 buys back half."
+  if (!key) return { ok: true, policy: p, text: show(cur ?? replaceSetting({}, now)) }
+  const dollars = (v: string | undefined): bigint | null => {
+    const m = /^\$?(\d{1,6})(?:\.(\d{1,2}))?$/.exec(v ?? "")
+    if (!m) return null
+    return BigInt(m[1] ?? "0") * 100n + BigInt((m[2] ?? "").padEnd(2, "0"))
+  }
+  switch (key.toLowerCase()) {
+    case "on": {
+      const pct = rest[0] ? Number(rest[0].replace(/%$/, "")) : (cur?.percent ?? 100)
+      if (!Number.isInteger(pct) || pct < 1 || pct > 100)
+        return { ok: false, error: "Percent is a whole number from 1 to 100." }
+      if (!hasExchange)
+        return {
+          ok: false,
+          error:
+            "Replace buys on your own exchange account. Add a Strike key first: /key strike <key>.",
+        }
+      const r = replaceSetting(
+        { ...cur, enabled: true, percent: pct, since: now.toISOString() },
+        now,
+      )
+      const policy: Policy = { ...p, replaceSpend: r, rails: { ...p.rails, exchange: true } }
+      return {
+        ok: true,
+        policy,
+        text: `Replace is ON from now: ${describeReplace(r)}. Each buy-back goes through your limits and shows in /ledger.${p.rails.exchange ? "" : " The exchange rail is now on."}`,
+      }
+    }
+    case "off": {
+      if (!cur?.enabled) return { ok: true, policy: p, text: "Replace is already off." }
+      return {
+        ok: true,
+        policy: { ...p, replaceSpend: { ...cur, enabled: false } },
+        text: "Replace is off. Nothing already bought changes.",
+      }
+    }
+    case "cap": {
+      const c = dollars(rest[0])
+      if (c === null || c < 100n)
+        return { ok: false, error: "Cap is dollars a day, at least $1: /replace cap 20" }
+      const r = replaceSetting({ ...cur, dailyCapUsdCents: c }, now)
+      return { ok: true, policy: { ...p, replaceSpend: r }, text: show(r) }
+    }
+    case "min": {
+      const c = dollars(rest[0])
+      if (c === null) return { ok: false, error: "Minimum is dollars: /replace min 1" }
+      const r = replaceSetting({ ...cur, minUsdCents: c }, now)
+      return { ok: true, policy: { ...p, replaceSpend: r }, text: show(r) }
+    }
+    case "wallet": {
+      const v = rest[0]?.toLowerCase()
+      if (v !== "on" && v !== "off") return { ok: false, error: usage }
+      const r = replaceSetting({ ...cur, toWallet: v === "on" }, now)
+      return { ok: true, policy: { ...p, replaceSpend: r }, text: show(r) }
+    }
+    default:
+      return { ok: false, error: usage }
+  }
+}
