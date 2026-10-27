@@ -11,12 +11,10 @@ import type { CampaignReader, ContributionSink } from "./campaign"
 import {
   CardError,
   type CardStore,
-  MAX_CARDS_PER_USER,
   type VirtualCard,
+  buildCard,
   cardFor,
   cardSpentSince,
-  newCardId,
-  normalizeScope,
   periodEnd,
   periodStart,
 } from "./cards"
@@ -548,33 +546,8 @@ async function dispatch(
       const userId = need(input.userId, "userId")
       const now = (input.now ?? (() => new Date()))()
       const mine = await cc.store.listForUser(userId)
-      if (mine.filter((c) => c.state !== "closed").length >= MAX_CARDS_PER_USER)
-        throw new CardError(
-          "LIMIT",
-          `you already have ${MAX_CARDS_PER_USER} cards; close one first`,
-        )
-      const name = action.name.trim().slice(0, 60)
-      if (!name) throw new CardError("INVALID", "a card needs a name")
-      if (mine.some((c) => c.state !== "closed" && c.name.toLowerCase() === name.toLowerCase()))
-        throw new CardError("INVALID", `you already have a card called “${name}”`)
-      if (action.monthlyCapSats < 1n)
-        throw new CardError("INVALID", "the monthly limit must be at least 1 sat")
       const tok = cc.newViewToken?.()
-      const card: VirtualCard = {
-        id: newCardId(now, mine.length + 1),
-        userId,
-        name,
-        scope: normalizeScope(action.scope),
-        monthlyCapSats: action.monthlyCapSats,
-        perActionCapSats: action.perActionCapSats,
-        confirmAboveSats: action.confirmAboveSats,
-        resetDay: Math.min(28, Math.max(1, Math.floor(action.resetDay) || 1)),
-        state: "active",
-        createdAt: now.toISOString(),
-        viewTokenHash: tok?.hash,
-        spentSats: 0n,
-        periodStart: periodStart({ resetDay: action.resetDay }, now),
-      }
+      const card = buildCard(action, userId, mine, now, tok?.hash)
       await cc.store.create(card)
       const link =
         cc.siteUrl && tok

@@ -181,6 +181,95 @@ export function cardSpentSince(
   return total
 }
 
+/** What a new card needs; the executor's `create_card` and the web form both go through `buildCard`. */
+export interface NewCardInput {
+  name: string
+  scope: readonly string[]
+  monthlyCapSats: Sats
+  perActionCapSats?: Sats
+  confirmAboveSats?: Sats
+  resetDay: number
+}
+
+/**
+ * The one way to make a card: validates the name, scope, caps and reset day against the user's
+ * existing cards and returns the record to store (throws `CardError`, never stores).
+ */
+export function buildCard(
+  input: NewCardInput,
+  userId: string,
+  existing: readonly VirtualCard[],
+  now: Date,
+  viewTokenHash?: string,
+): VirtualCard {
+  const open = existing.filter((c) => c.state !== "closed")
+  if (open.length >= MAX_CARDS_PER_USER)
+    throw new CardError("LIMIT", `you already have ${MAX_CARDS_PER_USER} cards; close one first`)
+  const name = input.name.trim().slice(0, CARD_NAME_MAX)
+  if (!name) throw new CardError("INVALID", "a card needs a name")
+  if (open.some((c) => c.name.toLowerCase() === name.toLowerCase()))
+    throw new CardError("INVALID", `you already have a card called “${name}”`)
+  if (input.monthlyCapSats < 1n)
+    throw new CardError("INVALID", "the monthly limit must be at least 1 sat")
+  if (input.perActionCapSats !== undefined && input.perActionCapSats < 1n)
+    throw new CardError("INVALID", "the per-payment limit must be at least 1 sat")
+  if (input.confirmAboveSats !== undefined && input.confirmAboveSats < 0n)
+    throw new CardError("INVALID", "the ask-me-above threshold cannot be negative")
+  const resetDay = Math.min(28, Math.max(1, Math.floor(input.resetDay) || 1))
+  return {
+    id: newCardId(now, existing.length + 1),
+    userId,
+    name,
+    scope: normalizeScope(input.scope),
+    monthlyCapSats: input.monthlyCapSats,
+    perActionCapSats: input.perActionCapSats,
+    confirmAboveSats: input.confirmAboveSats,
+    resetDay,
+    state: "active",
+    createdAt: now.toISOString(),
+    viewTokenHash,
+    spentSats: 0n,
+    periodStart: periodStart({ resetDay }, now),
+  }
+}
+
+/**
+ * A card made on the web before the person has a chat identity is owned by `web:<random>`; it
+ * enforces nothing until claimed from chat (`/cards claim <id> <token>`), which moves it under the
+ * chat user. The claim token is the card's view token, so the person who holds the link owns it.
+ */
+export const WEB_OWNER_PREFIX = "web:"
+
+export function isUnclaimed(card: Pick<VirtualCard, "userId">): boolean {
+  return card.userId.startsWith(WEB_OWNER_PREFIX)
+}
+
+export type ClaimResult =
+  | { ok: true; card: VirtualCard }
+  | { ok: false; code: "NOT_FOUND" | "NOT_AUTHORIZED" | "ALREADY_CLAIMED" | "LIMIT" | "NAME" }
+
+/** Moves an unclaimed web card under `userId` when `tokenHash` matches its view token. */
+export async function claimCard(
+  store: CardStore,
+  id: string,
+  tokenHash: string,
+  userId: string,
+): Promise<ClaimResult> {
+  const c = await store.get(id)
+  if (!c || c.state === "closed") return { ok: false, code: "NOT_FOUND" }
+  if (!c.viewTokenHash || c.viewTokenHash !== tokenHash)
+    return { ok: false, code: "NOT_AUTHORIZED" }
+  if (c.userId === userId) return { ok: true, card: c }
+  if (!isUnclaimed(c)) return { ok: false, code: "ALREADY_CLAIMED" }
+  const mine = (await store.listForUser(userId)).filter((x) => x.state !== "closed")
+  if (mine.length >= MAX_CARDS_PER_USER) return { ok: false, code: "LIMIT" }
+  if (mine.some((x) => x.name.toLowerCase() === c.name.toLowerCase()))
+    return { ok: false, code: "NAME" }
+  const card = { ...c, userId }
+  await store.update(card)
+  return { ok: true, card }
+}
+
 export function newCardId(now: Date, n: number): string {
   return `card_${now.getTime().toString(36)}${n.toString(36)}`
 }

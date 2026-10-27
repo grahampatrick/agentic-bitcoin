@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 /**
  * The dispatcher: turns inbound chat messages into agent turns, commands, confirmation decisions,
  * or onboarding steps. Surface-agnostic. Commands never go through the model (they change policy
@@ -22,6 +23,7 @@ import {
   campaignProgress,
   cardSpentSince,
   centsToSats,
+  claimCard,
   formatCents,
   formatSats,
   givingRows,
@@ -629,11 +631,32 @@ export class Dispatcher {
     if (!store) return reply("Virtual cards are not enabled on this server.")
     const ctx = await this.deps.resolveContext(userId)
     const now = this.now()
-    const [sub, id] = args
+    const [sub, id, token] = args
+    if (sub?.toLowerCase() === "claim") {
+      // A card made on the web (/shop/cards) is owned by nobody until the person who holds its
+      // link claims it from the chat they pay from; from then on it budgets their spends.
+      if (!id || !token) return reply("Usage: /cards claim <id> <token> (from the card's link).")
+      const hash = createHash("sha256").update(token).digest("hex")
+      const r = await claimCard(store, id, hash, userId)
+      if (r.ok)
+        return reply(
+          `Card “${r.card.name}” is yours: ${formatSats(r.card.monthlyCapSats)} a month for ${r.card.scope.join(", ")}. Matching payments count against it from now on.${this.deps.siteUrl ? ` ${this.deps.siteUrl}/card/${r.card.id}` : ""}`,
+        )
+      const why = {
+        NOT_FOUND: `No card ${id}.`,
+        NOT_AUTHORIZED: "That token does not match this card.",
+        ALREADY_CLAIMED: "That card already belongs to someone.",
+        LIMIT: "You already have the maximum number of cards; close one first.",
+        NAME: "You already have a card with that name; close or rename it first.",
+      }[r.code]
+      return reply(why)
+    }
     if (sub && id) {
       const op = sub.toLowerCase()
       if (!["pause", "resume", "close"].includes(op))
-        return reply("Usage: /cards · /cards pause <id> · /cards resume <id> · /cards close <id>")
+        return reply(
+          "Usage: /cards · /cards pause <id> · /cards resume <id> · /cards close <id> · /cards claim <id> <token>",
+        )
       const c = await store.get(id)
       if (!c || c.userId !== userId) return reply(`No card ${id}.`)
       await store.update({

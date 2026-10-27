@@ -15,6 +15,8 @@ export interface CardPanelProps {
   confirmAboveSats?: string
   canManage: boolean
   token?: string
+  /** Made on the web and not yet attached to a chat user. */
+  unclaimed?: boolean
 }
 
 const sats = (s: string) => `${Number(s).toLocaleString("en-US")} sats` // money-ok: display of an integer string
@@ -81,6 +83,14 @@ export function CardPanel(p: CardPanelProps) {
               </div>
             ) : null}
           </dl>
+          {p.unclaimed && p.token ? (
+            <div className="vcard__claim">
+              <strong>Not attached yet.</strong> This card pays nothing until you claim it from the
+              chat you pay from. Send:
+              <code>{`/cards claim ${p.id} ${p.token}`}</code>
+              <span className="small">Keep this link; the token in it is shown once.</span>
+            </div>
+          ) : null}
           <div className="vcard__actions">
             <button type="button" className="cta" disabled={busy} onClick={toggle}>
               {state === "active" ? "Pause card" : "Resume card"}

@@ -106,6 +106,22 @@ export default async function ShopHome() {
       {merchants.slice(1).map((m) => (
         <MerchantRow key={m.slug} slug={m.slug} name={m.name} />
       ))}
+      <section className="row">
+        <Link href="/shop/cards" className="cardpromo">
+          <span className="cardpromo__tag" aria-hidden="true">
+            <span className="cardpromo__hole" />
+            <span className="cardpromo__chip" />
+          </span>
+          <span>
+            <strong>Make a virtual Lightning card</strong>
+            <br />
+            <span className="muted">
+              A monthly budget on your own wallet for Steam, one store, paid APIs or giving. Nothing
+              is deposited on it.
+            </span>
+          </span>
+        </Link>
+      </section>
       <p className="muted" style={{ marginTop: 40 }}>
         Every price is paid in sats from your wallet; every invoice is created by the
         merchant&rsquo;s own wallet. Agentic Bitcoin never holds the money. Prefer texting?{" "}

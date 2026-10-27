@@ -37,6 +37,27 @@
   margin: 2px 0 0;
   font-weight: 600;
 }
+.vcard__claim {
+  margin: 18px 0 4px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  line-height: 1.5;
+}
+.vcard__claim code {
+  display: block;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1f2322;
+  color: #fff;
+  font-size: 13px;
+  word-break: break-all;
+}
+.vcard__claim .small {
+  display: block;
+}
 .vcard__actions {
   display: flex;
   gap: 14px;

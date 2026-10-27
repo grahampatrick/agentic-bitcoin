@@ -72,7 +72,8 @@ Receiving: a church, missionary or creator onboards at `/receive` with a Lightni
 receive-only wallet connection and gets `slug@<host>`, `/give/<slug>`, `/tip/<slug>` and a tip button;
 every invoice is minted by their own wallet (ADR-0014). The operator lists them with `/verify <slug>`.
 Virtual Lightning cards: "create a card for steam with a 50,000 sat monthly limit" makes a named, scoped budget on
-the user's own wallet (never a balance), enforced by the executor and tagged in the ledger, with a card page to pause it
+the user's own wallet (never a balance), enforced by the executor and tagged in the ledger, with a card page to pause it;
+the store's `/shop/cards` builder makes one on the web, claimed from chat with `/cards claim`
 ([`docs/cards.md`](./docs/cards.md), ADR-0021).
 The commerce protocol: four endpoints any Lightning shop can serve so any agent can buy from it, with the shop's own
 invoice and the preimage as receipt; Anvard serves it for its merchants and consumes it from remote shops, mirrors their

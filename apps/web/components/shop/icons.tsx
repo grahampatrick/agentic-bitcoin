@@ -1,4 +1,19 @@
 export const Icon = {
+  card: () => (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="5" width="19" height="14" rx="3" />
+      <path d="M2.5 10h19" />
+      <path d="M6 15h4" />
+    </svg>
+  ),
   home: () => (
     <svg
       width="22"

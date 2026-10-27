@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest"
 import type { Action } from "./action"
 import {
+  CardError,
   InMemoryCardStore,
   type VirtualCard,
+  buildCard,
   cardFor,
   cardSpentSince,
+  claimCard,
+  isUnclaimed,
   normalizeScope,
   periodEnd,
   periodStart,
@@ -216,5 +220,56 @@ describe("cards in the executor", () => {
       op: "pause",
     })
     expect(r6.status).toBe("failed")
+  })
+})
+
+describe("cards made on the web, then claimed in chat", () => {
+  const input = {
+    name: "Steam purchases",
+    scope: ["product:steam"],
+    monthlyCapSats: 50_000n,
+    resetDay: 1,
+  }
+  it("buildCard validates once for every caller", () => {
+    const c = buildCard(input, "web:abc", [], now(), "h")
+    expect(c).toMatchObject({
+      userId: "web:abc",
+      state: "active",
+      viewTokenHash: "h",
+      spentSats: 0n,
+    })
+    expect(isUnclaimed(c)).toBe(true)
+    expect(() => buildCard({ ...input, name: " " }, "u", [], now())).toThrow(CardError)
+    expect(() => buildCard({ ...input, monthlyCapSats: 0n }, "u", [], now())).toThrow(
+      /at least 1 sat/,
+    )
+    expect(() => buildCard({ ...input, perActionCapSats: 0n }, "u", [], now())).toThrow(
+      /per-payment/,
+    )
+    expect(() => buildCard({ ...input, scope: [] }, "u", [], now())).toThrow(/scope/)
+    expect(() => buildCard(input, "u", [{ ...c, userId: "u" }], now())).toThrow(
+      /already have a card called/,
+    )
+    expect(buildCard({ ...input, resetDay: 31 }, "u", [], now()).resetDay).toBe(28)
+  })
+  it("claim moves the card under the chat user only with the view token, once", async () => {
+    const store = new InMemoryCardStore([buildCard(input, "web:abc", [], now(), "hash")])
+    const id = (await store.listForUser("web:abc"))[0]?.id ?? ""
+    expect(await claimCard(store, "card_nope", "hash", "u")).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+    })
+    expect(await claimCard(store, id, "wrong", "u")).toEqual({ ok: false, code: "NOT_AUTHORIZED" })
+    const r = await claimCard(store, id, "hash", "u")
+    expect(r.ok && r.card.userId).toBe("u")
+    expect(await store.listForUser("u")).toHaveLength(1)
+    expect(await store.listForUser("web:abc")).toHaveLength(0)
+    // claiming again from the same user is a no-op success; another user is refused
+    expect((await claimCard(store, id, "hash", "u")).ok).toBe(true)
+    expect(await claimCard(store, id, "hash", "v")).toEqual({ ok: false, code: "ALREADY_CLAIMED" })
+    // a second web card with a name the user already has is refused at claim time
+    const dup = buildCard(input, "web:zzz", [], new Date("2026-10-23T00:00:00Z"), "h2")
+    await store.create(dup)
+    expect(await claimCard(store, dup.id, "h2", "u")).toEqual({ ok: false, code: "NAME" })
   })
 })

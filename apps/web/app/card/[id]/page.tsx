@@ -38,6 +38,7 @@ export default async function CardViewPage({
           confirmAboveSats={v.confirmAboveSats?.toString()}
           canManage={v.canManage}
           token={t}
+          unclaimed={v.unclaimed}
         />
       </div>
       <main className="page cardpage__below">
@@ -48,7 +49,8 @@ export default async function CardViewPage({
         </p>
         <p className="small">
           In chat: “my cards”, “pause my {v.name.toLowerCase()} card”, “raise my{" "}
-          {v.name.toLowerCase()} card to 80,000 sats”.
+          {v.name.toLowerCase()} card to 80,000 sats”. Make another from{" "}
+          <a href="/shop/cards">the store</a>.
         </p>
         <LegalLinks />
       </main>

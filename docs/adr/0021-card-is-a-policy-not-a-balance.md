@@ -28,6 +28,10 @@ it (a sub-balance we hold) is exactly what Anvard refuses to do.
 
 ## Consequences
 
+- A card made on the web before the person has a chat identity (`/shop/cards`) is owned by
+  `web:<random>` and enforces nothing until `/cards claim <id> <token>` moves it under the chat
+  user. The claim token is the view token: holding the link is owning the card, and the claim
+  happens once (added 2026-10-27).
 - There is no physical card (decided 2026-10-27). The virtual card is the whole card: any later transport
   would be a credential that produces Actions landing on a card by scope, not a new money model.
 - Cards do not carry their own Lightning address yet (one address per user today); a `<card>.<name>@`

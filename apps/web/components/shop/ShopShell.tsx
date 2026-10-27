@@ -36,6 +36,7 @@ export function ShopShell({
         {item("/shop/cart", "cart", "Cart", <Icon.cart />, <CartBadge />)}
         {item("/shop/deals", "deals", "Deals", <Icon.tag />)}
         {item("/shop/orders", "orders", "Orders", <Icon.bag />)}
+        {item("/shop/cards", "cards", "Virtual cards", <Icon.card />)}
         <span className="shop__rail-spacer" />
       </nav>
       <main className="shop__main">
