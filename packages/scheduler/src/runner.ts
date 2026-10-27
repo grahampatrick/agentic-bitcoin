@@ -46,6 +46,11 @@ export interface RunnerDeps {
   sweep?: (userId: string, rails: Rails, sats: Sats) => Promise<string | null>
   /** M9: the user-scoped recipient directory, so a recurring gift re-resolves its recipient at fire time. */
   recipients?: (userId: string) => RecipientReader
+  /**
+   * M20: a bill in "ask" mode is not paid; it is parked for the user's yes. Returns the line that
+   * was sent to them. Without it, ask-mode bills are skipped with a note.
+   */
+  ask?: (userId: string, action: Action, summary: string) => Promise<string>
   now?: () => Date
   log?: (line: string) => void
 }
@@ -90,8 +95,13 @@ export async function runDue(deps: RunnerDeps): Promise<RunReport> {
 }
 
 type Paused = { status: "failed"; paused: string }
+type Asked = { status: "awaiting_confirmation"; paused: string }
 
-async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteResult | Paused> {
+async function fire(
+  s: Schedule,
+  deps: RunnerDeps,
+  at: Date,
+): Promise<ExecuteResult | Paused | Asked> {
   const { policy, ledger, rails, contributions, supporterKey, invoices } = await deps.resolve(
     s.userId,
   )
@@ -136,27 +146,48 @@ async function fire(s: Schedule, deps: RunnerDeps, at: Date): Promise<ExecuteRes
           requestedBy: "schedule",
         }
       : null
-  const action: Action = invoiceAction
-    ? invoiceAction
-    : give
-      ? give
-      : s.kind === "sweep"
-        ? {
-            kind: "sweep_to_cold",
-            address: s.address ?? "",
-            keepSats: s.keepSats ?? 0n,
-            maxSats: s.maxSats ?? 0n,
-            idempotencyKey: key,
-            requestedBy: "schedule",
-          }
-        : {
-            kind: "buy_bitcoin",
-            exchange: s.exchange,
-            usdCents: s.usdCents,
-            estimatedSats: price ? centsToSats(s.usdCents, price) : s.estimatedSats,
-            idempotencyKey: key,
-            requestedBy: "schedule",
-          }
+  let bill: Extract<Action, { kind: "pay_address" }> | null = null
+  if (s.kind === "bill" && s.bill) {
+    const amount = s.usdCents > 0n && price ? centsToSats(s.usdCents, price) : s.estimatedSats
+    bill = {
+      kind: "pay_address",
+      address: s.address ?? "",
+      amountSats: amount,
+      memo: s.bill.memo ?? s.bill.name,
+      idempotencyKey: key,
+      requestedBy: "schedule",
+    }
+    if (s.bill.mode === "ask") {
+      if (!deps.ask)
+        return { status: "failed", paused: `bill “${s.bill.name}” needs a yes but no one to ask` }
+      const summary = `Bill “${s.bill.name}”: ${amount.toLocaleString("en-US")} sats${s.usdCents > 0n ? ` ($${(s.usdCents / 100n).toString()}.${(s.usdCents % 100n).toString().padStart(2, "0")})` : ""} to ${bill.address}` // money-ok: label
+      const sent = await deps.ask(s.userId, bill, summary)
+      return { status: "awaiting_confirmation", paused: sent }
+    }
+  }
+  const action: Action = bill
+    ? bill
+    : invoiceAction
+      ? invoiceAction
+      : give
+        ? give
+        : s.kind === "sweep"
+          ? {
+              kind: "sweep_to_cold",
+              address: s.address ?? "",
+              keepSats: s.keepSats ?? 0n,
+              maxSats: s.maxSats ?? 0n,
+              idempotencyKey: key,
+              requestedBy: "schedule",
+            }
+          : {
+              kind: "buy_bitcoin",
+              exchange: s.exchange,
+              usdCents: s.usdCents,
+              estimatedSats: price ? centsToSats(s.usdCents, price) : s.estimatedSats,
+              idempotencyKey: key,
+              requestedBy: "schedule",
+            }
   // The user confirmed the schedule itself (schedule_* always needs a yes); each firing is pre-approved.
   const result = await execute({
     action,
@@ -232,17 +263,26 @@ export function schedulesHook(
         summary:
           s.kind === "invoice"
             ? `Invoice ${s.invoice?.payerName ?? "?"} (${s.invoice?.items.map((i) => i.description).join(", ") ?? ""})`
-            : s.kind === "give"
-              ? `Give ${s.usdCents > 0n ? `$${(s.usdCents / 100n).toString()}` : `${s.estimatedSats.toLocaleString("en-US")} sats`} to ${s.recipientSlug} (${s.purpose ?? "gift"}${s.campaignSlug ? `, campaign ${s.campaignSlug}` : ""})` // money-ok: label
-              : s.kind === "sweep"
-                ? `Sweep above ${s.keepSats ?? 0n} sats to cold storage`
-                : `Buy $${(s.usdCents / 100n).toString()} on ${s.exchange}`, // money-ok: label
+            : s.kind === "bill"
+              ? `Bill “${s.bill?.name ?? "?"}” ${s.usdCents > 0n ? `$${(s.usdCents / 100n).toString()}` : `${s.estimatedSats.toLocaleString("en-US")} sats`} to ${s.address ?? "?"}${s.bill?.mode === "ask" ? " (asks first)" : ""}` // money-ok: label
+              : s.kind === "give"
+                ? `Give ${s.usdCents > 0n ? `$${(s.usdCents / 100n).toString()}` : `${s.estimatedSats.toLocaleString("en-US")} sats`} to ${s.recipientSlug} (${s.purpose ?? "gift"}${s.campaignSlug ? `, campaign ${s.campaignSlug}` : ""})` // money-ok: label
+                : s.kind === "sweep"
+                  ? `Sweep above ${s.keepSats ?? 0n} sats to cold storage`
+                  : `Buy $${(s.usdCents / 100n).toString()} on ${s.exchange}`, // money-ok: label
       }))
     },
     async create(
       a: Extract<
         Action,
-        { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" | "create_invoice" }
+        {
+          kind:
+            | "schedule_buy"
+            | "schedule_sweep"
+            | "schedule_give"
+            | "schedule_bill"
+            | "create_invoice"
+        }
       >,
     ): Promise<string> {
       const cron = a.cron ?? ""
@@ -265,6 +305,20 @@ export function schedulesHook(
             memo: a.memo,
             dueDays: a.dueDays ?? 14,
           },
+        })
+        return s.id
+      }
+      if (a.kind === "schedule_bill") {
+        const s = await store.create({
+          userId,
+          kind: "bill",
+          exchange: "strike",
+          usdCents: a.usdCents ?? 0n,
+          address: a.address,
+          bill: { name: a.name, mode: a.mode, memo: a.memo },
+          cron: a.cron,
+          estimatedSats: a.amountSats,
+          sweepToWallet: false,
         })
         return s.id
       }

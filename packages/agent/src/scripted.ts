@@ -78,6 +78,28 @@ export function intentOf(text: string): { name: string; input: Record<string, un
   if (/\b(balance|how (much|many) (sats|do i have))\b/.test(low))
     return { name: "get_balance", input: {} }
 
+  // M20: "pay my rent, $450 to landlord@example.com on the 1st" / "pay 20,000 sats to x@y every month on the 15th, ask me first"
+  const bill =
+    /^(?:pay|set\s+up|schedule)\s+(?:my\s+)?(?:bill\s+(?:for\s+)?)?(.+?)[,:]?\s+(?:\$\s?([\d.,_]+)|([\d,_]+)\s*sats?)\s+to\s+(\S+@\S+?)\s+(?:every\s+month\s+)?on\s+the\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:each|every)\s+month)?(?:[,.]?\s*(ask\s+me\s+first|remind\s+me))?\s*$/i.exec(
+      t,
+    )
+  if (bill) {
+    const day = Math.min(28, Math.max(1, Number(bill[5] ?? "1")))
+    return {
+      name: "schedule_bill",
+      input: {
+        name: (bill[1] ?? "").trim(),
+        address: (bill[4] ?? "").replace(/[.,;:!?]+$/, ""),
+        amount_sats: bill[3] ? num(bill[3]) : 0,
+        usd_cents: bill[2] ? dollarsToCents(bill[2]) : 0,
+        cron: `0 14 ${day} * *`,
+        mode: bill[6] ? "ask" : "auto",
+        memo: "",
+      },
+    }
+  }
+  if (/\b(my|list|show)\s+bills\b/i.test(t)) return { name: "list_schedules", input: {} }
+
   const give =
     /^(?:give|tithe|donate|support|tip)\s+([\d,_]+)\s*sats?\s+to\s+(?:the\s+)?(.+?)(?:\s+(?:every|each)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday|week|month))?(?:\s+for\s+(.+?))?\s*$/i.exec(
       t,
@@ -500,6 +522,8 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
       return `Given. ${r.summary}${result.preimage ? ` Preimage ${result.preimage}` : ""}`
     case "schedule_give":
       return `Scheduled. Your recurring gift is ${result.scheduleId}; cancel it any time with “cancel ${result.scheduleId}”.`
+    case "schedule_bill":
+      return `Scheduled. Your bill is ${result.scheduleId}; it will show in “my bills”, and “cancel ${result.scheduleId}” stops it.`
     case "find_recipient": {
       const rs = (result.recipients ?? []) as {
         slug: string

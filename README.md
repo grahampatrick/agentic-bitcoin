@@ -78,6 +78,9 @@ the store's `/shop/cards` builder makes one on the web, claimed from chat with `
 Replace the bitcoin you spend: `/replace on` buys the value of every spend back on the user's own Strike account and
 sweeps it into their wallet, derived from the ledger so each spend is replaced at most once
 ([`docs/replace.md`](./docs/replace.md), ADR-0022).
+Pay bills with bitcoin: "pay my rent, $450 to landlord@example.com on the 1st" schedules a payment from the user's own
+wallet, priced on the day, paid automatically or parked for a yes with "ask me first"
+([`docs/bills.md`](./docs/bills.md), ADR-0023).
 The commerce protocol: four endpoints any Lightning shop can serve so any agent can buy from it, with the shop's own
 invoice and the preimage as receipt; Anvard serves it for its merchants and consumes it from remote shops, mirrors their
 feeds, and imports CSV/Shopify inventory; trading cards carry set, condition, grade and provenance

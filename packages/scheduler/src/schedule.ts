@@ -5,7 +5,7 @@
  */
 import type { Cents, ExchangeName, GivePurpose, Sats } from "@agentic-bitcoin/core"
 
-export type ScheduleKind = "buy" | "sweep" | "give" | "invoice"
+export type ScheduleKind = "buy" | "sweep" | "give" | "invoice" | "bill"
 
 export interface Schedule {
   id: string
@@ -37,6 +37,8 @@ export interface Schedule {
     memo?: string
     dueDays: number
   }
+  /** M20: a bill to a Lightning address (`address`), dollars in usdCents (re-priced) or fixed estimatedSats. */
+  bill?: { name: string; mode: "auto" | "ask"; memo?: string }
   cron: string
   /** Sats estimate captured at creation, re-estimated at each run from the live price when available. */
   estimatedSats: Sats

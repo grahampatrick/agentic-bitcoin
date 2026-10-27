@@ -340,9 +340,34 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "schedule_bill",
+    description:
+      "Pay a bill with bitcoin: a recurring payment to a Lightning address the user names (rent, a subscription, a phone plan), from their own wallet. Give usd_cents for a dollar amount re-priced at pay time, or amount_sats for fixed sats (the other must be 0). cron is a five-field UTC expression, e.g. '0 14 1 * *' for the 1st of each month. mode 'auto' pays on the day within the user's limits; 'ask' sends the user the bill on the day and waits for their yes. The user must confirm the schedule.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: str("What the bill is, as the user said it: 'Rent', 'Phone plan'"),
+        address: str("The payee's Lightning address, name@domain, exactly as the user gave it"),
+        amount_sats: int("Fixed sats per payment, or 0 when usd_cents is used", 0),
+        usd_cents: int("Dollar amount per payment in cents, or 0 when amount_sats is used", 0),
+        cron: str("Five-field cron expression in UTC"),
+        mode: {
+          type: "string",
+          description:
+            "auto pays on the day; ask sends the bill and waits for a yes. Use ask when the user says 'ask me first' or 'remind me'",
+          enum: ["auto", "ask"],
+        },
+        memo: str("Memo for the payee, or an empty string"),
+      },
+      required: ["name", "address", "amount_sats", "usd_cents", "cron", "mode", "memo"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "list_schedules",
     description:
-      "List the user's recurring actions (buys, sweeps, gifts and pledges) with their ids, so one can be cancelled with cancel_schedule. Read-only.",
+      "List the user's recurring actions (buys, sweeps, gifts, pledges and bills) with their ids, so one can be cancelled with cancel_schedule. Read-only.",
     input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
     strict: true,
   },
@@ -798,6 +823,35 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         amountSats: sats > 0n ? sats : centsToSats(cents, needPrice()),
         usdCents: cents > 0n ? cents : undefined,
         cron: input.cron as string,
+      }
+    }
+    case "schedule_bill": {
+      const sats = BigInt(input.amount_sats as number)
+      const cents: Cents = BigInt(input.usd_cents as number)
+      if (sats > 0n === cents > 0n)
+        throw new ToolInputError("schedule_bill: give exactly one of amount_sats or usd_cents")
+      const name = String(input.name ?? "")
+        .trim()
+        .slice(0, 60)
+      if (!name) throw new ToolInputError("schedule_bill: the bill needs a name")
+      const address = String(input.address ?? "")
+        .trim()
+        .toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
+        throw new ToolInputError(
+          "schedule_bill: address must be a Lightning address like name@domain",
+        )
+      const mode = input.mode === "ask" ? "ask" : "auto"
+      return {
+        kind: "schedule_bill",
+        ...base,
+        name,
+        address,
+        amountSats: sats > 0n ? sats : centsToSats(cents, needPrice()),
+        usdCents: cents > 0n ? cents : undefined,
+        cron: String(input.cron ?? ""),
+        mode,
+        memo: String(input.memo ?? "").trim() || undefined,
       }
     }
     case "list_schedules":

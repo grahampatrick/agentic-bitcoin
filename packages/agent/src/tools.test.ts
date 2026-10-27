@@ -237,6 +237,16 @@ function sampleInput(name: string): Record<string, unknown> {
         confirm_above_sats: 0,
         reset_day: 1,
       }
+    case "schedule_bill":
+      return {
+        name: "Rent",
+        address: "landlord@example.com",
+        amount_sats: 0,
+        usd_cents: 45000,
+        cron: "0 14 1 * *",
+        mode: "auto",
+        memo: "",
+      }
     case "list_cards":
       return {}
     case "update_card":

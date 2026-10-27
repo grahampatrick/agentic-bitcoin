@@ -70,7 +70,14 @@ export interface ExecuteInput {
     create(
       a: Extract<
         Action,
-        { kind: "schedule_buy" | "schedule_sweep" | "schedule_give" | "create_invoice" }
+        {
+          kind:
+            | "schedule_buy"
+            | "schedule_sweep"
+            | "schedule_give"
+            | "schedule_bill"
+            | "create_invoice"
+        }
       >,
     ): Promise<string>
     cancel(id: string): Promise<void>
@@ -481,6 +488,11 @@ async function dispatch(
       const s = need(schedules, "schedules")
       const scheduleId = await s.create(action)
       return { result: { scheduleId }, detail: scheduleId }
+    }
+    case "schedule_bill": {
+      const s = need(schedules, "schedules")
+      const scheduleId = await s.create(action)
+      return { result: { scheduleId }, detail: `${scheduleId} ${action.name}` }
     }
     case "find_recipient": {
       const r = need(input.recipients, "recipients")

@@ -50,6 +50,7 @@ import {
   maskSecret,
   validateConnectionString,
 } from "@agentic-bitcoin/rails"
+import { nextRun, parseCron } from "@agentic-bitcoin/scheduler"
 import {
   KEY_HELP,
   PAIR_HELP,
@@ -310,6 +311,8 @@ export class Dispatcher {
         return this.address(userId, args, reply)
       case "/cards":
         return this.cards(userId, args, reply)
+      case "/bills":
+        return this.bills(userId, ctx, args, reply)
       case "/replace": {
         const r = applyReplaceArgs(ctx.policy, args, this.now(), !!ctx.rails.exchange)
         if (!r.ok) return reply(r.error)
@@ -691,6 +694,44 @@ export class Dispatcher {
     return reply(`${cards.map(line).join("\n")}\n/cards pause <id> to freeze one instantly.`)
   }
 
+  /** M20: `/bills` lists the user's bills (schedules of kind bill); `/bills cancel <id>` stops one. */
+  private async bills(
+    userId: string,
+    ctx: UserContext,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const hook = ctx.schedules
+    if (!hook?.list) return reply("Bills are not enabled on this server.")
+    const [sub, id] = args
+    if (sub?.toLowerCase() === "cancel") {
+      if (!id) return reply("Usage: /bills cancel <id>")
+      try {
+        await hook.cancel(id)
+        return reply(`Stopped ${id}. Nothing already paid changes.`)
+      } catch (err) {
+        return reply(`Could not stop ${id}: ${(err as Error).message}.`)
+      }
+    }
+    const bills = (await hook.list()).filter((x) => x.kind === "bill" && x.active)
+    if (!bills.length)
+      return reply(
+        "No bills yet. Say e.g. “pay my rent, $450 to landlord@example.com on the 1st” or add “ask me first” to approve each one. A bill pays from your own wallet within your limits; dollar amounts are priced on the day.",
+      )
+    const now = this.now()
+    const line = (b: (typeof bills)[number]) => {
+      let next = ""
+      try {
+        const n = nextRun(parseCron(b.cron), now)
+        if (n) next = ` · next ${n.toISOString().slice(0, 10)}`
+      } catch {
+        /* unparsable cron: the runner cancels it */
+      }
+      return `• ${b.summary} (${b.id})${next}`
+    }
+    return reply(`${bills.map(line).join("\n")}\n/bills cancel <id> to stop one.`)
+  }
+
   /** `/statement [year]`: the year's succeeded gifts as CSV. We are not the donee; the recipient issues receipts. */
   private async statement(
     userId: string,
@@ -789,7 +830,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

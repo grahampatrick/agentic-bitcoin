@@ -29,6 +29,7 @@ import {
   type RecipientStore,
   type RewardRates,
   type WalletRail,
+  actionHash,
   contributionSink,
   formatCents,
   formatSats,
@@ -523,6 +524,15 @@ const runSchedules = async () => {
       price,
       sweep,
       recipients: (userId) => recipientsForUser(recipientStore, userId),
+      // M20: an ask-mode bill parks the payment for the user's plain "yes" (same path as any confirmation).
+      ask: async (userId, action, summary) => {
+        const c = await resolveContext(userId)
+        const hash = actionHash(action)
+        await c.pending.set(userId, hash, action)
+        const text = `${summary} is due. Reply yes to pay it from your wallet, or no to skip this month.`
+        await surface.send(userId, { text, confirm: { actionHash: hash } })
+        return text
+      },
       log: (l) => console.error(`[scheduler] ${l}`),
     })
     for (const f of r.fired) {

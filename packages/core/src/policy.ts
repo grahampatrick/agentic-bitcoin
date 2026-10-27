@@ -105,8 +105,10 @@ export function evaluate(
   if (!policy.rails[railOf(action)]) return deny("RAIL_DISABLED", summary)
 
   // Creating a card or widening one is a limit change the human must see (ADR-0021); pausing is instant.
+  // A bill is a standing payment the human must see, whatever its size today (ADR-0023).
   if (
     action.kind === "create_card" ||
+    action.kind === "schedule_bill" ||
     (action.kind === "update_card" && action.op !== "pause" && action.op !== "close")
   ) {
     return { type: "needs_confirmation", summary, actionHash: actionHash(action) }

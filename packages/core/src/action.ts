@@ -168,6 +168,24 @@ export interface ScheduleGive extends Base {
   supporterName?: string
 }
 
+/**
+ * M20: a bill. A recurring payment to a Lightning address the user names (rent, a subscription, a
+ * phone plan at a provider that takes sats): dollars re-priced at pay time or fixed sats, on a cron.
+ * `mode: "auto"` pays on the day; `mode: "ask"` parks the payment and asks for a yes instead.
+ */
+export interface ScheduleBill extends Base {
+  kind: "schedule_bill"
+  /** "Rent", "Phone plan". */
+  name: string
+  address: string
+  /** Sats per firing (re-priced from usdCents at fire time when usdCents is set). */
+  amountSats: Sats
+  usdCents?: Cents
+  cron: string
+  mode: "auto" | "ask"
+  memo?: string
+}
+
 export interface FindRecipient extends Base {
   kind: "find_recipient"
   query: string
@@ -246,6 +264,7 @@ export interface UpdateCard extends Base {
 export type Action =
   | Give
   | ScheduleGive
+  | ScheduleBill
   | FindRecipient
   | ListSchedules
   | GivingSummary
@@ -286,6 +305,7 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   schedule_sweep: "onchain",
   give: "wallet",
   schedule_give: "wallet",
+  schedule_bill: "wallet",
   find_recipient: "wallet",
   list_schedules: "wallet",
   giving_summary: "wallet",
@@ -311,6 +331,7 @@ export function spendSats(action: Action): Sats {
     case "pay_l402":
     case "give":
     case "schedule_give":
+    case "schedule_bill":
       return action.amountSats
     case "buy_bitcoin":
     case "schedule_buy":
@@ -346,6 +367,7 @@ export function destinationOf(action: Action): string | null {
     case "pay_address":
     case "give":
     case "schedule_give":
+    case "schedule_bill":
       return action.address.toLowerCase()
     case "pay_l402":
       return action.host.toLowerCase()
@@ -411,6 +433,8 @@ export function describeAction(action: Action): string {
       return `Give to ${action.recipientName} <${action.address}> (${action.purpose}${action.campaignSlug ? `, campaign ${action.campaignSlug}` : ""})${action.note ? ` "${action.note}"` : ""}`
     case "schedule_give":
       return `Schedule giving to ${action.recipientName} <${action.address}> (${action.purpose}${action.campaignSlug ? `, campaign ${action.campaignSlug}` : ""}, ${action.cron})`
+    case "schedule_bill":
+      return `Schedule the bill “${action.name}” to ${action.address} (${action.cron}, ${action.mode === "ask" ? "asks you first" : "pays automatically"})`
     case "find_recipient":
       return `Find a recipient matching "${action.query}"`
     case "list_schedules":

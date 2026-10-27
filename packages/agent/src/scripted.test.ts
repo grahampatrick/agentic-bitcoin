@@ -40,6 +40,24 @@ describe("scripted intents", () => {
       "schedule_sweep",
       { keep_sats: 100000, cron: "0 3 1 * *" },
     ],
+    [
+      "pay my rent, $450 to landlord@example.com on the 1st",
+      "schedule_bill",
+      {
+        name: "rent",
+        address: "landlord@example.com",
+        usd_cents: 45000,
+        amount_sats: 0,
+        cron: "0 14 1 * *",
+        mode: "auto",
+      },
+    ],
+    [
+      "pay phone plan 20,000 sats to bills@carrier.example on the 15th, ask me first",
+      "schedule_bill",
+      { name: "phone plan", amount_sats: 20000, usd_cents: 0, cron: "0 14 15 * *", mode: "ask" },
+    ],
+    ["my bills", "list_schedules", {}],
   ])("%s → %s", (text, name, input) => {
     const i = intentOf(text)
     expect(i?.name).toBe(name)
