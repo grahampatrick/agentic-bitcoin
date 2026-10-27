@@ -62,6 +62,14 @@ export default async function Dashboard({
           <>
             <h1>{dash.recipient.name}.</h1>
             <p className="small">
+              New: your{" "}
+              <a href={`/merchant/${dash.recipient.slug}?t=${encodeURIComponent(t ?? "")}`}>
+                merchant portal
+              </a>{" "}
+              — income, orders, transactions, payment links, invoices, POS and connections in one
+              place.
+            </p>
+            <p className="small">
               <code>{dash.recipient.lightningAddress}</code> ·{" "}
               {dash.recipient.verified
                 ? "verified and listed"

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto"
 /**
  * The keyless demo catalogue (no database): fictional merchants and products so /shop is a real,
  * browsable store on a fresh deploy. Nothing here is a real listing; checkout on these merchants
@@ -6,7 +7,10 @@
 import type { Recipient, ShopProduct } from "@agentic-bitcoin/core"
 
 const at = "2026-10-10T00:00:00.000Z"
-export const DEMO_MERCHANTS: Recipient[] = [
+/** The keyless demo opens the merchant portal for Cardboard Castle with token "demo". */
+export const DEMO_PORTAL_TOKEN_HASH = createHash("sha256").update("demo").digest("hex")
+
+export const DEMO_MERCHANTS: (Recipient & { dashboardTokenHash?: string })[] = [
   {
     slug: "reformation-books",
     kind: "merchant",
@@ -61,6 +65,7 @@ export const DEMO_MERCHANTS: Recipient[] = [
     verified: { how: "operator", at },
     country: "US",
     description: "Singles and sealed. Denver.",
+    dashboardTokenHash: DEMO_PORTAL_TOKEN_HASH,
   },
 ]
 

@@ -19,7 +19,7 @@ import {
   SupabaseRewardStore,
 } from "@agentic-bitcoin/stores"
 import { createClient } from "@supabase/supabase-js"
-import { InMemoryReceiveStore, getReceiveStore } from "../receive/store"
+import { type InMemoryReceiveStore, getReceiveStore } from "../receive/store"
 import { DEMO_MERCHANTS, DEMO_PRODUCTS } from "./demo"
 
 const g = globalThis as {
@@ -63,8 +63,11 @@ export function getOrderStore(): OrderStore {
 function seedDemoMerchants() {
   if (g.__shopDemoSeeded) return
   const r = getReceiveStore()
-  if (r instanceof InMemoryReceiveStore) {
-    for (const m of DEMO_MERCHANTS) if (!r.recipients.has(m.slug)) r.recipients.set(m.slug, m)
+  // `kind`, not instanceof: Next compiles each route into its own module graph, so the class
+  // identity differs across routes while the globalThis singleton is shared.
+  if (r.kind === "memory" && "recipients" in r) {
+    const mem = r as InMemoryReceiveStore
+    for (const m of DEMO_MERCHANTS) if (!mem.recipients.has(m.slug)) mem.recipients.set(m.slug, m)
   }
   g.__shopDemoSeeded = true
 }
