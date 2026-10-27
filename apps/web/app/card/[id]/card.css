@@ -1,14 +1,3 @@
-.vcard {
-  margin: 28px 0;
-  border: 1px solid var(--rule, #e6e0da);
-  border-radius: 16px;
-  padding: 20px 22px;
-  background: var(--paper, #fff);
-}
-.vcard__head h2 {
-  margin: 0;
-  font-size: 22px;
-}
 .vcard__pill {
   display: inline-block;
   margin-left: 8px;
@@ -56,25 +45,43 @@
   flex-wrap: wrap;
 }
 
-/* --- the card: a matte black mini tag on a dark stage ---------------------------------------- */
+/* --- the card page: a full-bleed light-orange hero with the card, facts underneath ------------ */
+.cardpage {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.cardpage__hero {
+  background: radial-gradient(90% 60% at 50% 0%, #fff7ef 0%, rgba(255, 247, 239, 0) 70%),
+    linear-gradient(180deg, #fff1e3 0%, #ffd9b8 48%, #ffc38e 100%);
+  color: #1f2322;
+}
+.cardpage__hero .site-header {
+  color: #1f2322;
+}
+.cardpage__below {
+  padding-top: 40px;
+}
+.vcard {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 var(--space-reg) 48px;
+}
 .stage {
   position: relative;
-  margin: 22px 0 24px;
-  padding: 44px 24px 24px;
-  border-radius: 22px;
-  background: radial-gradient(120% 90% at 50% 0%, #2b1546 0%, #180f2e 45%, #0a0a16 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 26px;
-  overflow: hidden;
+  gap: 32px;
+  padding: 28px 0 36px;
+  min-height: min(68vh, 720px);
+  justify-content: center;
 }
 .stage__caption {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  color: #f4efec;
+  gap: 10px;
   text-align: center;
 }
 .stage__pill {
@@ -84,28 +91,29 @@
   text-transform: uppercase;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #00d632;
-  color: #052b10;
+  background: #1f2322;
+  color: #fff3e6;
 }
 .mini.is-paused ~ .stage__caption .stage__pill {
-  background: #f4efec;
+  background: #fff;
   color: #1f2322;
+  border: 1px solid #1f2322;
 }
 .stage__title {
   font-family: var(--font-sans);
-  font-size: 26px;
+  font-size: clamp(28px, 4vw, 40px);
   font-weight: 500;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
+  letter-spacing: -0.015em;
+  line-height: 1.05;
 }
 .stage__hint {
   font-family: var(--font-sans);
-  font-size: 12px;
-  color: rgba(244, 239, 236, 0.6);
+  font-size: 13px;
+  color: rgba(31, 35, 34, 0.6);
 }
 .mini {
   display: block;
-  width: min(100%, 300px);
+  width: min(88vw, 520px);
   aspect-ratio: 1.58;
   padding: 0;
   border: 0;
@@ -114,17 +122,17 @@
   text-align: left;
   font: inherit;
   color: inherit;
-  transform: rotate(-12deg);
+  transform: rotate(-10deg);
   transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .mini:hover,
 .mini:focus-visible {
-  transform: rotate(-9deg) translateY(-2px);
+  transform: rotate(-7deg) translateY(-3px);
 }
 .mini:focus-visible {
-  outline: 2px solid #f4efec;
-  outline-offset: 10px;
-  border-radius: 24px;
+  outline: 2px solid #1f2322;
+  outline-offset: 12px;
+  border-radius: 30px;
 }
 @media (prefers-reduced-motion: reduce) {
   .mini,
@@ -143,15 +151,14 @@
   inset: 0;
   display: block;
   box-sizing: border-box;
-  border-radius: 22px;
+  border-radius: 7.5% / 12%;
   background: #0b0b0b;
-  /* the bevelled rim: a raised outer lip and a recessed plate, in true black */
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.09),
-    inset 0 0 0 9px #050505,
-    inset 0 0 0 10px rgba(255, 255, 255, 0.06),
-    inset 0 1px 0 11px rgba(0, 0, 0, 0.7),
-    0 30px 50px -20px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 14px #050505,
+    inset 0 0 0 15px rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 16px rgba(0, 0, 0, 0.7),
+    0 40px 70px -28px rgba(80, 40, 0, 0.55),
     0 2px 0 rgba(255, 255, 255, 0.05);
   transition: opacity 0.32s ease, transform 0.32s ease;
 }
@@ -170,82 +177,75 @@
   transform: none;
   pointer-events: auto;
 }
-/* keyring hole, cut through the lip at the top-right corner */
 .mini__hole {
   position: absolute;
-  top: 14px;
-  right: 16px;
-  width: 16px;
-  height: 16px;
+  top: 5.5%;
+  right: 4%;
+  width: 5.5%;
+  aspect-ratio: 1;
   border-radius: 50%;
-  background: #120c22;
-  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.9), 0 0 0 2px #1f2222, 0 1px 0 2px
-    rgba(255, 255, 255, 0.06);
+  background: #ffd3a8;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45), 0 0 0 2px #121212, 0 1px 0 2px
+    rgba(255, 255, 255, 0.07);
 }
 .mini__chip {
   position: absolute;
-  left: 30px;
+  left: 10%;
   top: 44%;
-  width: 48px;
-  height: 36px;
+  width: 16%;
+  height: auto;
   transform: translateY(-50%);
   filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.08));
 }
-/* debossed type: dark face, a hairline of light caught on the lower edge */
 .mini__number,
 .mini__etched {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: #2c3030;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.14), 0 -1px 0 rgba(0, 0, 0, 0.7);
+  color: #1c1c1c;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.16), 0 -1px 0 rgba(0, 0, 0, 0.9);
   letter-spacing: 0.14em;
 }
 .mini__number {
   position: absolute;
-  left: 30px;
-  right: 30px;
-  bottom: 26px;
-  font-size: 15px;
+  left: 10%;
+  right: 10%;
+  bottom: 13%;
+  font-size: clamp(14px, 4.6cqw, 24px);
   white-space: nowrap;
   overflow: hidden;
 }
 .mini__etched {
   position: absolute;
-  left: 28px;
-  right: 28px;
-  font-size: 10.5px;
+  left: 9%;
+  right: 9%;
+  font-size: clamp(10px, 2.6cqw, 15px);
   letter-spacing: 0.06em;
   line-height: 1.45;
   color: #262626;
 }
 .mini__motto {
-  top: 30px;
-  right: 64px;
+  top: 14%;
+  right: 20%;
   font-family: var(--font-serif);
-  font-size: 14px;
+  font-size: clamp(14px, 4cqw, 22px);
   letter-spacing: 0;
   line-height: 1.2;
   color: #343434;
 }
 .mini__spec {
   top: auto;
-  bottom: 50px;
+  bottom: 24%;
   overflow-wrap: anywhere;
   color: #2c2c2c;
 }
 .mini__foot {
-  bottom: 22px;
+  bottom: 11%;
+}
+.mini__body {
+  container-type: inline-size;
 }
 .mini.is-paused .mini__front {
   opacity: 0.92;
 }
 .mini.is-paused .mini__chip {
   filter: grayscale(1) brightness(0.55);
-}
-@media (max-width: 480px) {
-  .stage {
-    padding: 36px 16px 20px;
-  }
-  .mini {
-    width: min(100%, 260px);
-  }
 }

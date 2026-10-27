@@ -23,15 +23,9 @@ export default async function CardViewPage({
   const v = await cardPage(getCardStore(), id, t)
   if (!v) notFound()
   return (
-    <>
-      <SiteHeader />
-      <main className="page">
-        <h1>Your card.</h1>
-        <p>
-          A virtual Lightning card is a monthly budget on your own wallet for one kind of spend.
-          Nothing is deposited on it; closing it moves nothing. Payments that match its scope count
-          against it, and the assistant asks you above its threshold.
-        </p>
+    <div className="cardpage">
+      <div className="cardpage__hero">
+        <SiteHeader />
         <CardPanel
           id={v.id}
           name={v.name}
@@ -45,6 +39,13 @@ export default async function CardViewPage({
           canManage={v.canManage}
           token={t}
         />
+      </div>
+      <main className="page cardpage__below">
+        <p>
+          A virtual Lightning card is a monthly budget on your own wallet for one kind of spend.
+          Nothing is deposited on it; closing it moves nothing. Payments that match its scope count
+          against it, and the assistant asks you above its threshold.
+        </p>
         <p className="small">
           In chat: “my cards”, “pause my {v.name.toLowerCase()} card”, “raise my{" "}
           {v.name.toLowerCase()} card to 80,000 sats”. A physical tap-to-pay version of this card is
@@ -52,6 +53,6 @@ export default async function CardViewPage({
         </p>
         <LegalLinks />
       </main>
-    </>
+    </div>
   )
 }
