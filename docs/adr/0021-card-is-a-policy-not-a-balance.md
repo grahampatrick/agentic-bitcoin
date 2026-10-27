@@ -1,6 +1,6 @@
 # ADR-0021 — A card is a policy, not a balance
 
-**Date:** 2026-10-22 · **Status:** accepted · M17a (virtual), extended by M17 (physical)
+**Date:** 2026-10-22 · **Status:** accepted · M17a (virtual card; no physical card)
 
 ## Context
 
@@ -28,8 +28,8 @@ it (a sub-balance we hold) is exactly what Anvard refuses to do.
 
 ## Consequences
 
-- The physical Anvard Card (M17) is a virtual card with an NFC credential: every tap becomes an Action
-  that lands on the card by scope, so M17 adds a transport, not a new money model.
+- There is no physical card (decided 2026-10-27). The virtual card is the whole card: any later transport
+  would be a credential that produces Actions landing on a card by scope, not a new money model.
 - Cards do not carry their own Lightning address yet (one address per user today); a `<card>.<name>@`
   handle is a later addition once addresses allow several per user.
 - Merchants that only take fiat cards (Netflix) are reached through Bitrefill gift cards; a card scoped

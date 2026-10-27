@@ -48,8 +48,7 @@ export default async function CardViewPage({
         </p>
         <p className="small">
           In chat: “my cards”, “pause my {v.name.toLowerCase()} card”, “raise my{" "}
-          {v.name.toLowerCase()} card to 80,000 sats”. A physical tap-to-pay version of this card is
-          planned.
+          {v.name.toLowerCase()} card to 80,000 sats”.
         </p>
         <LegalLinks />
       </main>

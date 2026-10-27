@@ -24,8 +24,8 @@ is easy for newcomers.
    back as proof, so settlement does not depend on the merchant's wallet being connected.
 4. **Lightning addresses are pointers.** `name@anvard.ai` makes the user's own wallet mint each invoice (or
    forwards to an address they already have); the bot notices settlement on that wallet and says so.
-5. **A physical card is in**, non-custodial, later (M17): a Bolt Card that is a policy on the user's
-   wallet, not a balance.
+5. **The card is virtual**, non-custodial: a policy on the user's wallet, not a balance (ADR-0021).
+   No physical card (decided 2026-10-27).
 
 ## Consequences
 
