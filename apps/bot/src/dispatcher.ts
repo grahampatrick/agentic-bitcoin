@@ -24,6 +24,8 @@ import {
   type Policy,
   type Recipient,
   type RecipientStore,
+  type ReferralRules,
+  type ReferralStore,
   type RewardStore,
   SLUG_RE,
   type VirtualCard,
@@ -35,16 +37,21 @@ import {
   formatSats,
   givingRows,
   givingStatementCsv,
+  hasSpent,
   invoiceStatus,
   invoicesCsv,
   isLightningAddress,
   isTrustedRecipient,
+  joinWithCode,
   normalizeAddressName,
+  normalizeCode,
   parseAddress,
   paymentEntries,
   periodEnd,
   periodStart,
   readEntries,
+  referralStats,
+  referralsEnabled,
   replaceSetting,
   satsToCents,
   slugify,
@@ -103,6 +110,8 @@ export interface DispatcherDeps {
   cards?: CardStore
   /** M19: runs after a turn or a confirmation that may have spent (replace-the-bitcoin-you-spend). */
   afterSpend?: (userId: string) => Promise<void>
+  /** M22: referral rewards; off unless the rules pay at least one side. */
+  referrals?: { store: ReferralStore; rules: ReferralRules; newId: () => string }
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -187,7 +196,9 @@ export class Dispatcher {
     reply: (t: string) => Promise<void>,
   ): Promise<void> {
     const code = this.deps.inviteCode?.trim()
-    if (code && text.trim().toLowerCase() !== code.toLowerCase()) {
+    // M22: a friend's invite code counts as an invitation and links the two (one referral, before any payment).
+    const joined = await this.joinAtFirstContact(userId, text)
+    if (code && !joined && text.trim().toLowerCase() !== code.toLowerCase()) {
       return reply(
         "Hey! Glad you're here. Agentic Bitcoin is working with a small group right now while we ramp up. If someone gave you an invite code, send it here and you're in. Otherwise you're on the list and I'll message you the moment a spot opens. Nothing else you need to do.",
       )
@@ -195,8 +206,95 @@ export class Dispatcher {
     const w = startWizard()
     this.wizards.set(userId, w.state)
     return reply(
-      `Hey! Glad you're here. I'm Agentic Bitcoin: text me in plain words and I'll move bitcoin through your own wallet, within limits you set. Nothing moves without your limits, and anything over your threshold waits for your yes.\n\n${w.prompt}`,
+      `Hey! Glad you're here. I'm Agentic Bitcoin: text me in plain words and I'll move bitcoin through your own wallet, within limits you set. Nothing moves without your limits, and anything over your threshold waits for your yes.${joined ? `\n\n${joined}` : ""}\n\n${w.prompt}`,
     )
+  }
+
+  private referralsOn(): boolean {
+    return !!this.deps.referrals && referralsEnabled(this.deps.referrals.rules)
+  }
+
+  /** A first message that is a friend's code: record the referral and say what it earns. Null when it is not one. */
+  private async joinAtFirstContact(userId: string, text: string): Promise<string | null> {
+    const rc = this.deps.referrals
+    if (!rc || !this.referralsOn()) return null
+    const code = normalizeCode(text)
+    if (!code) return null
+    const r = await joinWithCode(rc.store, rc.rules, {
+      code,
+      friendId: userId,
+      spent: false,
+      now: this.now(),
+      newId: rc.newId,
+    })
+    if (!r.ok)
+      return r.code === "SELF" ? "That is your own invite code, so it does not count." : null
+    return `Your friend's code is in: ${this.joinTerms()}`
+  }
+
+  private joinTerms(): string {
+    const rules = this.deps.referrals?.rules
+    if (!rules) return ""
+    const you = rules.friendSats > 0n ? `you get ${formatSats(rules.friendSats)}` : ""
+    const them = rules.referrerSats > 0n ? `your friend gets ${formatSats(rules.referrerSats)}` : ""
+    return `after your first payment of at least ${formatSats(rules.qualifyingSats)}, ${[you, them].filter(Boolean).join(" and ")}, paid to your own wallets.`
+  }
+
+  /** /refer: the user's code, link and tally. */
+  private async refer(userId: string, reply: (t: string) => Promise<void>): Promise<void> {
+    const rc = this.deps.referrals
+    const rewards = this.deps.rewardStore
+    if (!rc || !rewards || !this.referralsOn())
+      return reply("Referral rewards are not on for this server.")
+    const st = await referralStats(rc.store, rewards, rc.rules, userId, this.deps.siteUrl)
+    const earn = [
+      rc.rules.referrerSats > 0n ? `you get ${formatSats(rc.rules.referrerSats)}` : "",
+      rc.rules.friendSats > 0n ? `they get ${formatSats(rc.rules.friendSats)}` : "",
+    ]
+      .filter(Boolean)
+      .join(" and ")
+    const tally = st.joined
+      ? `\nSo far: ${st.joined} joined · ${st.qualified} qualified · ${formatSats(st.earnedSats)} earned.`
+      : ""
+    return reply(
+      `Your invite code is ${st.code}. Share ${st.link} or tell a friend to text me the code first.\nWhen a friend joins with it and makes a first payment of at least ${formatSats(rc.rules.qualifyingSats)}, ${earn}, paid to your own wallets (up to ${rc.rules.maxPerReferrerPerMonth} friends a month).${tally}\nRewards are a promise from this server's operator, not a balance; /rewards shows what is pending and paid.`,
+    )
+  }
+
+  /** /join <code>: an existing user who has not paid yet links to the friend who invited them. */
+  private async join(
+    userId: string,
+    ctx: UserContext,
+    arg: string,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const rc = this.deps.referrals
+    if (!rc || !this.referralsOn()) return reply("Referral rewards are not on for this server.")
+    const code = normalizeCode(arg)
+    if (!code)
+      return reply("Usage: /join <code> — the six-character invite code a friend gave you.")
+    const r = await joinWithCode(rc.store, rc.rules, {
+      code,
+      friendId: userId,
+      spent: hasSpent(await readEntries(ctx.ledger)),
+      now: this.now(),
+      newId: rc.newId,
+    })
+    if (r.ok) return reply(`You're in with ${code}: ${this.joinTerms()}`)
+    switch (r.code) {
+      case "UNKNOWN_CODE":
+        return reply(`No invite with the code ${code}. Check it with your friend.`)
+      case "SELF":
+        return reply("That is your own invite code.")
+      case "ALREADY_REFERRED":
+        return reply("You already joined with a friend's code; a referral cannot be changed.")
+      case "ALREADY_SPENT":
+        return reply(
+          "A friend's code counts only before your first payment, and you have already paid.",
+        )
+      default:
+        return reply("Referral rewards are not on for this server.")
+    }
   }
 
   private async redact(m: InboundMessage): Promise<void> {
@@ -321,6 +419,11 @@ export class Dispatcher {
         return this.cards(userId, args, reply)
       case "/bills":
         return this.bills(userId, ctx, args, reply)
+      case "/refer":
+      case "/invite":
+        return this.refer(userId, reply)
+      case "/join":
+        return this.join(userId, ctx, args.join(" "), reply)
       case "/note":
         return this.note(ctx, args, reply)
       case "/notes":
@@ -355,7 +458,7 @@ export class Dispatcher {
         const sum = summarizeRewards(list, this.now())
         if (!sum.count)
           return reply(
-            "No sats-back yet. Store purchases earn rewards once they are paid; /shop to browse.",
+            `No rewards yet. Store purchases earn sats-back once they are paid; /shop to browse.${this.referralsOn() ? " /refer to invite a friend and earn sats." : ""}`,
           )
         return reply(
           `Sats-back: ${formatSats(sum.paidSats)} paid · ${formatSats(sum.payableSats)} payable now · ${formatSats(sum.pendingSats)} pending${sum.nextPayableAt ? ` (next on ${sum.nextPayableAt.slice(0, 10)})` : ""}.\nPayouts arrive in your paired wallet automatically; until paid, a reward is a promise from us, not a balance. ${this.deps.siteUrl ?? ""}/rewards`,
@@ -924,7 +1027,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/note <text> — a private note on your last payment · /notes — list them\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/refer — invite a friend; you both earn sats · /join <code>\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/note <text> — a private note on your last payment · /notes — list them\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

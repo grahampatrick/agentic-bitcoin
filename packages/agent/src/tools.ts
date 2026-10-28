@@ -411,6 +411,13 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "referral_info",
+    description:
+      "The user's invite code and link for referring a friend, how many friends joined and qualified, the sats earned, and the programme's amounts. Use when the user asks how to invite or refer someone, or about referral rewards. Read-only; rewards are paid automatically to each person's own wallet.",
+    input_schema: { type: "object", properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  {
     name: "create_invoice",
     description:
       "Issue an invoice (or a one-line payment request) that someone pays over Lightning. The user's own wallet creates the Lightning invoice; reply with the pay link. Moves no sats. Never invent amounts, items or the payer's details; ask if missing.",
@@ -880,6 +887,8 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
       return { kind: "giving_summary", ...base, year: input.year as number }
     case "rewards_summary":
       return { kind: "rewards_summary", ...base }
+    case "referral_info":
+      return { kind: "referral_info", ...base }
     case "create_invoice": {
       let raw: unknown
       try {

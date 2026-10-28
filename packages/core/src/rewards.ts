@@ -6,7 +6,8 @@
  */
 import type { Sats } from "./money"
 
-export type RewardSource = "directory" | "bitrefill"
+/** `referral` (M22): flat rewards for inviting a friend; `bps` is 0 and `orderId` is `ref:<id>:<side>`. */
+export type RewardSource = "directory" | "bitrefill" | "referral"
 export type RewardState = "pending" | "payable" | "paid" | "void"
 
 export interface Reward {
@@ -44,7 +45,7 @@ export interface RewardRates {
 }
 
 export const DEFAULT_REWARD_RATES: RewardRates = {
-  bps: { directory: 100, bitrefill: 0 }, // Bitrefill stays 0 until OQ-16 (affiliate terms) is answered
+  bps: { directory: 100, bitrefill: 0, referral: 0 }, // referral rewards are flat (referrals.ts); Bitrefill stays 0 until OQ-16 (affiliate terms) is answered
   holdDaysPhysical: 14,
   holdDaysDigital: 1,
   minPayoutSats: 100n,

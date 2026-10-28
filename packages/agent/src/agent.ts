@@ -21,6 +21,7 @@ import {
   type Rails,
   type Recipient,
   type RecipientReader,
+  type ReferralContext,
   type RewardSink,
   type RewardStore,
   execute,
@@ -84,6 +85,8 @@ export interface UserContext {
   invoices?: InvoiceContext
   /** M17a: the user's virtual cards. */
   cards?: CardContext
+  /** M22: the referral programme. */
+  referrals?: ReferralContext
   payLinks?: {
     resolve(
       token: string,
@@ -298,6 +301,7 @@ export async function handleToolCall(
     userId: ctx.userId,
     invoices: ctx.invoices,
     cards: ctx.cards,
+    referrals: ctx.referrals,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -343,6 +347,7 @@ export async function confirmPending(
     userId: ctx.userId,
     invoices: ctx.invoices,
     cards: ctx.cards,
+    referrals: ctx.referrals,
     now: opts.now,
     context: { price: opts.price },
     confirmation,

@@ -13,6 +13,7 @@ import {
 } from "@agentic-bitcoin/agent"
 import {
   DEFAULT_POLICY,
+  DEFAULT_REFERRAL_RULES,
   DEFAULT_REWARD_RATES,
   FakeWalletRail,
   type GoodsRail,
@@ -23,10 +24,12 @@ import {
   InMemoryOrderStore,
   InMemoryProductStore,
   InMemoryRecipientStore,
+  InMemoryReferralStore,
   InMemoryRewardStore,
   type LedgerStore,
   type PriceSnapshot,
   type RecipientStore,
+  type ReferralRules,
   type RewardRates,
   type WalletRail,
   actionHash,
@@ -34,7 +37,10 @@ import {
   formatCents,
   formatSats,
   invoiceStatus,
+  qualifyReferral,
+  readEntries,
   recipientsForUser,
+  referralsEnabled,
   rewardSink,
 } from "@agentic-bitcoin/core"
 import {
@@ -76,6 +82,7 @@ import {
   FileLightningAddressStore,
   FileOrderStore,
   FileProductStore,
+  FileReferralStore,
   FileRewardStore,
   SupabaseCardStore,
   SupabaseInvoiceStore,
@@ -83,6 +90,7 @@ import {
   SupabaseOrderStore,
   SupabaseProductStore,
   SupabaseReceiveInvoiceWatch,
+  SupabaseReferralStore,
   SupabaseRewardStore,
   seedShop,
 } from "./store/shop"
@@ -260,6 +268,7 @@ const rewardStore = db
 const rewardRates: RewardRates = {
   ...DEFAULT_REWARD_RATES,
   bps: {
+    ...DEFAULT_REWARD_RATES.bps,
     directory: Number(env.REWARDS_BPS_DIRECTORY ?? DEFAULT_REWARD_RATES.bps.directory),
     bitrefill: Number(env.REWARDS_BPS_BITREFILL ?? DEFAULT_REWARD_RATES.bps.bitrefill),
   },
@@ -283,6 +292,31 @@ const rewardsPolicy = {
 }
 if (!rewardsWallet)
   console.warn("[bot] REWARDS_NWC_URL not set — sats-back accrues but is not paid out")
+// M22: referral rewards in sats (ADR-0025). Flat amounts from env; off until one side pays something.
+const referralRules: ReferralRules = {
+  ...DEFAULT_REFERRAL_RULES,
+  referrerSats: BigInt(env.REFERRAL_REWARD_SATS ?? "0"),
+  friendSats: BigInt(env.REFERRAL_FRIEND_SATS ?? "0"),
+  qualifyingSats: BigInt(env.REFERRAL_MIN_SPEND_SATS ?? DEFAULT_REFERRAL_RULES.qualifyingSats),
+  maxPerReferrerPerMonth: Number(
+    env.REFERRAL_MAX_PER_MONTH ?? DEFAULT_REFERRAL_RULES.maxPerReferrerPerMonth,
+  ),
+}
+const referralStore = db
+  ? new SupabaseReferralStore(db)
+  : fileState
+    ? new FileReferralStore(fileState)
+    : new InMemoryReferralStore(() => randomBytes(1)[0] as number)
+let referralSeq = 0
+const referrals = {
+  store: referralStore,
+  rules: referralRules,
+  newId: () => `rf_${Date.now().toString(36)}_${(++referralSeq).toString(36)}`,
+}
+if (!referralsEnabled(referralRules))
+  console.warn(
+    "[bot] REFERRAL_REWARD_SATS / REFERRAL_FRIEND_SATS not set — referral rewards are off",
+  )
 /** Opaque supporter identity for campaign counts: a hash, never the user id (salted by SECRETS_KEY when set). */
 const supporterKeyOf = (userId: string) =>
   createHash("sha256")
@@ -380,6 +414,7 @@ async function resolveContext(userId: string): Promise<UserContext> {
     rewardStore,
     invoices: { store: invoiceStore, issuer: userId, siteUrl },
     cards: { store: cardStore, siteUrl, newViewToken },
+    referrals: { store: referralStore, rules: referralRules, siteUrl },
     payLinks,
   }
 }
@@ -474,9 +509,43 @@ const replaceAfter = async (userId: string) => {
   }
 }
 
+// M22: after a spend, a referred friend's first qualifying payment records the two rewards (paid by the rewards run).
+const qualifyAfter = async (userId: string) => {
+  try {
+    const q = await qualifyReferral(
+      {
+        referrals: referralStore,
+        rewards: rewardStore,
+        rules: referralRules,
+        newRewardId: () => `rw_${Date.now().toString(36)}_${(++rewardSeq).toString(36)}`,
+      },
+      userId,
+      await readEntries(ledgers.forUser(userId)),
+    )
+    if (!q) return
+    const friend = q.rewards.find((r) => r.userId === userId)
+    const referrer = q.rewards.find((r) => r.userId === q.referral.referrerId)
+    await surface.send(userId, {
+      text: friend
+        ? `Your first payment counted: ${formatSats(friend.amountSats)} of referral reward is coming to your wallet (paid automatically; /rewards).`
+        : "Your first payment counted toward your friend's referral.",
+    })
+    if (referrer)
+      await surface.send(q.referral.referrerId, {
+        text: `A friend you invited made their first payment: ${formatSats(referrer.amountSats)} is coming to your wallet (paid automatically; /refer for your tally).`,
+      })
+  } catch (err) {
+    console.error("[referrals]", err)
+  }
+}
+const afterSpend = async (userId: string) => {
+  await replaceAfter(userId)
+  await qualifyAfter(userId)
+}
 const dispatcher = new Dispatcher({
   surface,
-  afterSpend: replaceAfter,
+  afterSpend,
+  referrals,
   agent: { llm: liveModel ? new AnthropicLlmClient() : new ScriptedLlmClient(), price },
   resolveContext,
   policies,
@@ -540,7 +609,7 @@ const runSchedules = async () => {
         text: `Scheduled action ${f.status}${f.detail ? `: ${f.detail}` : ""}.`,
       })
     }
-    for (const u of new Set(r.fired.map((f) => f.userId))) await replaceAfter(u)
+    for (const u of new Set(r.fired.map((f) => f.userId))) await afterSpend(u)
   } catch (err) {
     console.error("[scheduler] run failed", err)
   }
@@ -643,7 +712,7 @@ const runSchedules = async () => {
       for (const p of r.paid)
         if (p.payee.startsWith("signal:") || p.payee.startsWith("telegram:"))
           await surface.send(p.payee, {
-            text: `Sats-back paid: ${formatSats(p.sats)} to your wallet (${p.rewards} reward${p.rewards === 1 ? "" : "s"}).`,
+            text: `Rewards paid: ${formatSats(p.sats)} to your wallet (${p.rewards} reward${p.rewards === 1 ? "" : "s"}).`,
           })
     } catch (err) {
       console.error("[rewards] payout run failed", err)

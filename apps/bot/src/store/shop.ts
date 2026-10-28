@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto"
 /**
  * Storefront stores (M12): file-backed products and orders for a single operator. The Supabase
  * implementations and the seed parser live in @agentic-bitcoin/stores (shared with the web).
@@ -11,6 +12,8 @@ import {
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
+  type Referral,
+  type ReferralStore,
   type Reward,
   type RewardStore,
   type ShopCategory,
@@ -18,6 +21,7 @@ import {
   type ShopProduct,
   type VirtualCard,
   globalProductId,
+  newReferralCode,
   productMatches,
 } from "@agentic-bitcoin/core"
 import type { FileState } from "./file"
@@ -29,6 +33,7 @@ export {
   SupabaseReceiveInvoiceWatch,
   SupabaseOrderStore,
   SupabaseProductStore,
+  SupabaseReferralStore,
   SupabaseRewardStore,
   parseShopSeed,
   seedShop,
@@ -153,6 +158,48 @@ export class FileRewardStore implements RewardStore {
   }
   async update(r: Reward) {
     this.f.set("shop", `r:${r.id}`, enc(r))
+  }
+}
+
+/** M22: referral codes (`rc:<code>` → user, `ru:<user>` → code) and referrals (`rf:<friend>`) in the same bucket. */
+export class FileReferralStore implements ReferralStore {
+  readonly kind = "file"
+  constructor(
+    private readonly f: FileState,
+    private readonly randomByte: () => number = () => randomBytes(1)[0] as number,
+  ) {}
+  async codeFor(userId: string) {
+    const have = this.f.get("shop", `ru:${userId}`)
+    if (have) return have
+    let code = newReferralCode(this.randomByte)
+    for (let tries = 0; this.f.get("shop", `rc:${code}`); tries++) {
+      if (tries >= 20) throw new Error("could not mint an unused referral code")
+      code = newReferralCode(this.randomByte)
+    }
+    this.f.set("shop", `rc:${code}`, userId)
+    this.f.set("shop", `ru:${userId}`, code)
+    return code
+  }
+  async userForCode(code: string) {
+    return this.f.get("shop", `rc:${code}`)
+  }
+  async forFriend(friendId: string) {
+    const v = this.f.get("shop", `rf:${friendId}`)
+    return v ? dec<Referral>(v) : null
+  }
+  async listForReferrer(referrerId: string) {
+    return this.f
+      .keys("shop")
+      .filter((k) => k.startsWith("rf:"))
+      .map((k) => dec<Referral>(this.f.get("shop", k) ?? ""))
+      .filter((r) => r.referrerId === referrerId)
+  }
+  async create(r: Referral) {
+    if (this.f.get("shop", `rf:${r.friendId}`)) return
+    this.f.set("shop", `rf:${r.friendId}`, enc(r))
+  }
+  async update(r: Referral) {
+    this.f.set("shop", `rf:${r.friendId}`, enc(r))
   }
 }
 

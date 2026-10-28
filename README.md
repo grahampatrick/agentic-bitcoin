@@ -101,6 +101,10 @@ executor and caps, never a balance held with us (ADR-0017, [`docs/rewards.md`](.
 Campaigns: a recipient opens a goal from their dashboard; supporters pledge from chat (“support
 ortiz-family $25 a month”), follow updates with `/follow`, and see progress at `/campaigns/<slug>` (ADR-0015).
 
+Referral rewards: `/refer` gives you an invite code and a link; a friend who joins with it and makes a first payment
+of at least the minimum earns you both flat sats, recorded as ordinary rewards and paid from the operator's wallet to
+each person's own wallet. One referral per person, before their first payment, qualified from the ledger (ADR-0025).
+
 ### Self-host with Docker
 
 ```bash

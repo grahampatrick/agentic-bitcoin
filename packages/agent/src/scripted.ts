@@ -274,6 +274,8 @@ export function intentOf(text: string): { name: string; input: Record<string, un
     !/sch_/.test(t)
   )
     return { name: "list_schedules", input: {} }
+  if (/\b(invite|refer(?:ral|rals|ring)?|invitation)\b/i.test(t))
+    return { name: "referral_info", input: {} }
   if (/\b(sats[- ]?back|rewards?|cash[- ]?back)\b/i.test(t))
     return { name: "rewards_summary", input: {} }
   const given = /\bhow much\s+(?:have|did)\s+i\s+(?:given|give|gave)\b(?:.*?\b(20\d\d)\b)?/i.exec(t)
@@ -617,6 +619,11 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
       return result.cleared
         ? "Note removed."
         : `Noted privately on “${result.summary}”; the payee never sees it.`
+    case "referral_info": {
+      if (!result.enabled) return "Referral rewards are not on for this server."
+      const n = (v: unknown) => Number(v).toLocaleString("en-US")
+      return `Your invite code is ${result.code} (${result.link}). When a friend joins with it and makes a first payment of at least ${n(result.qualifyingSats)} sats, you get ${n(result.referrerSats)} sats and they get ${n(result.friendSats)} sats, paid to your own wallets. So far: ${result.joined} joined, ${result.qualified} qualified, ${n(result.earnedSats)} sats earned.`
+    }
     case "rewards_summary": {
       const n = (v: unknown) => Number(v).toLocaleString("en-US")
       const recent = (result.recent ?? []) as { state: string }[]

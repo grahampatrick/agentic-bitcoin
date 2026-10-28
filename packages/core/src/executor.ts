@@ -41,6 +41,12 @@ import { type Decision, type EvaluateContext, type Policy, evaluate, windowStart
 import { type Order, RailError, type Rails } from "./rails"
 import { givingRows } from "./recipient"
 import type { RecipientReader } from "./recipient"
+import {
+  type ReferralRules,
+  type ReferralStore,
+  referralStats,
+  referralsEnabled,
+} from "./referrals"
 import { type RewardSink, type RewardStore, summarizeRewards } from "./rewards"
 
 export interface Confirmation {
@@ -102,6 +108,15 @@ export interface ExecuteInput {
   recipients?: RecipientReader
   /** M17a: the user's virtual cards. Spends that match a card's scope are budgeted against it. */
   cards?: CardContext
+  /** M22: the referral programme, for `referral_info`. */
+  referrals?: ReferralContext
+}
+
+export interface ReferralContext {
+  store: ReferralStore
+  rules: ReferralRules
+  /** Where `/join/<code>` lives. */
+  siteUrl?: string
 }
 
 export interface CardContext {
@@ -472,6 +487,36 @@ async function dispatch(
       const now = (input.now ?? (() => new Date()))()
       await ic.store.update({ ...i, state: "void", voidedAt: now.toISOString() })
       return { result: { voided: i.number }, detail: i.number }
+    }
+    case "referral_info": {
+      const rc = need(input.referrals, "referrals")
+      if (!referralsEnabled(rc.rules))
+        return { result: { enabled: false }, detail: "referral rewards are off on this server" }
+      const uid = input.userId
+      if (!uid) throw new RailError("referrals", "REJECTED", "no user to look up")
+      const stats = await referralStats(
+        rc.store,
+        need(input.rewardStore, "rewards"),
+        rc.rules,
+        uid,
+        rc.siteUrl,
+      )
+      return {
+        result: {
+          enabled: true,
+          code: stats.code,
+          link: stats.link,
+          joined: stats.joined,
+          qualified: stats.qualified,
+          earnedSats: stats.earnedSats,
+          referrerSats: rc.rules.referrerSats,
+          friendSats: rc.rules.friendSats,
+          qualifyingSats: rc.rules.qualifyingSats,
+          maxPerMonth: rc.rules.maxPerReferrerPerMonth,
+          referredBy: stats.referredBy,
+        },
+        detail: stats.code,
+      }
     }
     case "rewards_summary": {
       const store = need(input.rewardStore, "rewards")

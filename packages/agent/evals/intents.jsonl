@@ -68,3 +68,5 @@
 {"id": "note-1", "utterance": "pay 500 sats to gm@getalby.com, note: plumber deposit", "expect": {"tool": "pay_lightning_address", "input": {"address": "gm@getalby.com", "amount_sats": 500, "memo": ""}}}
 {"id": "note-2", "utterance": "add a note to my last payment: reimbursed by work", "expect": {"tool": "add_note", "input": {"text": "reimbursed by work"}}}
 {"id": "note-3", "utterance": "remove the note from my last payment", "expect": {"tool": "add_note", "input": {"text": ""}}}
+{"id": "referral-1", "utterance": "how do I invite a friend?", "expect": {"tool": "referral_info", "input": {}}}
+{"id": "referral-2", "utterance": "what is my referral code", "expect": {"tool": "referral_info", "input": {}}}

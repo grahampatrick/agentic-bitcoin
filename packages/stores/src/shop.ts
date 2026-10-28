@@ -2,6 +2,7 @@
  * Supabase storefront stores (M12), shared by the bot and the web. Prices as integer-cent strings;
  * orders carry a payment hash and SEALED shipping/contact blobs only.
  */
+import { randomBytes } from "node:crypto"
 import { readFileSync } from "node:fs"
 import {
   type CardStore,
@@ -12,6 +13,8 @@ import {
   type OrderStore,
   PRODUCT_ID_RE,
   type ProductStore,
+  type Referral,
+  type ReferralStore,
   type Reward,
   type RewardStore,
   SHOP_CATEGORIES,
@@ -19,6 +22,7 @@ import {
   type ShopOrder,
   type ShopProduct,
   type VirtualCard,
+  newReferralCode,
   productMatches,
 } from "@agentic-bitcoin/core"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -399,6 +403,102 @@ export class SupabaseRewardStore implements RewardStore {
   }
   async update(r: Reward) {
     await q(this.db.from("rewards").update(rewardToRow(r)).eq("id", r.id), "reward update")
+  }
+}
+
+// --- referrals (M22) ----------------------------------------------------------------------------
+
+type ReferralRow = {
+  id: string
+  code: string
+  referrer_id: string
+  friend_id: string
+  joined_at: string
+  qualified_at: string | null
+  qualifying_entry_id: string | null
+  qualifying_sats: string | null
+  reward_ids: string[] | null
+  referrer_skipped: string | null
+}
+const referralFromRow = (r: ReferralRow): Referral => ({
+  id: r.id,
+  code: r.code,
+  referrerId: r.referrer_id,
+  friendId: r.friend_id,
+  joinedAt: r.joined_at,
+  qualifiedAt: r.qualified_at ?? undefined,
+  qualifyingEntryId: r.qualifying_entry_id ?? undefined,
+  qualifyingSats: r.qualifying_sats ? BigInt(r.qualifying_sats) : undefined,
+  rewardIds: r.reward_ids ?? [],
+  referrerSkipped: r.referrer_skipped ?? undefined,
+})
+const referralToRow = (r: Referral): ReferralRow => ({
+  id: r.id,
+  code: r.code,
+  referrer_id: r.referrerId,
+  friend_id: r.friendId,
+  joined_at: r.joinedAt,
+  qualified_at: r.qualifiedAt ?? null,
+  qualifying_entry_id: r.qualifyingEntryId ?? null,
+  qualifying_sats: r.qualifyingSats?.toString() ?? null,
+  reward_ids: r.rewardIds,
+  referrer_skipped: r.referrerSkipped ?? null,
+})
+
+export class SupabaseReferralStore implements ReferralStore {
+  readonly kind = "supabase"
+  constructor(
+    private readonly db: SupabaseClient,
+    private readonly randomByte: () => number = () => randomBytes(1)[0] as number,
+  ) {}
+  async codeFor(userId: string) {
+    const have = await q<{ code: string } | null>(
+      this.db.from("referral_codes").select("code").eq("user_id", userId).maybeSingle(),
+      "referral code read",
+    )
+    if (have) return have.code
+    for (let tries = 0; tries < 20; tries++) {
+      const code = newReferralCode(this.randomByte)
+      const { error } = await this.db.from("referral_codes").insert({ code, user_id: userId })
+      if (!error) return code
+      if (error.code !== "23505") throw new Error(`referral code write failed: ${error.message}`)
+      // a duplicate: either the code is taken (draw again) or the user got one meanwhile
+      const mine = await q<{ code: string } | null>(
+        this.db.from("referral_codes").select("code").eq("user_id", userId).maybeSingle(),
+        "referral code read",
+      )
+      if (mine) return mine.code
+    }
+    throw new Error("could not mint an unused referral code")
+  }
+  async userForCode(code: string) {
+    const d = await q<{ user_id: string } | null>(
+      this.db.from("referral_codes").select("user_id").eq("code", code).maybeSingle(),
+      "referral code read",
+    )
+    return d?.user_id ?? null
+  }
+  async forFriend(friendId: string) {
+    const d = await q<ReferralRow | null>(
+      this.db.from("referrals").select("*").eq("friend_id", friendId).maybeSingle(),
+      "referral read",
+    )
+    return d ? referralFromRow(d) : null
+  }
+  async listForReferrer(referrerId: string) {
+    return (
+      await q<ReferralRow[]>(
+        this.db.from("referrals").select("*").eq("referrer_id", referrerId),
+        "referrals",
+      )
+    ).map(referralFromRow)
+  }
+  async create(r: Referral) {
+    const { error } = await this.db.from("referrals").insert(referralToRow(r))
+    if (error && error.code !== "23505") throw new Error(`referral write failed: ${error.message}`)
+  }
+  async update(r: Referral) {
+    await q(this.db.from("referrals").update(referralToRow(r)).eq("id", r.id), "referral update")
   }
 }
 

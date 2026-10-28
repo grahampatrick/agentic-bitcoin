@@ -213,6 +213,11 @@ export interface RewardsSummary extends Base {
   kind: "rewards_summary"
 }
 
+/** M22: the user's invite code and link, friends joined and qualified, sats earned. Read-only. */
+export interface ReferralInfo extends Base {
+  kind: "referral_info"
+}
+
 /**
  * M14: issue a bill (or a one-line payment request) that someone pays over Lightning. Moves no sats:
  * the issuer's wallet mints the BOLT11 and our pay link points at it. The payer's contact is sealed.
@@ -286,6 +291,7 @@ export type Action =
   | ListSchedules
   | GivingSummary
   | RewardsSummary
+  | ReferralInfo
   | CreateInvoice
   | ListInvoices
   | VoidInvoice
@@ -328,6 +334,7 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   list_schedules: "wallet",
   giving_summary: "wallet",
   rewards_summary: "wallet",
+  referral_info: "wallet",
   create_invoice: "wallet",
   list_invoices: "wallet",
   void_invoice: "wallet",
@@ -368,6 +375,7 @@ export function spendSats(action: Action): Sats {
     case "list_schedules":
     case "giving_summary":
     case "rewards_summary":
+    case "referral_info":
     case "create_invoice":
     case "list_invoices":
     case "void_invoice":
@@ -407,6 +415,7 @@ export function destinationOf(action: Action): string | null {
     case "list_schedules":
     case "giving_summary":
     case "rewards_summary":
+    case "referral_info":
     case "create_invoice":
     case "list_invoices":
     case "void_invoice":
@@ -472,6 +481,8 @@ function describeKind(action: Action): string {
       return `Summarize giving in ${action.year}`
     case "rewards_summary":
       return "Show sats-back rewards"
+    case "referral_info":
+      return "Show your invite code"
     case "create_invoice":
       return `${action.invoiceKind === "request" ? "Request payment from" : "Invoice"} ${action.payerName}${action.cron ? ` (recurring, ${action.cron})` : ""}`
     case "list_invoices":

@@ -213,6 +213,8 @@ function sampleInput(name: string): Record<string, unknown> {
       return { year: 2026 }
     case "rewards_summary":
       return {}
+    case "referral_info":
+      return {}
     case "create_invoice":
       return {
         invoice_kind: "invoice",
