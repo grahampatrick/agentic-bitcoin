@@ -21,6 +21,12 @@ interface Base {
   requestedBy: Requester
   /** M17a: set by the executor when a spend lands on one of the user's virtual cards. */
   cardId?: string
+  /**
+   * M21 (ADR-0024): a note for the user's own eyes. It never reaches a rail, a memo or an invoice:
+   * the executor strips it from the stored action and keeps it as a `noted` ledger event, sealed
+   * with SECRETS_KEY when the server has one.
+   */
+  privateNote?: string
 }
 
 export interface PayInvoice extends Base {
@@ -261,6 +267,17 @@ export interface UpdateCard extends Base {
   monthlyCapSats?: Sats
 }
 
+/**
+ * M21: attach a private note to an earlier payment (or clear it with an empty `privateNote`). The
+ * text travels in `privateNote` so it is sealed like every other note; the target is an entry id
+ * (prefix), a text match on the payment's summary, or the most recent payment when both are empty.
+ */
+export interface AddNote extends Base {
+  kind: "add_note"
+  entryId?: string
+  match?: string
+}
+
 export type Action =
   | Give
   | ScheduleGive
@@ -287,6 +304,7 @@ export type Action =
   | PayL402
   | SweepToCold
   | ScheduleSweep
+  | AddNote
 
 export type ActionKind = Action["kind"]
 
@@ -316,6 +334,7 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   create_card: "wallet",
   list_cards: "wallet",
   update_card: "wallet",
+  add_note: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -355,6 +374,7 @@ export function spendSats(action: Action): Sats {
     case "create_card":
     case "list_cards":
     case "update_card":
+    case "add_note":
       return 0n
   }
 }
@@ -393,6 +413,7 @@ export function destinationOf(action: Action): string | null {
     case "create_card":
     case "list_cards":
     case "update_card":
+    case "add_note":
       return null
   }
 }
@@ -404,6 +425,14 @@ export function isSpend(action: Action): boolean {
 
 /** One line a human can read before confirming. Never includes secrets. */
 export function describeAction(action: Action): string {
+  const what = describeKind(action)
+  // the note is shown to the person confirming (it is theirs); it is never part of what the payee sees
+  return action.privateNote && action.kind !== "add_note"
+    ? `${what} · private note “${action.privateNote}”`
+    : what
+}
+
+function describeKind(action: Action): string {
   switch (action.kind) {
     case "pay_invoice":
       return `Pay a Lightning invoice${action.destination ? ` to ${action.destination}` : ""}`
@@ -457,6 +486,10 @@ export function describeAction(action: Action): string {
       return action.op === "set_limit"
         ? `Set card ${action.cardId} monthly limit to ${formatSatsPlain(action.monthlyCapSats ?? 0n)}`
         : `${action.op[0]?.toUpperCase()}${action.op.slice(1)} card ${action.cardId}`
+    case "add_note":
+      return action.privateNote
+        ? `Add a private note to ${action.entryId ? `payment ${action.entryId}` : action.match ? `the payment matching “${action.match}”` : "the last payment"}`
+        : `Remove the private note from ${action.entryId ? `payment ${action.entryId}` : action.match ? `the payment matching “${action.match}”` : "the last payment"}`
   }
 }
 

@@ -6,8 +6,9 @@ import {
 } from "@agentic-bitcoin/core"
 import { POLICIES, PRICE, clockAt } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
-import { InMemoryPendingStore, type UserContext, runTurn } from "./agent"
+import { InMemoryPendingStore, type UserContext, confirmPending, runTurn } from "./agent"
 import type { LlmClient, LlmContentBlock, LlmResponse } from "./llm"
+import { ScriptedLlmClient } from "./scripted"
 
 type Step = { tool: string; input: Record<string, unknown> } | { text: string } | { refusal: true }
 
@@ -158,5 +159,39 @@ describe("runTurn", () => {
     const { deps } = setup(llm)
     await runTurn(deps, "u", "tip", [])
     expect(llm.seen[0]).toMatch(/"preimage":"[0-9a-f]{8}…"/)
+  })
+})
+
+describe("private notes (M21, ADR-0024)", () => {
+  it("pays, then notes the payment by the entry id in the tool result; the note is never in the memo", async () => {
+    const { deps, ledger } = setup(new ScriptedLlmClient(), POLICIES.open)
+    const r = await runTurn(deps, "u", "pay 500 sats to gm@getalby.com, note: plumber deposit", [])
+    expect(r.toolCalls.map((c) => c.name)).toEqual(["pay_lightning_address", "add_note"])
+    expect(r.reply).toContain("Noted privately")
+    expect(r.reply).toContain("Paid.")
+    const entries = await readEntries(ledger)
+    const pay = entries.find((e) => e.action.kind === "pay_address")
+    expect(pay?.note).toBe("plumber deposit")
+    expect((pay?.action as { memo?: string }).memo).toBeUndefined()
+    expect(entries.find((e) => e.action.kind === "add_note")?.note).toBeUndefined()
+  })
+  it("a note made while the payment awaits a yes follows it when confirmed", async () => {
+    const { deps, ledger, pending } = setup(new ScriptedLlmClient())
+    const r = await runTurn(deps, "u", "pay 5,000 sats to gm@getalby.com, note: rent share", [])
+    expect(r.pending?.actionHash).toBeDefined()
+    expect(r.toolCalls.map((c) => c.name)).toEqual(["pay_lightning_address", "add_note"])
+    let entries = await readEntries(ledger)
+    expect(entries.find((e) => e.outcome === "awaiting_confirmation")?.note).toBe("rent share")
+    const ctx = await deps.resolveContext()
+    const out = await confirmPending(ctx, r.pending?.actionHash ?? "", {
+      confirmedBy: "u",
+      price: PRICE,
+      now: clockAt(),
+    })
+    expect(out.status).toBe("succeeded")
+    entries = await readEntries(ledger)
+    const paid = entries.find((e) => e.outcome === "succeeded" && e.action.kind === "pay_address")
+    expect(paid?.note).toBe("rent share")
+    expect(await pending.latest("u")).toBeNull()
   })
 })

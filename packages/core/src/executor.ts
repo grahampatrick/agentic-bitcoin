@@ -31,7 +31,9 @@ import {
   type LedgerEntry,
   type LedgerStore,
   findByIdempotencyKey,
+  findNoteTarget,
   foldEntries,
+  noteEvent,
   spentSince,
 } from "./ledger"
 import { type Cents, centsToSats } from "./money"
@@ -185,8 +187,17 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
   const id = newId()
   const at = now().toISOString()
 
+  // M21: a private note never goes into the stored action (or to a rail); it becomes a `noted` event,
+  // sealed when the server can seal. The hash the human confirmed still covers the full action.
+  const record = async () => {
+    const { privateNote, ...stored } = action
+    await ledger.append({ type: "requested", id, at, action: stored as Action, decision })
+    if (privateNote !== undefined && action.kind !== "add_note")
+      await ledger.append(noteEvent(id, at, privateNote, input.seal))
+  }
+
   if (decision.type === "deny") {
-    await ledger.append({ type: "requested", id, at, action, decision })
+    await record()
     return { status: "denied", id, decision }
   }
 
@@ -196,13 +207,27 @@ export async function execute(input: ExecuteInput): Promise<ExecuteResult> {
       input.confirmation.actionHash === decision.actionHash &&
       input.confirmation.actionHash === actionHash(action)
     if (!ok) {
-      await ledger.append({ type: "requested", id, at, action, decision })
+      await record()
       return { status: "awaiting_confirmation", id, decision }
     }
   }
 
   // 3. Record the attempt BEFORE touching the rail, so a crash mid-payment is visible as pending.
-  await ledger.append({ type: "requested", id, at, action, decision })
+  await record()
+  // M21: a note added while this payment waited for a yes follows it to the executed entry.
+  if (decision.type === "needs_confirmation") {
+    const waited = entries
+      .filter(
+        (e) =>
+          e.outcome === "awaiting_confirmation" &&
+          e.decision.type === "needs_confirmation" &&
+          e.decision.actionHash === decision.actionHash &&
+          (e.note || e.noteSealed),
+      )
+      .at(-1)
+    if (waited)
+      await ledger.append({ type: "noted", id, at, note: waited.note, sealed: waited.noteSealed })
+  }
   await ledger.append({ type: "started", id, at })
 
   // 4. The rail.
@@ -280,6 +305,21 @@ async function dispatch(
     case "get_balance": {
       const r = await need(rails.wallet, "wallet").getBalance()
       return { result: r, detail: `${r.sats} sats` }
+    }
+    case "add_note": {
+      // M21: the note lands on an earlier payment as a `noted` event; the add_note entry itself holds no text.
+      const entries = foldEntries(await input.ledger.events()).filter(
+        (e) => e.action.kind !== "add_note",
+      )
+      const target = findNoteTarget(entries, action)
+      if (!target) throw new Error("no payment matches that note")
+      const text = action.privateNote ?? ""
+      const at = (input.now ?? (() => new Date()))().toISOString()
+      await input.ledger.append(noteEvent(target.id, at, text, input.seal))
+      return {
+        result: { entryId: target.id, summary: target.decision.summary, cleared: !text.trim() },
+        detail: `${text.trim() ? "note on" : "note cleared from"} ${target.id}`,
+      }
     }
     case "make_invoice": {
       const inv = await need(rails.wallet, "wallet").makeInvoice(action)

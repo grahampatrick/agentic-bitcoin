@@ -237,6 +237,8 @@ function sampleInput(name: string): Record<string, unknown> {
         confirm_above_sats: 0,
         reset_day: 1,
       }
+    case "add_note":
+      return { text: "plumber deposit", entry_id: "", match: "" }
     case "schedule_bill":
       return {
         name: "Rent",

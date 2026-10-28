@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { intentOf, replyFor } from "./scripted"
+import { intentOf, privateNoteOf, replyFor } from "./scripted"
 
 describe("scripted intents", () => {
   it.each([
@@ -58,6 +58,28 @@ describe("scripted intents", () => {
       { name: "phone plan", amount_sats: 20000, usd_cents: 0, cron: "0 14 15 * *", mode: "ask" },
     ],
     ["my bills", "list_schedules", {}],
+    // M21: "note: X" is private and never the memo; "for X" stays the memo
+    [
+      "pay 500 sats to gm@getalby.com, note: plumber deposit",
+      "pay_lightning_address",
+      { address: "gm@getalby.com", amount_sats: 500, memo: "" },
+    ],
+    [
+      "pay 500 sats to gm@getalby.com for coffee, note to self: reimbursed",
+      "pay_lightning_address",
+      { address: "gm@getalby.com", amount_sats: 500, memo: "coffee" },
+    ],
+    [
+      "add a note to my last payment: reimbursed by work",
+      "add_note",
+      { text: "reimbursed by work", entry_id: "", match: "" },
+    ],
+    [
+      "note on my payment to gm@getalby.com: plumber",
+      "add_note",
+      { text: "plumber", entry_id: "", match: "gm@getalby.com" },
+    ],
+    ["remove the note from my last payment", "add_note", { text: "", entry_id: "", match: "" }],
   ])("%s → %s", (text, name, input) => {
     const i = intentOf(text)
     expect(i?.name).toBe(name)
@@ -85,6 +107,26 @@ describe("scripted replies", () => {
     )
     expect(replyFor("sweep_to_cold", { status: "succeeded", result: { skipped: true } })).toContain(
       "Nothing to sweep",
+    )
+  })
+})
+
+describe("private notes in the scripted model (M21)", () => {
+  it("finds the note a payment carried and leaves plain payments alone", () => {
+    expect(privateNoteOf("pay 500 sats to gm@getalby.com, note: plumber deposit")).toBe(
+      "plumber deposit",
+    )
+    expect(privateNoteOf("pay 500 sats to gm@getalby.com note to self: rent share")).toBe(
+      "rent share",
+    )
+    expect(privateNoteOf("pay 500 sats to gm@getalby.com for coffee")).toBeNull()
+  })
+  it("replies for add_note", () => {
+    expect(
+      replyFor("add_note", { status: "succeeded", result: { summary: "Pay a@b", cleared: false } }),
+    ).toBe("Noted privately on “Pay a@b”; the payee never sees it.")
+    expect(replyFor("add_note", { status: "succeeded", result: { cleared: true } })).toBe(
+      "Note removed.",
     )
   })
 })

@@ -367,6 +367,7 @@ async function outcomeOf(
           status: "awaiting_confirmation",
           summary: result.decision.summary,
           action_hash: result.decision.actionHash,
+          entry_id: result.id,
           instruction:
             "Relay the summary to the user verbatim and ask them to reply yes or no. Do not call confirm_action until they have said yes.",
         }),
@@ -416,6 +417,7 @@ async function outcomeOf(
         content: toToolJson({
           status: "succeeded",
           summary: result.decision.summary,
+          entry_id: result.id,
           result: sanitize(result.result),
           replayed: result.replayed ?? false,
         }),

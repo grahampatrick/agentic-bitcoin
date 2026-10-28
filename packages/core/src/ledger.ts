@@ -5,7 +5,7 @@
  * is ever updated in place, so an audit can replay history and the daily budget is computed from
  * the window, not from a counter that restarts reset.
  */
-import type { Action } from "./action"
+import { type Action, destinationOf } from "./action"
 import type { Decision } from "./policy"
 
 export type Outcome = "awaiting_confirmation" | "denied" | "pending" | "succeeded" | "failed"
@@ -23,6 +23,11 @@ export type LedgerEvent =
       sealed?: string
     }
   | { type: "failed"; id: string; at: string; error: string }
+  /**
+   * M21 (ADR-0024): a private note on the entry, for the user only. `sealed` when the server has a
+   * SECRETS_KEY, `note` in plain otherwise; both absent clears the note. The last one wins.
+   */
+  | { type: "noted"; id: string; at: string; note?: string; sealed?: string }
 
 export interface LedgerEntry {
   id: string
@@ -37,6 +42,9 @@ export interface LedgerEntry {
   error?: string
   /** When the final outcome was recorded, if any. */
   resolvedAt?: string
+  /** M21: the user's private note, in plain (no SECRETS_KEY) or sealed; never both. */
+  note?: string
+  noteSealed?: string
 }
 
 export interface LedgerStore {
@@ -80,8 +88,54 @@ export function foldEntries(events: readonly LedgerEvent[]): LedgerEntry[] {
       e.error = ev.error
       e.resolvedAt = ev.at
     }
+    if (ev.type === "noted") {
+      e.note = ev.note || undefined
+      e.noteSealed = ev.sealed || undefined
+    }
   }
   return [...byId.values()]
+}
+
+/** The `noted` event for `text` on entry `id`: sealed when a sealer is given, plain otherwise; empty text clears. */
+export function noteEvent(
+  id: string,
+  at: string,
+  text: string,
+  seal?: (plain: string) => string,
+): LedgerEvent {
+  const t = text.trim().slice(0, NOTE_MAX)
+  if (!t) return { type: "noted", id, at }
+  return seal ? { type: "noted", id, at, sealed: seal(t) } : { type: "noted", id, at, note: t }
+}
+
+export const NOTE_MAX = 280
+
+/** Entries that moved (or tried to move) money, oldest first; what a note can be attached to. */
+export function paymentEntries(entries: readonly LedgerEntry[]): LedgerEntry[] {
+  return entries.filter((e) => spendOf(e.action) > 0n)
+}
+
+/**
+ * Which payment a note refers to: an entry id (or its prefix), then a case-insensitive text match
+ * on the summary (most recent first), else the most recent payment that succeeded or is in flight.
+ */
+export function findNoteTarget(
+  entries: readonly LedgerEntry[],
+  ref: { entryId?: string; match?: string },
+): LedgerEntry | undefined {
+  const payments = paymentEntries(entries)
+  const id = ref.entryId?.trim()
+  if (id) return [...payments].reverse().find((e) => e.id === id || e.id.startsWith(id))
+  const match = ref.match?.trim().toLowerCase()
+  if (match)
+    return [...payments]
+      .reverse()
+      .find((e) =>
+        `${e.decision.summary} ${destinationOf(e.action) ?? ""} ${e.detail ?? ""}`
+          .toLowerCase()
+          .includes(match),
+      )
+  return [...payments].reverse().find((e) => e.outcome === "succeeded" || e.outcome === "pending")
 }
 
 /** Sum of sats that left (or are in flight) for entries requested at or after `since`. */

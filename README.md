@@ -81,6 +81,8 @@ sweeps it into their wallet, derived from the ledger so each spend is replaced a
 Pay bills with bitcoin: "pay my rent, $450 to landlord@example.com on the 1st" schedules a payment from the user's own
 wallet, priced on the day, paid automatically or parked for a yes with "ask me first"
 ([`docs/bills.md`](./docs/bills.md), ADR-0023).
+Private transaction notes: "pay 500 sats to x@y, note: plumber deposit" keeps a note on the payment in the user's own
+ledger, sealed at rest and never sent to the payee; `/note`, `/notes` ([`docs/notes.md`](./docs/notes.md), ADR-0024).
 The commerce protocol: four endpoints any Lightning shop can serve so any agent can buy from it, with the shop's own
 invoice and the preimage as receipt; Anvard serves it for its merchants and consumes it from remote shops, mirrors their
 feeds, and imports CSV/Shopify inventory; trading cards carry set, condition, grade and provenance

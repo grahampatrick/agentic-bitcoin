@@ -340,6 +340,26 @@ export const TOOLS: readonly ToolSpec[] = [
     strict: true,
   },
   {
+    name: "add_note",
+    description:
+      "Attach a private note to a payment in the user's own ledger, or clear it. The note is never sent to the payee and never appears on an invoice; a memo is what the payee sees. Target the payment by entry_id (from a tool result, also while it awaits confirmation), by match text (payee, memo, product), or neither for the most recent payment.",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: str("The note, up to 280 characters; an empty string removes the existing note"),
+        entry_id: str(
+          "Ledger entry id of the payment from a previous tool result, or an empty string",
+        ),
+        match: str(
+          "Text to find the payment by when there is no entry id (payee, memo, product), or an empty string for the most recent payment",
+        ),
+      },
+      required: ["text", "entry_id", "match"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
     name: "schedule_bill",
     description:
       "Pay a bill with bitcoin: a recurring payment to a Lightning address the user names (rent, a subscription, a phone plan), from their own wallet. Give usd_cents for a dollar amount re-priced at pay time, or amount_sats for fixed sats (the other must be 0). cron is a five-field UTC expression, e.g. '0 14 1 * *' for the 1st of each month. mode 'auto' pays on the day within the user's limits; 'ask' sends the user the bill on the day and waits for their yes. The user must confirm the schedule.",
@@ -957,6 +977,17 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         cardId: String(input.card_id ?? "").trim(),
         op: op as "pause" | "resume" | "close" | "set_limit",
         monthlyCapSats: cap > 0 ? BigInt(cap) : undefined,
+      }
+    }
+    case "add_note": {
+      const text = String(input.text ?? "").trim()
+      if (text.length > 280) throw new ToolInputError("add_note: a note is at most 280 characters")
+      return {
+        kind: "add_note",
+        ...base,
+        privateNote: text,
+        entryId: String(input.entry_id ?? "").trim() || undefined,
+        match: String(input.match ?? "").trim() || undefined,
       }
     }
     case "confirm_action":

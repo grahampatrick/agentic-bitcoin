@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest"
 import {
   InMemoryLedgerStore,
   type LedgerEvent,
+  NOTE_MAX,
   findByIdempotencyKey,
+  findNoteTarget,
   foldEntries,
+  noteEvent,
   readEntries,
   spentSince,
 } from "./ledger"
@@ -91,5 +94,38 @@ describe("InMemoryLedgerStore", () => {
     expect((await s.events(NOW)).map((e) => e.id)).toEqual(["2"])
     expect(findByIdempotencyKey(await readEntries(s), "k-tip-1")?.id).toBe("1")
     expect(findByIdempotencyKey(await readEntries(s), "nope")).toBeUndefined()
+  })
+})
+
+describe("private notes (M21)", () => {
+  it("noteEvent seals when it can, trims, and clears on empty text", () => {
+    expect(noteEvent("a", NOW, "  hi  ")).toEqual({ type: "noted", id: "a", at: NOW, note: "hi" })
+    expect(noteEvent("a", NOW, "hi", (s) => `s:${s}`)).toEqual({
+      type: "noted",
+      id: "a",
+      at: NOW,
+      sealed: "s:hi",
+    })
+    expect(noteEvent("a", NOW, "   ")).toEqual({ type: "noted", id: "a", at: NOW })
+    expect((noteEvent("a", NOW, "x".repeat(500)) as { note: string }).note).toHaveLength(NOTE_MAX)
+  })
+  it("folds the last noted event onto the entry and findNoteTarget picks the right payment", () => {
+    const events: LedgerEvent[] = [
+      { type: "requested", id: "a", at: NOW, action: ACTIONS.tip, decision: allow },
+      { type: "succeeded", id: "a", at: NOW },
+      { type: "requested", id: "b", at: NOW, action: ACTIONS.payFriend, decision: allow },
+      { type: "requested", id: "c", at: NOW, action: ACTIONS.balance, decision: allow },
+      { type: "noted", id: "a", at: NOW, note: "first" },
+      { type: "noted", id: "a", at: NOW, sealed: "blob" },
+    ]
+    const entries = foldEntries(events)
+    expect(entries[0]).toMatchObject({ note: undefined, noteSealed: "blob" })
+    expect(findNoteTarget(entries, {})?.id).toBe("b") // most recent payment in flight; reads never
+    expect(findNoteTarget(entries, { entryId: "a" })?.id).toBe("a")
+    expect(findNoteTarget(entries, { match: ACTIONS.tip.address.toUpperCase() })?.id).toBe("a")
+    expect(findNoteTarget(entries, { entryId: "c" })).toBeUndefined()
+    expect(
+      foldEntries([...events, { type: "noted", id: "a", at: NOW }])[0]?.noteSealed,
+    ).toBeUndefined()
   })
 })

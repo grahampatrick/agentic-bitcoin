@@ -295,6 +295,26 @@ export function intentOf(text: string): { name: string; input: Record<string, un
       },
     }
   }
+  // M21: "add a note to my last payment: reimbursed" / "note on my payment to bob@x: plumber" / "remove the note from my last payment"
+  const addNote =
+    /^(?:add\s+a\s+)?(?:private\s+)?note\s+(?:on|to|for)\s+(?:my\s+|that\s+|the\s+)?(?:last\s+)?payment(?:\s+to\s+(\S+?))?\s*[:\-–]\s*(.+?)\s*$/i.exec(
+      t,
+    )
+  if (addNote)
+    return {
+      name: "add_note",
+      input: {
+        text: addNote[2] ?? "",
+        entry_id: "",
+        match: (addNote[1] ?? "").replace(/[.,;:!?]+$/, ""),
+      },
+    }
+  if (
+    /^(?:remove|clear|delete)\s+the\s+(?:private\s+)?note(?:\s+(?:from|on)\s+(?:my\s+|that\s+|the\s+)?(?:last\s+)?payment)?\s*$/i.test(
+      t,
+    )
+  )
+    return { name: "add_note", input: { text: "", entry_id: "", match: "" } }
   const pay =
     /(?:pay|send|tip)\s+(?:([\d,_]+)\s*sats?\s+to\s+(\S+@\S+)|(\S+@\S+)\s+([\d,_]+)\s*sats?)/i.exec(
       t,
@@ -302,7 +322,8 @@ export function intentOf(text: string): { name: string; input: Record<string, un
   if (pay) {
     const amount = num(pay[1] ?? pay[4] ?? "0")
     const address = (pay[2] ?? pay[3] ?? "").replace(/[.,;:!?]+$/, "")
-    const memo = /(?:for|memo:?|note:?)\s+["“]?([^"”]+?)["”]?\s*$/i.exec(t)?.[1] ?? ""
+    // "for X" / "memo: X" goes to the payee; "note: X" is private and is added after the payment (see `privateNoteOf`)
+    const memo = /(?:for|memo:?)\s+["“]?([^"”]+?)["”]?\s*$/i.exec(stripNote(t))?.[1] ?? ""
     return { name: "pay_lightning_address", input: { address, amount_sats: amount, memo } }
   }
   const inv = /(?:pay|settle)\s+(?:this\s+)?(?:invoice\s*:?\s*)?(lnbc[0-9a-z]+)/i.exec(t)
@@ -592,6 +613,10 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
     }
     case "void_invoice":
       return `Voided ${result.voided}.`
+    case "add_note":
+      return result.cleared
+        ? "Note removed."
+        : `Noted privately on “${result.summary}”; the payee never sees it.`
     case "rewards_summary": {
       const n = (v: unknown) => Number(v).toLocaleString("en-US")
       const recent = (result.recent ?? []) as { state: string }[]
@@ -614,6 +639,63 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
   }
 }
 
+/** The reply the payment itself would have had, composed from the tool result before the add_note call. */
+function priorReply(messages: LlmMessage[]): string {
+  for (let i = messages.length - 2; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role !== "user" || !Array.isArray(m.content)) continue
+    const tr = lastToolResult(messages.slice(0, i + 1))
+    if (tr && tr.name !== "add_note") return replyFor(tr.name, tr.result)
+  }
+  return ""
+}
+
+/** The private note a payment request carried ("…, note: plumber deposit"), or null. */
+export function privateNoteOf(text: string): string | null {
+  const m = /(?:,\s*|\s+)(?:private\s+)?note(?:\s+to\s+self)?:?\s+["“]?([^"”]+?)["”]?\s*$/i.exec(
+    text,
+  )
+  return m?.[1]?.trim() || null
+}
+function stripNote(text: string): string {
+  return privateNoteOf(text)
+    ? text.replace(/(?:,\s*|\s+)(?:private\s+)?note(?:\s+to\s+self)?:?\s+.+$/i, "")
+    : text
+}
+const NOTED_TOOLS = new Set([
+  "pay_lightning_address",
+  "pay_invoice",
+  "give",
+  "buy_product",
+  "buy_bitcoin",
+  "fetch_l402",
+])
+/** The last thing the user typed (skipping tool results), and whether add_note already ran for it. */
+function turnState(messages: LlmMessage[]): { text: string; noted: boolean } {
+  let text = ""
+  let noted = false
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role === "assistant" && Array.isArray(m.content))
+      if (
+        m.content.some((b) => b.type === "tool_use" && (b as { name?: string }).name === "add_note")
+      )
+        noted = true
+    if (m?.role === "user" && typeof m.content === "string") {
+      text = m.content
+      break
+    }
+    if (m?.role === "user" && Array.isArray(m.content)) {
+      const t = m.content.find((b) => b.type === "text") as { text?: string } | undefined
+      if (t?.text) {
+        text = t.text
+        break
+      }
+    }
+  }
+  return { text, noted }
+}
+
 export class ScriptedLlmClient implements LlmClient {
   readonly kind = "scripted"
   private seq = 0
@@ -624,9 +706,25 @@ export class ScriptedLlmClient implements LlmClient {
   }): Promise<LlmResponse> {
     const tr = lastToolResult(req.messages)
     if (tr) {
+      // M21: a payment that carried "note: X" gets its private note now, by the entry id the tool returned
+      const turn = turnState(req.messages)
+      const note = privateNoteOf(turn.text)
+      const entryId = typeof tr.result.entry_id === "string" ? tr.result.entry_id : ""
+      if (note && entryId && !turn.noted && NOTED_TOOLS.has(tr.name)) {
+        const use: LlmContentBlock = {
+          type: "tool_use",
+          id: `scripted_note_${++this.seq}`,
+          name: "add_note",
+          input: { text: note, entry_id: entryId, match: "" },
+        }
+        return { stop_reason: "tool_use", content: [use] }
+      }
       const text: LlmContentBlock = {
         type: "text",
-        text: replyFor(tr.name, tr.result),
+        text:
+          tr.name === "add_note" && note && turn.noted
+            ? `${replyFor("add_note", tr.result)} ${priorReply(req.messages)}`.trim()
+            : replyFor(tr.name, tr.result),
         citations: null,
       }
       return { stop_reason: "end_turn", content: [text] }

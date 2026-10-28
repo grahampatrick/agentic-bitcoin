@@ -5,13 +5,20 @@ import { createHash } from "node:crypto"
  * and credentials, which the model is not allowed to touch — ADR-0008). Secrets never reach the
  * model or the history: a message that looks like one is intercepted before `runTurn`.
  */
-import { type AgentDeps, type UserContext, confirmPending, runTurn } from "@agentic-bitcoin/agent"
+import {
+  type AgentDeps,
+  type UserContext,
+  confirmPending,
+  handleToolCall,
+  runTurn,
+} from "@agentic-bitcoin/agent"
 import {
   type CampaignStore,
   type CardStore,
   DEFAULT_POLICY,
   type InvoiceStore,
   type IssuedInvoice,
+  type LedgerEntry,
   type LightningAddressStore,
   type OrderStore,
   type Policy,
@@ -34,6 +41,7 @@ import {
   isTrustedRecipient,
   normalizeAddressName,
   parseAddress,
+  paymentEntries,
   periodEnd,
   periodStart,
   readEntries,
@@ -313,6 +321,10 @@ export class Dispatcher {
         return this.cards(userId, args, reply)
       case "/bills":
         return this.bills(userId, ctx, args, reply)
+      case "/note":
+        return this.note(ctx, args, reply)
+      case "/notes":
+        return this.notes(ctx, reply)
       case "/replace": {
         const r = applyReplaceArgs(ctx.policy, args, this.now(), !!ctx.rails.exchange)
         if (!r.ok) return reply(r.error)
@@ -393,12 +405,13 @@ export class Dispatcher {
         const price = await this.deps.agent.price()
         const spent = spentSince(entries, windowStart(this.now()))
         const lines = entries
+          .filter((e) => e.action.kind !== "add_note") // the note shows on the payment it belongs to
           .slice(-8)
           .reverse()
-          .map(
-            (e) =>
-              `${e.at.slice(5, 16).replace("T", " ")} ${e.outcome.padEnd(9)} ${e.decision.summary}`,
-          )
+          .map((e) => {
+            const note = this.openNote(e)
+            return `${e.at.slice(5, 16).replace("T", " ")} ${e.outcome.padEnd(9)} ${e.decision.summary}${note ? ` — “${note}”` : ""}`
+          })
         const fiat = price ? ` (≈ ${formatCents(satsToCents(spent, price))})` : ""
         return reply(
           `Last 24h: ${formatSats(spent)}${fiat} of ${formatSats(ctx.policy.dailyCapSats)}.\n${lines.join("\n") || "No actions yet."}`,
@@ -732,6 +745,87 @@ export class Dispatcher {
     return reply(`${bills.map(line).join("\n")}\n/bills cancel <id> to stop one.`)
   }
 
+  /** M21: the user's private note on an entry, opened with SECRETS_KEY when it was sealed. */
+  private openNote(e: LedgerEntry): string | undefined {
+    if (e.note) return e.note
+    if (!e.noteSealed) return undefined
+    if (!this.deps.secretsKey) return "(sealed note; this server has no key)"
+    try {
+      return decryptSecret(e.noteSealed, this.deps.secretsKey)
+    } catch {
+      return "(sealed note; wrong key)"
+    }
+  }
+
+  /**
+   * `/note <text>` puts a private note on the last payment; `/note <id> <text>` on that entry;
+   * `/note clear [id]` removes one. It is the add_note action, so it is ledgered like everything else.
+   */
+  private async note(
+    ctx: UserContext,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    if (!args.length)
+      return reply(
+        "Usage: /note <text> — a private note on your last payment · /note <id> <text> · /note clear [id]. Notes stay in your own ledger; the payee never sees them. /notes lists them. In chat: “pay 500 sats to x@y, note: plumber deposit”.",
+      )
+    let rest = [...args]
+    const clear = rest[0]?.toLowerCase() === "clear"
+    if (clear) rest = rest.slice(1)
+    const entryId = /^act_[0-9a-z_]+$/i.test(rest[0] ?? "") ? (rest.shift() as string) : ""
+    const text = clear ? "" : rest.join(" ").trim()
+    if (!clear && !text) return reply("Usage: /note <text> · /note <id> <text> · /note clear [id]")
+    const now = this.now()
+    const out = await handleToolCall(
+      ctx,
+      "add_note",
+      { text, entry_id: entryId, match: "" },
+      {
+        callId: `note:${now.getTime().toString(36)}`,
+        price: await this.deps.agent.price(),
+        now: () => now,
+      },
+    )
+    const r = JSON.parse(out.content) as {
+      status: string
+      error?: string
+      result?: { entryId: string; summary: string; cleared: boolean }
+    }
+    if (r.status !== "succeeded" || !r.result)
+      return reply(
+        entryId
+          ? `No payment ${entryId} in your ledger.`
+          : "No payment to note yet. Notes attach to payments; /ledger shows them.",
+      )
+    return reply(
+      r.result.cleared
+        ? `Note removed from “${r.result.summary}” (${r.result.entryId}).`
+        : `Noted privately on “${r.result.summary}” (${r.result.entryId}). The payee never sees it; /notes lists your notes.`,
+    )
+  }
+
+  /** `/notes`: the payments that carry a private note, newest first. */
+  private async notes(ctx: UserContext, reply: (t: string) => Promise<void>): Promise<void> {
+    const noted = paymentEntries(await readEntries(ctx.ledger))
+      .map((e) => ({ e, note: this.openNote(e) }))
+      .filter((x): x is { e: LedgerEntry; note: string } => !!x.note)
+      .slice(-10)
+      .reverse()
+    if (!noted.length)
+      return reply(
+        "No private notes yet. Say “pay 500 sats to x@y, note: plumber deposit”, or /note <text> for your last payment. Notes stay in your own ledger; the payee never sees them.",
+      )
+    return reply(
+      noted
+        .map(
+          ({ e, note }) =>
+            `${e.at.slice(5, 16).replace("T", " ")} ${e.decision.summary} — “${note}” (${e.id})`,
+        )
+        .join("\n"),
+    )
+  }
+
   /** `/statement [year]`: the year's succeeded gifts as CSV. We are not the donee; the recipient issues receipts. */
   private async statement(
     userId: string,
@@ -830,7 +924,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/note <text> — a private note on your last payment · /notes — list them\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

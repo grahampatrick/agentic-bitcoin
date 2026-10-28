@@ -1,6 +1,6 @@
 import { ACTIONS, L402, POLICIES, PRICE, clockAt } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
-import { type Action, actionHash } from "./action"
+import { type Action, actionHash, serializeAction } from "./action"
 import { type Confirmation, execute } from "./executor"
 import { FakeExchangeRail, FakeGoodsRail, FakeWalletRail } from "./fakes"
 import { InMemoryLedgerStore, readEntries } from "./ledger"
@@ -367,5 +367,63 @@ describe("execute: exchange, schedules, compute", () => {
     })
     expect(res).toMatchObject({ status: "failed", code: "AMOUNT_OUT_OF_RANGE" })
     expect((await wallet.getBalance()).sats).toBe(1_000_000n)
+  })
+})
+
+describe("execute: private notes (M21, ADR-0024)", () => {
+  it("strips the note from the stored action and keeps it as a noted event", async () => {
+    const { run, ledger } = setup()
+    const res = await run({ ...ACTIONS.tip, privateNote: "plumber deposit" })
+    expect(res.status).toBe("succeeded")
+    const [e] = await readEntries(ledger)
+    expect(e?.note).toBe("plumber deposit")
+    expect(e?.noteSealed).toBeUndefined()
+    expect("privateNote" in (e?.action ?? {})).toBe(false)
+    // what was stored never carries the note in plain outside the noted event
+    const events = await ledger.events()
+    expect(events.filter((ev) => ev.type === "noted")).toHaveLength(1)
+    expect(serializeAction(e?.action as Action)).not.toContain("plumber")
+  })
+  it("seals the note when the server can seal, and the hash the human confirmed covers it", async () => {
+    const { run, ledger } = setup({ ...POLICIES.open, confirmAboveSats: 10n })
+    const action: Action = { ...ACTIONS.payFriend, privateNote: "rent share" }
+    const first = await run(action, { seal: (s) => `sealed:${s}` })
+    expect(first.status).toBe("awaiting_confirmation")
+    const ok = await run(action, {
+      seal: (s) => `sealed:${s}`,
+      confirmation: { actionHash: actionHash(action), confirmedBy: "u", at: now().toISOString() },
+    })
+    expect(ok.status).toBe("succeeded")
+    const entries = await readEntries(ledger)
+    expect(entries).toHaveLength(2)
+    for (const e of entries) {
+      expect(e.noteSealed).toBe("sealed:rent share")
+      expect(e.note).toBeUndefined()
+      expect(serializeAction(e.action)).not.toContain("rent share")
+    }
+  })
+  it("add_note attaches to the last payment, by id prefix, or by match, and an empty note clears", async () => {
+    const { run, ledger } = setup()
+    await run(ACTIONS.tip)
+    await run(ACTIONS.payFriend)
+    const base = { kind: "add_note" as const, requestedBy: "user" as const }
+    const last = await run({ ...base, idempotencyKey: "n1", privateNote: "for the party" })
+    expect(last.status).toBe("succeeded")
+    let entries = await readEntries(ledger)
+    expect(entries.find((e) => e.action.idempotencyKey === "k-friend-1")?.note).toBe(
+      "for the party",
+    )
+    // the add_note entry itself never carries the text
+    const noteEntry = entries.find((e) => e.action.kind === "add_note")
+    expect(noteEntry?.note).toBeUndefined()
+    expect(serializeAction(noteEntry?.action as Action)).not.toContain("party")
+    const tipId = entries.find((e) => e.action.idempotencyKey === "k-tip-1")?.id ?? ""
+    await run({ ...base, idempotencyKey: "n2", entryId: tipId.slice(0, 4), privateNote: "coffee" })
+    await run({ ...base, idempotencyKey: "n3", match: ACTIONS.payFriend.address, privateNote: "" })
+    entries = await readEntries(ledger)
+    expect(entries.find((e) => e.action.idempotencyKey === "k-tip-1")?.note).toBe("coffee")
+    expect(entries.find((e) => e.action.idempotencyKey === "k-friend-1")?.note).toBeUndefined()
+    const none = await run({ ...base, idempotencyKey: "n4", entryId: "zzz", privateNote: "x" })
+    expect(none.status).toBe("failed")
   })
 })

@@ -39,6 +39,7 @@ describe("MCP server", () => {
     const { client } = await connect()
     const { tools } = await client.listTools()
     expect(tools.map((t) => t.name).sort()).toEqual([
+      "add_note",
       "buy_bitcoin",
       "buy_product",
       "cancel_schedule",
