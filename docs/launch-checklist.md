@@ -14,7 +14,7 @@ Everything below must be true before the Signal number goes on the landing page.
 - [ ] Rewards (M13): `REWARDS_NWC_URL` (a budgeted NWC string for the operator rewards wallet) + `REWARDS_DAILY_CAP_SATS` in the bot env; `REWARDS_BPS_DIRECTORY` on Vercel too
 - [ ] Referrals (M22): `REFERRAL_REWARD_SATS` + `REFERRAL_FRIEND_SATS` (0 = off) in the bot env and on Vercel; needs the rewards wallet above to pay out
 - [ ] Workspace (M23): `SITE_URL` on the bot so `/web` links point at the site; optional `WEB_LINK_TTL_DAYS`, `NEXT_PUBLIC_DISCORD_INVITE`, `NEXT_PUBLIC_CONTACT_EMAIL` on Vercel; the web never needs `SECRETS_KEY`
-- [ ] Supabase project: migrations 0001–0016 applied (`scripts/migrate.sh`); `SUPABASE_URL` + service-role key in the bot env and Vercel
+- [x] Supabase project: migrations 0001–0016 applied 2026-10-29 (`scripts/migrate.sh`); `SUPABASE_URL` + service-role key in the bot env — [ ] still to add on Vercel
 - [ ] `SECRETS_KEY` generated (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`), stored only in the bot env and a password manager
 - [ ] signal-cli daemon registered on the dedicated number per docs/signal.md (OQ-6); data dir backed up; survives reboot; `/api/v1/check` answers
 - [ ] Bot deployed (`docker compose up -d`), restarts on failure, logs shipped somewhere; scheduler ticks once a minute
