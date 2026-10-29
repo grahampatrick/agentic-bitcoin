@@ -6,7 +6,7 @@ const env = {
   REFERRAL_REWARD_SATS: "1000",
   REFERRAL_FRIEND_SATS: "500",
   NEXT_PUBLIC_CONTACT_EMAIL: "hello@anvard.ai",
-} as NodeJS.ProcessEnv
+} as unknown as NodeJS.ProcessEnv
 
 describe("the workspace (M23, ADR-0027)", () => {
   it("opens the keyless demo with the demo token and nothing else", async () => {
