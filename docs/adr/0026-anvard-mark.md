@@ -36,3 +36,6 @@ expression, like Instinct's logo was in ADR-0002.
   degrades to a plain red A, still legible.
 - 2026-10-28, later the same day: GM asked for the castle alone in the header and no A for now. `AnvardMark`
   stays in `Logo.tsx`, unrendered, and the favicon is removed until the A comes back.
+- 2026-10-28, later again: GM asked for the castle drawing he supplied to be placed exactly as sent, stating it
+  is free for use. It is `apps/web/public/castle.png` in the header; the vector `Castle` and `AnvardMark` stay in
+  `Logo.tsx`, unrendered.

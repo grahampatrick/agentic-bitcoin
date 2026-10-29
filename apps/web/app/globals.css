@@ -108,10 +108,14 @@ body {
   gap: 10px;
   height: var(--layout-logo-height);
 }
-.site-header__logo svg {
+.site-header__logo svg,
+.site-header__logo img {
   display: block;
   height: 100%;
   width: auto;
+}
+.site-header__logo img {
+  mix-blend-mode: multiply; /* the drawing's white paper disappears on sand pages too */
 }
 @media (min-width: 80rem) {
   .site-header {

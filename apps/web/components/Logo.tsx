@@ -1,3 +1,4 @@
+import Image from "next/image"
 import { useId } from "react"
 
 /**
@@ -120,11 +121,22 @@ export function Castle({ className }: { className?: string }) {
   )
 }
 
-/** The header mark: the castle alone for now; `AnvardMark` is kept here for when the A returns. */
+/**
+ * The header mark: GM's castle drawing (`public/castle.png`, supplied by GM as free for use), placed
+ * as sent. `Castle` and `AnvardMark` above are kept for when a vector mark is wanted.
+ */
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={className}>
-      <Castle className="logo__castle" />
+      <Image
+        src="/castle.png"
+        alt=""
+        width={167}
+        height={151}
+        priority
+        unoptimized
+        className="logo__castle"
+      />
     </span>
   )
 }
