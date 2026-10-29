@@ -105,6 +105,11 @@ Referral rewards: `/refer` gives you an invite code and a link; a friend who joi
 of at least the minimum earns you both flat sats, recorded as ordinary rewards and paid from the operator's wallet to
 each person's own wallet. One referral per person, before their first payment, qualified from the ledger (ADR-0025).
 
+Your workspace on the web: `/web` in chat replies with a private 30-day link to `/me`, an account area in the manner of
+a settings page: invites and contact, a vault (wallet, address, cards, cold storage, keys), trusted and blocked
+destinations, limits and rails, the kill switch, connectors. No password: chat is the key, and the page is a view over
+the same rows the bot writes; secrets never reach it. `/web revoke` cuts every link off (ADR-0027, docs/workspace.md).
+
 ### Self-host with Docker
 
 ```bash

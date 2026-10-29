@@ -6,18 +6,11 @@ import type { LlmMessage } from "@agentic-bitcoin/agent"
 import {
   type LedgerEvent,
   type LedgerStore,
-  type Policy,
   parseAction,
   serializeAction,
 } from "@agentic-bitcoin/core"
 import { type SupabaseClient, createClient } from "@supabase/supabase-js"
-import type {
-  HistoryStore,
-  LedgerStoreFactory,
-  PolicyStore,
-  SecretName,
-  SecretStore,
-} from "./stores"
+import type { HistoryStore, LedgerStoreFactory } from "./stores"
 
 export function supabaseClient(url: string, serviceKey: string): SupabaseClient {
   return createClient(url, serviceKey, { auth: { persistSession: false } })
@@ -73,59 +66,11 @@ export class SupabaseLedgerFactory implements LedgerStoreFactory {
   }
 }
 
-export class SupabasePolicyStore implements PolicyStore {
-  constructor(private readonly db: SupabaseClient) {}
-  async get(userId: string): Promise<Policy | null> {
-    const { data, error } = await this.db
-      .from("policies")
-      .select("policy")
-      .eq("user_id", userId)
-      .maybeSingle()
-    if (error) throw new Error(`policy read failed: ${error.message}`)
-    if (!data) return null
-    const p = decode<Policy>(data.policy as string)
-    // rows written before M8 lack these fields
-    return {
-      ...p,
-      coldStorageAddresses: p.coldStorageAddresses ?? [],
-      rails: { ...p.rails, onchain: p.rails.onchain ?? false },
-    }
-  }
-  async set(userId: string, policy: Policy): Promise<void> {
-    const { error } = await this.db
-      .from("policies")
-      .upsert({ user_id: userId, policy: encode(policy), updated_at: new Date().toISOString() })
-    if (error) throw new Error(`policy write failed: ${error.message}`)
-  }
-}
-
-export class SupabaseSecretStore implements SecretStore {
-  constructor(private readonly db: SupabaseClient) {}
-  async get(userId: string, name: SecretName): Promise<string | null> {
-    const { data, error } = await this.db
-      .from("user_secrets")
-      .select("blob")
-      .eq("user_id", userId)
-      .eq("name", name)
-      .maybeSingle()
-    if (error) throw new Error(`secret read failed: ${error.message}`)
-    return data ? (data.blob as string) : null
-  }
-  async set(userId: string, name: SecretName, blob: string): Promise<void> {
-    const { error } = await this.db
-      .from("user_secrets")
-      .upsert({ user_id: userId, name, blob, updated_at: new Date().toISOString() })
-    if (error) throw new Error(`secret write failed: ${error.message}`)
-  }
-  async delete(userId: string, name: SecretName): Promise<void> {
-    const { error } = await this.db
-      .from("user_secrets")
-      .delete()
-      .eq("user_id", userId)
-      .eq("name", name)
-    if (error) throw new Error(`secret delete failed: ${error.message}`)
-  }
-}
+export {
+  SupabasePolicyStore,
+  SupabaseSecretStore,
+  SupabaseWebLinkStore,
+} from "@agentic-bitcoin/stores"
 
 export class SupabaseHistoryStore implements HistoryStore {
   constructor(private readonly db: SupabaseClient) {}

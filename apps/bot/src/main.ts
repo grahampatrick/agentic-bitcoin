@@ -7,9 +7,12 @@ import { createHash, randomBytes } from "node:crypto"
 import {
   AnthropicLlmClient,
   InMemoryPendingStore,
+  InMemoryWebLinkStore,
   type PendingStore,
   ScriptedLlmClient,
   type UserContext,
+  WEB_TOKEN_BYTES,
+  newWebToken,
 } from "@agentic-bitcoin/agent"
 import {
   DEFAULT_POLICY,
@@ -84,6 +87,7 @@ import {
   FileProductStore,
   FileReferralStore,
   FileRewardStore,
+  FileWebLinkStore,
   SupabaseCardStore,
   SupabaseInvoiceStore,
   SupabaseLightningAddressStore,
@@ -106,6 +110,7 @@ import {
   SupabaseLedgerFactory,
   SupabasePolicyStore,
   SupabaseSecretStore,
+  SupabaseWebLinkStore,
   supabaseClient,
 } from "./store/supabase"
 import { DiscordSurface } from "./surfaces/discord"
@@ -312,6 +317,17 @@ const referrals = {
   store: referralStore,
   rules: referralRules,
   newId: () => `rf_${Date.now().toString(36)}_${(++referralSeq).toString(36)}`,
+}
+// M23: web links open the workspace at <site>/me; only hashes are stored (ADR-0027).
+const webLinkStore = db
+  ? new SupabaseWebLinkStore(db)
+  : fileState
+    ? new FileWebLinkStore(fileState)
+    : new InMemoryWebLinkStore()
+const webLinks = {
+  store: webLinkStore,
+  newToken: () => newWebToken(randomBytes(WEB_TOKEN_BYTES)),
+  ttlDays: Number(env.WEB_LINK_TTL_DAYS ?? 30),
 }
 if (!referralsEnabled(referralRules))
   console.warn(
@@ -546,6 +562,7 @@ const dispatcher = new Dispatcher({
   surface,
   afterSpend,
   referrals,
+  webLinks,
   agent: { llm: liveModel ? new AnthropicLlmClient() : new ScriptedLlmClient(), price },
   resolveContext,
   policies,

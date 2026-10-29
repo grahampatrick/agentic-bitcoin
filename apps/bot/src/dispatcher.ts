@@ -29,6 +29,7 @@ import {
   type RewardStore,
   SLUG_RE,
   type VirtualCard,
+  type WebLinkStore,
   campaignProgress,
   cardSpentSince,
   centsToSats,
@@ -38,6 +39,7 @@ import {
   givingRows,
   givingStatementCsv,
   hasSpent,
+  hashWebToken,
   invoiceStatus,
   invoicesCsv,
   isLightningAddress,
@@ -57,7 +59,9 @@ import {
   slugify,
   spentSince,
   summarizeRewards,
+  webLinkExpiry,
   windowStart,
+  workspaceUrl,
 } from "@agentic-bitcoin/core"
 import {
   decryptSecret,
@@ -112,6 +116,8 @@ export interface DispatcherDeps {
   afterSpend?: (userId: string) => Promise<void>
   /** M22: referral rewards; off unless the rules pay at least one side. */
   referrals?: { store: ReferralStore; rules: ReferralRules; newId: () => string }
+  /** M23: `/web` mints a link that opens the user's workspace on the site (ADR-0027). */
+  webLinks?: { store: WebLinkStore; newToken: () => string; ttlDays?: number }
   buyerKeyOf?(userId: string): string
   agent: Omit<AgentDeps, "resolveContext">
   resolveContext(userId: string): Promise<UserContext>
@@ -258,6 +264,32 @@ export class Dispatcher {
       : ""
     return reply(
       `Your invite code is ${st.code}. Share ${st.link} or tell a friend to text me the code first.\nWhen a friend joins with it and makes a first payment of at least ${formatSats(rc.rules.qualifyingSats)}, ${earn}, paid to your own wallets (up to ${rc.rules.maxPerReferrerPerMonth} friends a month).${tally}\nRewards are a promise from this server's operator, not a balance; /rewards shows what is pending and paid.`,
+    )
+  }
+
+  /** /web: a link that opens the workspace; /web revoke cuts off every link. */
+  private async web(
+    userId: string,
+    args: string[],
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const wl = this.deps.webLinks
+    if (!wl || !this.deps.siteUrl) return reply("The web workspace is not on for this server.")
+    if (args[0]?.toLowerCase() === "revoke") {
+      await wl.store.revokeAll(userId)
+      return reply("Every web link for you is revoked. /web makes a new one.")
+    }
+    const now = this.now()
+    const token = wl.newToken()
+    const ttl = wl.ttlDays ?? 30
+    await wl.store.create({
+      tokenHash: hashWebToken(token),
+      userId,
+      createdAt: now.toISOString(),
+      expiresAt: webLinkExpiry(now, ttl),
+    })
+    return reply(
+      `Your Anvard on the web: ${workspaceUrl(this.deps.siteUrl, token)}\nIt opens your limits, wallet, cards, address, invites and rewards for ${ttl} days from any browser. Keep it private: anyone with the link sees what you see. /web again for a fresh one, /web revoke to cut them all off.`,
     )
   }
 
@@ -424,6 +456,9 @@ export class Dispatcher {
         return this.refer(userId, reply)
       case "/join":
         return this.join(userId, ctx, args.join(" "), reply)
+      case "/web":
+      case "/account":
+        return this.web(userId, args, reply)
       case "/note":
         return this.note(ctx, args, reply)
       case "/notes":
@@ -1027,7 +1062,7 @@ export class Dispatcher {
 }
 
 const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/refer — invite a friend; you both earn sats · /join <code>\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/note <text> — a private note on your last payment · /notes — list them\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/refer — invite a friend; you both earn sats · /join <code>\n/web — your workspace on the site (limits, wallet, cards, invites)\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/note <text> — a private note on your last payment · /notes — list them\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
 
 export function describePolicy(p: Policy): string {
   const rails = Object.entries(p.rails)

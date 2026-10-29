@@ -1,23 +1,13 @@
 /**
  * Per-user state the dispatcher needs: policy, ledger, history, pending, and the (encrypted)
- * wallet secret. Interfaces here; memory implementations for dev/tests; Supabase in supabase.ts.
+ * wallet secret. Policy and secret stores live in core since M23 (the web reads the same rows);
+ * history and the ledger factory stay here; Supabase in supabase.ts.
  */
 import type { LlmMessage } from "@agentic-bitcoin/agent"
-import type { LedgerStore, Policy } from "@agentic-bitcoin/core"
+import type { LedgerStore } from "@agentic-bitcoin/core"
 
-export interface PolicyStore {
-  get(userId: string): Promise<Policy | null>
-  set(userId: string, policy: Policy): Promise<void>
-}
-
-export type SecretName = "nwc" | "strike" | "bitrefill"
-
-export interface SecretStore {
-  /** Returns the encrypted blob; the caller decrypts with SECRETS_KEY. */
-  get(userId: string, name: SecretName): Promise<string | null>
-  set(userId: string, name: SecretName, blob: string): Promise<void>
-  delete(userId: string, name: SecretName): Promise<void>
-}
+export type { PolicyStore, SecretName, SecretStore } from "@agentic-bitcoin/core"
+export { InMemoryPolicyStore, InMemorySecretStore } from "@agentic-bitcoin/core"
 
 export interface HistoryStore {
   get(userId: string): Promise<LlmMessage[]>
@@ -26,29 +16,6 @@ export interface HistoryStore {
 
 export interface LedgerStoreFactory {
   forUser(userId: string): LedgerStore
-}
-
-export class InMemoryPolicyStore implements PolicyStore {
-  private readonly m = new Map<string, Policy>()
-  async get(u: string) {
-    return this.m.get(u) ?? null
-  }
-  async set(u: string, p: Policy) {
-    this.m.set(u, p)
-  }
-}
-
-export class InMemorySecretStore implements SecretStore {
-  private readonly m = new Map<string, string>()
-  async get(u: string, n: SecretName) {
-    return this.m.get(`${u}:${n}`) ?? null
-  }
-  async set(u: string, n: SecretName, b: string) {
-    this.m.set(`${u}:${n}`, b)
-  }
-  async delete(u: string, n: SecretName) {
-    this.m.delete(`${u}:${n}`)
-  }
 }
 
 export class InMemoryHistoryStore implements HistoryStore {

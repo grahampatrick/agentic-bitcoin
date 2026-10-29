@@ -20,6 +20,8 @@ import {
   type ShopOrder,
   type ShopProduct,
   type VirtualCard,
+  type WebLink,
+  type WebLinkStore,
   globalProductId,
   newReferralCode,
   productMatches,
@@ -35,6 +37,7 @@ export {
   SupabaseProductStore,
   SupabaseReferralStore,
   SupabaseRewardStore,
+  SupabaseWebLinkStore,
   parseShopSeed,
   seedShop,
 } from "@agentic-bitcoin/stores"
@@ -200,6 +203,35 @@ export class FileReferralStore implements ReferralStore {
   }
   async update(r: Referral) {
     this.f.set("shop", `rf:${r.friendId}`, enc(r))
+  }
+}
+
+/** M23: web links in the same file bucket, prefixed `wl:` (hash → link; never the token). */
+export class FileWebLinkStore implements WebLinkStore {
+  readonly kind = "file"
+  constructor(private readonly f: FileState) {}
+  async userFor(tokenHash: string, now: Date) {
+    const v = this.f.get("shop", `wl:${tokenHash}`)
+    if (!v) return null
+    const l = dec<WebLink>(v)
+    return l.expiresAt <= now.toISOString() ? null : l.userId
+  }
+  async create(l: WebLink) {
+    this.f.set("shop", `wl:${l.tokenHash}`, enc(l))
+  }
+  async listForUser(userId: string) {
+    return this.f
+      .keys("shop")
+      .filter((k) => k.startsWith("wl:"))
+      .map((k) => dec<WebLink>(this.f.get("shop", k) ?? ""))
+      .filter((l) => l.userId === userId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  }
+  async revoke(tokenHash: string) {
+    this.f.set("shop", `wl:${tokenHash}`, null)
+  }
+  async revokeAll(userId: string) {
+    for (const l of await this.listForUser(userId)) this.f.set("shop", `wl:${l.tokenHash}`, null)
   }
 }
 
