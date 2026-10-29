@@ -30,8 +30,8 @@
   --space-6xl: 64px;
   --space-8xl: 96px;
   --layout-intro-max-width: 41rem;
-  --layout-logo-width: 28px;
-  --layout-logo-width-wide: 34px;
+  --layout-logo-height: 48px;
+  --layout-logo-height-wide: 56px;
   --layout-reaction-size: 35.6px;
   --layout-reaction-icon: 20px;
   --motion-ease-pop: linear(0, .092, .296, .528, .736, .897, 1.004, 1.063, 1.085, 1.084, 1.068, 1.049, 1.029, 1.014, 1.003, .996, .993, .993, .993, .995, .997, .998, .999, 1);

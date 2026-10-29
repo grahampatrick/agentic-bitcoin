@@ -59,8 +59,8 @@ export const tokens = {
   },
   layout: {
     introMaxWidth: "41rem",
-    logoWidth: "28px",
-    logoWidthWide: "34px",
+    logoHeight: "48px",
+    logoHeightWide: "56px",
     reactionSize: "35.6px",
     reactionIcon: "20px",
   },

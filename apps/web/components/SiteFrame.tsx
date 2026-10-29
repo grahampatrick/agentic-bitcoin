@@ -6,7 +6,7 @@ import { Logo } from "./Logo"
 export function SiteHeader() {
   return (
     <header className="site-header">
-      <Link href="/" className="site-header__home" aria-label="Agentic Bitcoin home">
+      <Link href="/" className="site-header__home" aria-label="Anvard home">
         <Logo className="site-header__logo" />
       </Link>
     </header>

@@ -16,7 +16,7 @@ We copy, from measurement of instinct.com on 2026-10-07 (values in `packages/bra
 
 We do **not** copy:
 - Fonts. Aime and Melange are commercial. We use Newsreader + Inter (OFL), see ADR-0003.
-- The logo. Ours is a different hand-drawn figure holding a coin (`components/Logo.tsx`).
+- The logo. Ours is the Anvard mark, an ornate A beside a line-drawn castle (`components/Logo.tsx`, ADR-0026).
 - Copy. Every sentence is ours or a verbatim, attributed whitepaper phrase.
 - Their images, scripts, or any asset file.
 

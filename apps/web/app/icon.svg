@@ -1,0 +1,27 @@
+<svg viewBox="0 0 250 236" xmlns="http://www.w3.org/2000/svg">
+  <title>Anvard</title>
+  <defs>
+    <radialGradient id="red" cx="0.5" cy="0.48" r="0.62">
+      <stop offset="0" stop-color="#e8393e"/>
+      <stop offset="0.55" stop-color="#b6151d"/>
+      <stop offset="1" stop-color="#6b0a10"/>
+    </radialGradient>
+    <filter id="ornate" x="-12%" y="-12%" width="124%" height="124%" color-interpolation-filters="sRGB">
+      <feMorphology in="SourceAlpha" operator="dilate" radius="6" result="outer"/>
+      <feFlood flood-color="#6f4b0f" result="darkGold"/>
+      <feComposite in="darkGold" in2="outer" operator="in" result="outerBand"/>
+      <feMorphology in="SourceAlpha" operator="dilate" radius="3.5" result="mid"/>
+      <feFlood flood-color="#e7bf55" result="gold"/>
+      <feComposite in="gold" in2="mid" operator="in" result="midBand"/>
+      <feMerge>
+        <feMergeNode in="outerBand"/>
+        <feMergeNode in="midBand"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#ornate)" fill="url(#red)" transform="translate(6 6)">
+    <path d="M120 0 L136 22 L212 182 Q222 186 236 198 Q198 186 158 204 Q168 190 176 182 L112 60 L62 182 Q72 192 84 204 Q44 186 14 198 Q28 186 40 182 L102 28 Q96 16 88 6 Q104 10 112 14 Z"/>
+    <path d="M70 122 L170 134 L170 152 L126 148 L120 141 L114 147 L70 140 Z"/>
+  </g>
+</svg>
