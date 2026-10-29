@@ -48,6 +48,11 @@
 .shop__rail .shop__rail-spacer {
   flex: 1;
 }
+.shop__rail-logo {
+  width: 40px;
+  height: auto;
+  mix-blend-mode: multiply;
+}
 .shop__badge {
   position: absolute;
   top: 4px;

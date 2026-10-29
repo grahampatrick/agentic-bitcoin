@@ -1,3 +1,4 @@
+import Image from "next/image"
 import Link from "next/link"
 import { CartBadge } from "./CartBadge"
 import { Icon } from "./icons"
@@ -22,13 +23,15 @@ export function ShopShell({
   return (
     <div className="shop">
       <nav className="shop__rail" aria-label="Store">
-        <Link
-          href="/"
-          aria-label="Agentic Bitcoin home"
-          title="Agentic Bitcoin"
-          style={{ color: "#f7931a" }}
-        >
-          <Icon.bolt />
+        <Link href="/" aria-label="Anvard home" title="Anvard">
+          <Image
+            src="/castle.png"
+            alt=""
+            width={167}
+            height={151}
+            unoptimized
+            className="shop__rail-logo"
+          />
         </Link>
         <span className="shop__rail-spacer" style={{ flex: 0, height: 24 }} />
         {item("/shop", "home", "Home", <Icon.home />)}
