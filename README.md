@@ -38,8 +38,9 @@ pnpm dev        # builds brand tokens, then runs the web app on http://localhost
 
 The price feed needs no keys (mempool.space, CoinGecko fallback, 60s server cache). The `/text`
 waitlist works out of the box with a non-durable in-memory store; for durable storage copy
-`apps/web/.env.example` → `apps/web/.env.local`, fill in the Supabase values, and apply
-`supabase/migrations/0001_waitlist.sql`.
+`apps/web/.env.example` → `apps/web/.env.local`, fill in the Supabase values, and apply the
+migrations: `DATABASE_URL='<session-pooler string>' scripts/migrate.sh` (idempotent; or paste each
+file from `supabase/migrations/` into the SQL editor in order).
 
 ## Try it in 30 seconds (no credentials)
 
