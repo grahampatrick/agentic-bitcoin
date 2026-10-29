@@ -113,10 +113,6 @@ body {
   height: 100%;
   width: auto;
 }
-.site-header__logo .logo__mark {
-  height: 86%;
-  margin-bottom: 4%;
-}
 @media (min-width: 80rem) {
   .site-header {
     padding: 20px var(--space-xl) 0;

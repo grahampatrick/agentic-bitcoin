@@ -120,11 +120,10 @@ export function Castle({ className }: { className?: string }) {
   )
 }
 
-/** The header lockup: the ornate A beside the castle. */
+/** The header mark: the castle alone for now; `AnvardMark` is kept here for when the A returns. */
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={className}>
-      <AnvardMark className="logo__mark" />
       <Castle className="logo__castle" />
     </span>
   )

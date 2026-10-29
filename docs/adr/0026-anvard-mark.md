@@ -1,6 +1,6 @@
 # ADR-0026 — The Anvard mark: an ornate A and a castle, drawn by us
 
-**Date:** 2026-10-28 · **Status:** accepted · replaces the logo bullet of ADR-0002
+**Date:** 2026-10-28 · **Status:** accepted (castle only for now; the A is drawn but not shown) · replaces the logo bullet of ADR-0002
 
 ## Context
 
@@ -34,3 +34,5 @@ expression, like Instinct's logo was in ADR-0002.
   change on the launch checklist, not part of the mark.
 - The filter uses `feMorphology`, which every current browser supports; without filters the letter
   degrades to a plain red A, still legible.
+- 2026-10-28, later the same day: GM asked for the castle alone in the header and no A for now. `AnvardMark`
+  stays in `Logo.tsx`, unrendered, and the favicon is removed until the A comes back.
