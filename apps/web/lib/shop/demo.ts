@@ -58,6 +58,15 @@ export const DEMO_MERCHANTS: (Recipient & { dashboardTokenHash?: string })[] = [
     description: "Trail, climb, run.",
   },
   {
+    // the operator's own recipient: plan invoices are issued by it (M24); no products, so unlisted
+    slug: "anvard",
+    kind: "merchant",
+    name: "Anvard",
+    lightningAddress: "plans@anvard.example",
+    verified: { how: "operator", at },
+    description: "The operator.",
+  },
+  {
     slug: "cardboard-castle",
     kind: "merchant",
     name: "Cardboard Castle",

@@ -111,6 +111,11 @@ a settings page: invites and contact, a vault (wallet, address, cards, cold stor
 destinations, limits and rails, the kill switch, connectors. No password: chat is the key, and the page is a view over
 the same rows the bot writes; secrets never reach it. `/web revoke` cuts every link off (ADR-0027, docs/workspace.md).
 
+How it pays for itself: selling on Anvard costs a flat monthly shop plan after a free pilot, paid in sats as an ordinary
+invoice issued by the operator's own recipient; everything personal stays free, and a lapsed plan only pauses the
+storefront, never a merchant's own pay links or paid orders. Off until the operator sets a price and a payee (ADR-0028,
+docs/plans.md).
+
 ### Self-host with Docker
 
 ```bash

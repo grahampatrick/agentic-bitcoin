@@ -151,21 +151,50 @@ export default async function Page({ params, searchParams }: P) {
             </Empty>
           )}
         </Panel>
-        <Panel title="Subscription">
+        <Panel
+          title="Subscription"
+          action={
+            <Link href={portalHref(portal, "plan")} className="mp__muted">
+              details
+            </Link>
+          }
+        >
           <Rows
             rows={[
-              ["Plan", "Pilot"],
+              ["Plan", "Shop"],
               [
                 "Status",
-                <span key="s" className="mp__ok">
-                  Active ✓
+                <span
+                  key="s"
+                  className={
+                    portal.plan.state === "lapsed"
+                      ? "mp__pill mp__pill--void"
+                      : portal.plan.state === "due"
+                        ? "mp__pill mp__pill--overdue"
+                        : "mp__ok"
+                  }
+                >
+                  {portal.plan.state === "pilot"
+                    ? "Pilot ✓"
+                    : portal.plan.state === "active"
+                      ? "Active ✓"
+                      : portal.plan.state === "free"
+                        ? "Free ✓"
+                        : portal.plan.state === "due"
+                          ? "Payment due"
+                          : "Lapsed"}
                 </span>,
               ],
               [
-                "Activated",
-                fmtDate(portal.recipient.submittedAt ?? portal.recipient.verifiedDetail?.at),
+                portal.plan.state === "active" ? "Paid through" : "Until",
+                fmtDate(portal.plan.until),
               ],
-              ["Price", "Free during the pilot"],
+              [
+                "Price",
+                portal.plan.priceCents
+                  ? `${fmtUsd(portal.plan.priceCents)} a month in sats${portal.plan.state === "pilot" ? ", free during the pilot" : ""}`
+                  : "Free",
+              ],
             ]}
           />
         </Panel>

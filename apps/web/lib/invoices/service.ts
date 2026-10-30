@@ -112,13 +112,19 @@ async function refresh(deps: InvoiceDeps, i: IssuedInvoice): Promise<IssuedInvoi
     const source = wallet
       ? ({ kind: "nwc", wallet } as const)
       : ({ kind: "proxy", lightningAddress: r.lightningAddress } as const)
-    const minted = await buildInvoice({
-      name: r.name,
-      source,
-      amountMsats: Number(amountSats * 1000n), // money-ok: sats → msats at the LNURL boundary
-      comment: `${i.number} ${i.payerName}`.slice(0, 100),
-      fetchImpl: (deps.fetchImpl ?? fetch) as never,
-    })
+    let minted: Awaited<ReturnType<typeof buildInvoice>>
+    try {
+      minted = await buildInvoice({
+        name: r.name,
+        source,
+        amountMsats: Number(amountSats * 1000n), // money-ok: sats → msats at the LNURL boundary
+        comment: `${i.number} ${i.payerName}`.slice(0, 100),
+        fetchImpl: (deps.fetchImpl ?? fetch) as never,
+      })
+    } catch {
+      // the issuer's wallet or address is unreachable right now: show the bill without a BOLT11
+      return i
+    }
     const next: IssuedInvoice = {
       ...i,
       bolt11: minted.pr,

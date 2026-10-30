@@ -6,6 +6,8 @@
 import { getCampaignStore } from "@/lib/campaigns/store"
 import { invoiceDepsFor } from "@/lib/invoices/deps"
 import { recipientInvoices } from "@/lib/invoices/service"
+import { planDepsFor } from "@/lib/plans/deps"
+import { type PlanView, planFor } from "@/lib/plans/service"
 import { type PriceQuote, getPrice } from "@/lib/price/feed"
 import { type PublicRecipient, hashToken, publicView, siteBaseUrl } from "@/lib/receive/service"
 import type { ProfilePatch } from "@/lib/receive/store"
@@ -33,6 +35,8 @@ export interface Portal {
   orders: MerchantOrderView[]
   productCount: number
   campaigns: { slug: string; title: string; active: boolean; goalLabel: string }[]
+  /** M24: the shop plan. */
+  plan: PlanView
   income: {
     satsReceived: number
     tipsSats: number
@@ -51,7 +55,7 @@ export async function portalFor(slug: string, token: string): Promise<Portal | n
   if (!r || !r.dashboardTokenHash || !token || hashToken(token) !== r.dashboardTokenHash)
     return null
   const base = siteBaseUrl()
-  const [received, invoices, orders, products, campaigns, price] = await Promise.all([
+  const [received, invoices, orders, products, campaigns, price, plan] = await Promise.all([
     receive.listInvoices(r.slug, 200),
     recipientInvoices(invoiceDepsFor(), r.slug, token).then((x) => x ?? []),
     r.kind === "merchant"
@@ -60,6 +64,7 @@ export async function portalFor(slug: string, token: string): Promise<Portal | n
     r.kind === "merchant" ? getProductStore().listForMerchant(r.slug) : Promise.resolve([]),
     getCampaignStore().listForRecipient(r.slug),
     getPrice().catch(() => null),
+    planFor(planDepsFor(), r),
   ])
   const tipsSats = received
     .filter((i) => i.settledAt)
@@ -91,6 +96,7 @@ export async function portalFor(slug: string, token: string): Promise<Portal | n
     invoices,
     orders,
     productCount: products.length,
+    plan,
     campaigns: campaigns.map((c) => ({
       slug: c.slug,
       title: c.title,

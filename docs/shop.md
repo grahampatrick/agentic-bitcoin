@@ -32,4 +32,5 @@ merchant of record (ADR-0016).
 - Seed a catalogue with `SHOP_FILE` (see `apps/bot/shop.example.json`); merchants must exist as recipients
   (`RECIPIENTS_FILE`, kind `merchant`, verified).
 - Supabase: migration `0007_shop.sql`. Without a database the web shows a clearly labelled demo catalogue.
+- Charging for the shop: see docs/plans.md (`PLAN_PAYEE_SLUG`, `PLAN_SHOP_USD_CENTS`); off by default.
 - Bitrefill stays available for gift cards and top-ups when a user has set `/key bitrefill`.

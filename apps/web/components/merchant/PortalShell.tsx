@@ -17,6 +17,7 @@ export const NAV = {
     { key: "transactions", label: "Transactions", icon: "bolt" },
     { key: "contacts", label: "Contacts", icon: "contact" },
     { key: "connections", label: "Connections", icon: "plug" },
+    { key: "plan", label: "Plan", icon: "repeat" },
     { key: "settings", label: "Settings", icon: "gear" },
   ],
 } as const

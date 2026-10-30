@@ -1,3 +1,5 @@
+import { planDepsFor } from "../plans/deps"
+import { merchantMaySell } from "../plans/service"
 import { getPrice } from "../price/feed"
 import { siteBaseUrl } from "../receive/service"
 import { getReceiveStore } from "../receive/store"
@@ -20,5 +22,6 @@ export function shopDepsFor(req?: Request): ShopDeps {
     receive: getReceiveStore(),
     price,
     baseUrl: siteBaseUrl(req),
+    maySell: (m) => merchantMaySell(planDepsFor(req), m),
   }
 }

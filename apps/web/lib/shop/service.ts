@@ -54,6 +54,8 @@ export interface ShopDeps {
   /** M13: sats-back accrual on paid orders, and the public lookup. */
   rewards?: RewardSink
   rewardStore?: RewardStore
+  /** M24: the shop plan. Unset = every verified merchant may sell. */
+  maySell?: (m: Recipient) => Promise<boolean>
 }
 const key = (d: ShopDeps) =>
   d.secretsKey === undefined
@@ -97,6 +99,7 @@ export async function viewProducts(
       merchants.set(p.merchantSlug, await deps.receive.getRecipient(p.merchantSlug))
     const m = merchants.get(p.merchantSlug)
     if (!m || !m.verified) continue // unverified merchants are not listed
+    if (deps.maySell && !(await deps.maySell(m))) continue // lapsed plan (M24)
     const pay = effectivePriceCents(p)
     out.push({
       ...p,
@@ -312,7 +315,7 @@ export async function listMerchants(deps: ShopDeps): Promise<MerchantView[]> {
   const out: MerchantView[] = []
   for (const [slug, n] of bySlug) {
     const m = await deps.receive.getRecipient(slug)
-    if (m?.verified)
+    if (m?.verified && (!deps.maySell || (await deps.maySell(m))))
       out.push({
         slug,
         name: m.name,
@@ -378,6 +381,11 @@ function rail(deps: ShopDeps, buyerKey?: string): DirectoryGoodsRail {
 export async function checkout(deps: ShopDeps, input: CheckoutInput): Promise<CheckoutResult> {
   const lines = Array.isArray(input.items) ? input.items.slice(0, 50) : []
   if (!lines.length) return { ok: false, error: "Your cart is empty." }
+  if (deps.maySell) {
+    const m = await deps.receive.getRecipient(input.merchantSlug)
+    if (m && !(await deps.maySell(m)))
+      return { ok: false, error: "This shop is paused while its plan is renewed. Try again soon." }
+  }
   const items: ShopOrderItem[] = []
   for (const l of lines) {
     const qty = Math.floor(Number(l.qty))
