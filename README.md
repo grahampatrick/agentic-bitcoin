@@ -12,7 +12,7 @@ without us ever holding keys or money.
 
 ## Status
 
-Live at **https://agentic-bitcoin.vercel.app**, with a sandbox at `/demo`. The landing page, policy
+Live at **https://agentic-bitcoin.vercel.app**, with a sandbox at `/demo` and a two-scene film at `/film`. The landing page, policy
 engine, ledger, agent, Signal bot and every rail (Lightning wallet over NWC, Strike, Bitrefill,
 L402 compute, on-chain sweep) are implemented and tested. Real payments have been made end to end
 over Signal with a user-paired Lightning wallet. Public access is by invitation while the
@@ -134,7 +134,7 @@ pnpm build       # next build
 ## Layout
 
 ```
-apps/web            Next 15: landing, /text, /demo, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /shop/*, /pay/<token>, /rewards, /receive, LNURL-pay, /api/*
+apps/web            Next 15: landing, /text, /demo, /film, /status, /give, /give/<slug>, /tip/<slug>, /campaigns/<slug>, /shop/*, /pay/<token>, /rewards, /receive, LNURL-pay, /api/*
 packages/core       actions, policy engine, ledger, rail contracts, fakes, executor (no deps)
 packages/rails      NWC wallet, L402 compute, Strike exchange, Bitrefill goods, LND on-chain, secrets
 packages/scheduler  cron parser, durable schedules, minute runner (every run is an Action)

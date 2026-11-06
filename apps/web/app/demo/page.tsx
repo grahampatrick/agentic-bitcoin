@@ -1,6 +1,7 @@
 import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
 import { DemoChat } from "@/components/demo/DemoChat"
 import type { Metadata } from "next"
+import Link from "next/link"
 import "../page.css"
 import "./demo.css"
 
@@ -19,7 +20,8 @@ export default function DemoPage() {
         <p>
           This is the assistant running against a sandbox wallet. Everything you ask goes through
           the same policy engine, executor and ledger as production; only the money is pretend. Over
-          your threshold it stops and asks. Over a cap it refuses and says why.
+          your threshold it stops and asks. Over a cap it refuses and says why. Prefer to watch
+          first? <Link href="/film">See the film.</Link>
         </p>
         <DemoChat />
       </main>
