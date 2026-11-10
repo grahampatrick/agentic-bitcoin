@@ -36,7 +36,7 @@
   align-items: flex-start;
   gap: calc(var(--text-default) * 1.9);
   max-width: var(--layout-intro-max-width);
-  margin-bottom: 20vh;
+  margin-bottom: 4vh;
 }
 .home__intro > * {
   font-family: var(--font-serif);
@@ -145,4 +145,24 @@
   color: inherit;
   text-decoration: none;
   border-bottom: 1px solid currentColor;
+}
+
+/* The vale: a painted landscape across the foot of the page, its sky dissolving into the paper. */
+.marketing-site:has(.home) {
+  overflow-x: clip;
+}
+.home__vale {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  height: clamp(14rem, 33vw, 34rem);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 30%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 30%);
+}
+.marketing-site .home__vale img {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  object-fit: cover;
+  object-position: 60% 100%;
 }
