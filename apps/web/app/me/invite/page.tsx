@@ -58,7 +58,7 @@ export default async function InvitePage({ searchParams }: P) {
         ) : (
           <Row
             title="Referral rewards are not switched on for this server"
-            sub="When they are, your link, code and tally appear here, and /refer in chat says the same."
+            sub="When they are, your link, code and tally appear here, and “how do I invite a friend” in chat says the same."
           />
         )}
       </Section>

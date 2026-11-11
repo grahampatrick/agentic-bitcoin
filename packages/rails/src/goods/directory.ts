@@ -212,7 +212,11 @@ export class CompositeGoodsRail implements GoodsRail {
       throw new RailError(this.kind, "NOT_FOUND", `unknown shop ${rm[1]}`)
     }
     if (!this.bitrefill)
-      throw new RailError(this.kind, "BAD_CONFIG", "no Bitrefill key: say “connect Bitrefill” to add one")
+      throw new RailError(
+        this.kind,
+        "BAD_CONFIG",
+        "no Bitrefill key: say “connect Bitrefill” to add one",
+      )
     return this.bitrefill
   }
   async searchProducts(query: string): Promise<Product[]> {

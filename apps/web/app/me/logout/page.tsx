@@ -21,7 +21,7 @@ export default async function LogoutPage({ searchParams }: P) {
         />
         <Row
           title="Everywhere"
-          sub={`Revokes all ${w.links} of your links. /web in chat makes a new one whenever you want.`}
+          sub={`Revokes all ${w.links} of your links. “Open my account” in chat makes a new one whenever you want.`}
           action={<LogoutButton token={w.token} all label="Log out everywhere" />}
         />
       </Section>

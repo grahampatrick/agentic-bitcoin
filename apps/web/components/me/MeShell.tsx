@@ -49,7 +49,7 @@ export function MeShell({
         {w.demo ? (
           <p className="me__demo">
             Demo workspace: a fictional account, so you can see the shape. Yours opens from chat
-            with <code>/web</code>.
+            when you say “open my account”.
           </p>
         ) : null}
         {children}

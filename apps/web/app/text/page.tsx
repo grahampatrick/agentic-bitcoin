@@ -49,27 +49,26 @@ export default async function TextPage() {
         <h2>Five minutes to your first action</h2>
         <ol className="steps">
           <li>
-            Send <code>/start</code>. I ask three questions: daily cap, when to ask you first, and
-            which things I may do.
+            Say hi. I ask three questions: daily cap, when to ask you first, and which things I may
+            do.
           </li>
           <li>
             <a href="/connect">Connect your own wallet</a> (Alby Hub, Coinos, Primal, Zeus) with a
-            budget and an expiry pre-filled, then send the string as{" "}
-            <code>/pair &lt;string&gt;</code>. I refuse strings without a budget.
+            budget and an expiry pre-filled, then paste the string as a message of its own. I take
+            it out of the chat before the model sees it, and I refuse strings without a budget.
           </li>
           <li>
             Ask: “what's my balance?” then “pay 21 sats to someone@getalby.com”. Over your threshold
             I show a summary and wait for your yes.
           </li>
           <li>
-            Optional: <code>/key strike</code> to buy bitcoin on your Strike account,{" "}
-            <code>/key bitrefill</code> for gift cards and top-ups. Keys are encrypted and shown
-            masked.
+            Optional: say “connect Strike” to buy bitcoin on your Strike account, or “connect
+            Bitrefill” for gift cards and top-ups. Keys are encrypted and shown masked.
           </li>
         </ol>
         <p className="small">
-          Non-custodial: your wallet enforces the budget you set, and so do I. <code>/kill</code>{" "}
-          stops everything. Not financial advice.
+          Non-custodial: your wallet enforces the budget you set, and so do I. “Stop everything”
+          stops everything. No commands to learn. Not financial advice.
         </p>
       </main>
       <LegalLinks />

@@ -42,7 +42,7 @@ export default async function PreferencesPage({ searchParams }: P) {
         <Row
           icon="⌘"
           title="Web links"
-          sub={`${w.links} active. Each works for thirty days; /web in chat makes another.`}
+          sub={`${w.links} active. Each works for thirty days; “open my account” in chat makes another.`}
           action={<LogoutButton token={w.token} all label="Log out everywhere" />}
         />
       </Section>
@@ -78,7 +78,7 @@ export default async function PreferencesPage({ searchParams }: P) {
       <Section title="Kill switch" sub="One switch that stops everything">
         <Row
           title={p.killSwitch ? "ON: nothing moves" : "Off: running within your limits"}
-          sub="The same as /kill and /resume in chat."
+          sub="The same as “stop everything” and “resume” in chat."
           action={
             <Toggle
               token={w.token}
@@ -99,8 +99,8 @@ export default async function PreferencesPage({ searchParams }: P) {
           title={p.replaceSpend?.enabled ? "On" : "Off"}
           sub={
             p.replaceSpend?.enabled
-              ? "Set in chat with /replace; change it there."
-              : "In chat: /replace on, /replace 50%, /replace cap $20."
+              ? "Set in chat; change it there: “stop replacing”, “replace half of what I spend”."
+              : "In chat: “replace the bitcoin I spend”, “replace half of what I spend”, “replace at most $20 a day”."
           }
         />
       </Section>

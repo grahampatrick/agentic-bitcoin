@@ -46,9 +46,9 @@ export default async function WorkspacePage({ searchParams }: P) {
             />
             <p className="me__note">
               A friend joins by texting the code <span className="me__code">{inv.code}</span> first,
-              or <code>/join {inv.code}</code> before their first payment. Their first payment of at
-              least {sats(inv.qualifyingSats)} earns you {sats(inv.referrerSats)} and them{" "}
-              {sats(inv.friendSats)}, paid to your own wallets.{" "}
+              or by saying “a friend invited me, code {inv.code}” before their first payment. Their
+              first payment of at least {sats(inv.qualifyingSats)} earns you{" "}
+              {sats(inv.referrerSats)} and them {sats(inv.friendSats)}, paid to your own wallets.{" "}
               <Link href={meHref(w.token, "invite")}>More</Link>
             </p>
           </>

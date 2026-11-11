@@ -15,9 +15,9 @@ export default async function ConnectorsPage({ searchParams }: P) {
   const w = await loadWorkspace(searchParams)
   if (!w) return <SignedOut />
   const p = w.policy
-  const chat = (cmd: string) => (
-    <span className="me__btn" aria-label={`In chat, send ${cmd}`}>
-      <code>{cmd}</code> in chat
+  const chat = (words: string) => (
+    <span className="me__btn" aria-label={`In chat, say ${words}`}>
+      Say “{words}” in chat
     </span>
   )
   return (
@@ -48,13 +48,13 @@ export default async function ConnectorsPage({ searchParams }: P) {
           icon="◈"
           title="Strike"
           sub="Buy bitcoin, DCA on a schedule, replace what you spend. Settles to your Strike account."
-          action={w.keys.strike ? chat("/key strike remove") : chat("/key strike")}
+          action={w.keys.strike ? chat("remove my Strike key") : chat("connect Strike")}
         />
         <Row
           icon="▦"
           title="Bitrefill"
           sub="Gift cards and phone top-ups from the store, paid in sats."
-          action={w.keys.bitrefill ? chat("/key bitrefill remove") : chat("/key bitrefill")}
+          action={w.keys.bitrefill ? chat("remove my Bitrefill key") : chat("connect Bitrefill")}
         />
         <Row
           icon="▤"
@@ -65,7 +65,7 @@ export default async function ConnectorsPage({ searchParams }: P) {
           icon="❄"
           title="Cold storage"
           sub={`${p.coldStorageAddresses.length ? `${p.coldStorageAddresses.length} address${p.coldStorageAddresses.length === 1 ? "" : "es"} registered.` : "No address registered."} Sweeps go nowhere else.`}
-          action={chat("/cold")}
+          action={chat("my cold storage address is bc1…")}
         />
         <Row
           icon="▭"

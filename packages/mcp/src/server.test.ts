@@ -72,6 +72,18 @@ describe("MCP server", () => {
       required: ["address", "amount_sats", "memo"],
     })
   })
+  it("keeps the user's views and settings out of reach of an MCP host (ADR-0029)", async () => {
+    const { client, ledger } = await connect()
+    const { tools } = await client.listTools()
+    expect(tools.some((t) => t.name === "show" || t.name === "change_setting")).toBe(false)
+    const r = await client.callTool({
+      name: "change_setting",
+      arguments: { setting: "daily_cap", op: "set", value: "99999999", name: "" },
+    })
+    expect(r.isError).toBe(true)
+    expect(JSON.parse(text(r)).status).toBe("invalid_input")
+    expect(await readEntries(ledger)).toEqual([])
+  })
   it("executes a read and a small payment through policy and the ledger", async () => {
     const { client, ledger } = await connect()
     const bal = await client.callTool({ name: "get_balance", arguments: {} })

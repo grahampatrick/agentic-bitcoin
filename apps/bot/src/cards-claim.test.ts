@@ -62,10 +62,11 @@ describe("/cards claim", () => {
     await cards.create(web)
     await d.start()
     await surface.receive({ userId: "u", text: `/cards claim ${web.id}` })
-    expect(surface.sent.at(-1)?.m.text).toMatch(/^Usage: \/cards claim/)
+    expect(surface.sent.at(-1)?.m.text).toMatch(/^Send the claim line exactly/)
     await surface.receive({ userId: "u", text: `/cards claim ${web.id} wrong` })
     expect(surface.sent.at(-1)?.m.text).toBe("That token does not match this card.")
-    await surface.receive({ userId: "u", text: `/cards claim ${web.id} tok` })
+    // M25: the card's page shows the words without a slash; both forms claim
+    await surface.receive({ userId: "u", text: `claim card ${web.id} tok` })
     expect(surface.sent.at(-1)?.m.text).toContain(
       "Card “Steam purchases” is yours: 50,000 sats a month",
     )

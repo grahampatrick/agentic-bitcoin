@@ -87,7 +87,7 @@ export function CardPanel(p: CardPanelProps) {
             <div className="vcard__claim">
               <strong>Not attached yet.</strong> This card pays nothing until you claim it from the
               chat you pay from. Send:
-              <code>{`/cards claim ${p.id} ${p.token}`}</code>
+              <code>{`claim card ${p.id} ${p.token}`}</code>
               <span className="small">Keep this link; the token in it is shown once.</span>
             </div>
           ) : null}

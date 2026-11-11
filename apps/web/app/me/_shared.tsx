@@ -40,16 +40,12 @@ export function SignedOut() {
               </>
             )}
           </li>
-          <li>
-            Send <code>/web</code>. Open the link it replies with.
-          </li>
-          <li>
-            Done with a browser? <code>/web revoke</code> cuts every link off.
-          </li>
+          <li>Say “open my account”. Open the link it replies with.</li>
+          <li>Done with a browser? “Log me out of the web everywhere” cuts every link off.</li>
         </ol>
         <p className="small">
-          A link you were using and that stopped working has expired or been revoked. Send{" "}
-          <code>/web</code> again for a fresh one.
+          A link you were using and that stopped working has expired or been revoked. Send “open my
+          account” again for a fresh one.
           {demo ? (
             <>
               {" "}

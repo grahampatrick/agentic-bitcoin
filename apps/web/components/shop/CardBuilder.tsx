@@ -115,7 +115,7 @@ export function CardBuilder({ shops, satsPerDollar, resetsAtFor }: CardBuilderPr
   }
 
   if (done) {
-    const claim = `/cards claim ${done.id} ${done.token}`
+    const claim = `claim card ${done.id} ${done.token}`
     return (
       <section className="cardbuilder cardbuilder--done">
         <div className="cardbuilder__preview">

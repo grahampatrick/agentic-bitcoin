@@ -15,6 +15,13 @@ export interface McpDeps {
   now?: () => Date
 }
 
+/**
+ * ADR-0029: the desk tools are for the person in their own chat. An MCP host is another agent, so
+ * it gets neither the user's views nor a way to propose changes to their limits.
+ */
+const CHAT_ONLY = new Set(["show", "change_setting"])
+export const MCP_TOOLS = TOOLS.filter((t) => !CHAT_ONLY.has(t.name))
+
 export function createServer(deps: McpDeps): Server {
   const server = new Server(
     { name: "agentic-bitcoin", version: "0.0.0" },
@@ -24,7 +31,7 @@ export function createServer(deps: McpDeps): Server {
   let seq = 0
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS.map((t) => ({
+    tools: MCP_TOOLS.map((t) => ({
       name: t.name,
       description: t.description,
       inputSchema: t.input_schema,
@@ -32,6 +39,19 @@ export function createServer(deps: McpDeps): Server {
   }))
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
+    if (CHAT_ONLY.has(req.params.name))
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              status: "invalid_input",
+              error: "views and settings are only available to the user in their own chat",
+            }),
+          },
+        ],
+        isError: true,
+      }
     const ctx = await deps.resolveContext()
     const price = await deps.price()
     const callId = `${ctx.userId}:mcp:${now().getTime().toString(36)}:${(++seq).toString(36)}`

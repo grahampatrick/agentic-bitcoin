@@ -70,8 +70,8 @@ export default async function PeoplePage({ searchParams }: P) {
           title={w.policy.killSwitch ? "Paused by the kill switch" : "Active"}
           sub={
             w.policy.killSwitch
-              ? "Nothing moves, not even reads, until you lift it in Preferences or send /resume."
-              : "Payments go through within your limits. /kill in chat stops everything at once."
+              ? "Nothing moves, not even reads, until you lift it in Preferences or say “resume” in chat."
+              : "Payments go through within your limits. “Stop everything” in chat stops it all at once."
           }
         />
       </Section>

@@ -161,6 +161,7 @@ const NO = /^(n|no|nope|cancel|stop|deny|don't|do not)[.!]*$/i
 const KILL =
   /^(stop everything|stop it all|stop all|kill|kill it|kill switch|freeze|freeze everything|halt|panic|emergency stop)[.!]*$/i
 const STOP = /^stop[.!]*$/i
+const CLAIM = /^claim (?:my )?card (card_[A-Za-z0-9_-]+) (\S+)$/i
 const NWC_RE = /nostr\+walletconnect:\/\/\S+/i
 /** How long a pasted secret may wait in memory for one answer ("strike or bitrefill?"). Never stored. */
 const HELD_MS = 5 * 60 * 1000
@@ -311,6 +312,9 @@ export class Dispatcher {
       if (m.decision)
         return await this.decide(m.userId, m.decision.actionHash, m.decision.approve, reply)
       if (text.startsWith("/")) return await this.command(m, text, reply)
+      // a card made on the web is claimed with the words its page shows; the token is not a secret to store
+      const claim = CLAIM.exec(text)
+      if (claim) return await this.cards(m.userId, ["claim", claim[1] ?? "", claim[2] ?? ""], reply)
       if (looksLikeSecret(text)) return await this.secret(m, text, reply)
       const held = this.takeHeld(m.userId)
       if (held && (await this.answerHeld(m, held, text, reply))) return
@@ -956,7 +960,8 @@ export class Dispatcher {
     if (sub?.toLowerCase() === "claim") {
       // A card made on the web (/shop/cards) is owned by nobody until the person who holds its
       // link claims it from the chat they pay from; from then on it budgets their spends.
-      if (!id || !token) return reply("Usage: /cards claim <id> <token> (from the card's link).")
+      if (!id || !token)
+        return reply("Send the claim line exactly as the card's page shows it: “claim card …”.")
       const hash = createHash("sha256").update(token).digest("hex")
       const r = await claimCard(store, id, hash, userId)
       if (r.ok)

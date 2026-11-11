@@ -48,9 +48,7 @@ export default async function VaultPage({ searchParams }: P) {
             }
           />
         ) : (
-          <Empty>
-            No address yet. In chat: <code>/address yourname</code>.
-          </Empty>
+          <Empty>No address yet. In chat: “I want the address yourname”.</Empty>
         )}
       </Section>
 
@@ -95,12 +93,10 @@ export default async function VaultPage({ searchParams }: P) {
       <Section title="Cold storage" sub="The only addresses a sweep may ever go to">
         {w.policy.coldStorageAddresses.length ? (
           w.policy.coldStorageAddresses.map((a) => (
-            <Row key={a} icon="❄" title={<code>{a}</code>} sub="Registered in chat with /cold." />
+            <Row key={a} icon="❄" title={<code>{a}</code>} sub="Registered in chat." />
           ))
         ) : (
-          <Empty>
-            None registered. In chat: <code>/cold bc1q…</code>.
-          </Empty>
+          <Empty>None registered. In chat: “my cold storage address is bc1q…”.</Empty>
         )}
       </Section>
 
@@ -114,7 +110,7 @@ export default async function VaultPage({ searchParams }: P) {
           sub={
             w.keys.strike
               ? "Set. Buying, DCA and replace-what-you-spend use it."
-              : "Not set. Needed to buy bitcoin. In chat: /key strike <api key>, then delete the message."
+              : "Not set. Needed to buy bitcoin. In chat: say “connect Strike”, then paste the key on its own."
           }
         />
         <Row
@@ -123,7 +119,7 @@ export default async function VaultPage({ searchParams }: P) {
           sub={
             w.keys.bitrefill
               ? "Set. Gift cards and top-ups use it."
-              : "Not set. The store's gift cards need it. In chat: /key bitrefill <api key>."
+              : "Not set. The store's gift cards need it. In chat: say “connect Bitrefill”, then paste the key."
           }
         />
       </Section>
