@@ -29,7 +29,8 @@ import { FakeSurface } from "./surfaces/surface"
 
 const KEY = parseKey("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 const NWC = `nostr+walletconnect://${"a".repeat(64)}?relay=wss://relay.example.com&secret=${"b".repeat(64)}`
-const API_KEY = "JMRJluDcSiEvcEtP93KcHCa7QwErTyUiOpAsDfVbTY12"
+// built at runtime and deliberately not shaped like a vendor key: the gitleaks CI gate flags realistic fakes too
+const API_KEY = "zqx7".repeat(11)
 
 type Step = string | { name: string; input: Record<string, unknown> }
 
