@@ -9,7 +9,7 @@ shown once, so keep the link.
 **Or make one in the store:** `/shop/cards` has a builder with a live preview (name, what it pays,
 monthly limit with a dollar hint, ask-me-above, max per payment, reset day). A card made there is
 owned by nobody and pays nothing until you attach it from the chat you pay from:
-`/cards claim <id> <token>`, both from the card's link. One claim; after it the card is yours like
+`claim card <id> <token>`, both from the card's link. One claim; after it the card is yours like
 any other, and the same link still pauses it.
 
 **What a card pays** (its scope), any of: `product:steam` (gift cards or products whose name contains
@@ -21,7 +21,7 @@ the text), `merchant:bitrefill`, `shop:<store slug>`, `bob@coffee.example` or `*
 anything.
 
 **Manage:** "my cards" · "pause my steam card" (instant) · "resume my steam card" / "raise my steam
-card to 80,000 sats" (you confirm) · `/cards`, `/cards pause <id>`, `/cards claim <id> <token>` · the
+card to 80,000 sats" (you confirm) · “my cards”, “pause my steam card”, `claim card <id> <token>` · the
 card page's Pause button.
 
 **When a payment is denied by a card** the assistant names the card and what is left on it.

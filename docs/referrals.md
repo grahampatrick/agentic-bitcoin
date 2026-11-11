@@ -6,13 +6,13 @@ the operator, paid from the operator's wallet, never a balance.
 
 ## For users
 
-- `/refer` (or `/invite`, or "how do I invite a friend?"): your six-character code, your link
+- "How do I invite a friend?": your six-character code, your link
   `<site>/join/<code>`, the terms, and your tally (joined · qualified · sats earned).
-- A friend joins by sending your code as their very first message, or `/join <code>` any time
+- A friend joins by sending your code as their very first message, or “a friend invited me, code <code>” any time
   before their first payment. One referral per person; it cannot be changed; you cannot use your own.
 - The friend qualifies with their first payment of at least the minimum (default 1,000 sats). Both
   rewards are recorded at once and paid by the next payout run to an invoice each wallet creates.
-  `/rewards` shows pending, payable and paid; a message arrives when a payout lands.
+  “My rewards” shows pending, payable and paid; a message arrives when a payout lands.
 
 ## Operator setup
 

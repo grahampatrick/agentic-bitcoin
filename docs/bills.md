@@ -8,11 +8,11 @@ plan, a subscription, anyone who takes sats. In dollars (priced on the day) or f
 reply yes. Without "ask me first" the bill pays on the day within your limits; with it, you get the
 bill on the day and reply yes to pay or no to skip.
 
-**See and stop them:** `/bills` (with the next date) · `/bills cancel <id>` · in chat, "my bills" and
+**See and stop them:** "my bills" (with the next date) and
 "stop paying rent".
 
 **Rules that still apply:** your per-action and daily caps, allow and deny lists, the kill switch. A
-denied bill is reported once and shows in `/ledger`. The payee must be a Lightning address you gave;
+denied bill is reported once and shows in your activity. The payee must be a Lightning address you gave;
 giving to a church or missionary by name goes through the verified directory instead.
 
 Self-hosting: migration `0013_bills.sql`. ADR-0023 has the reasoning.

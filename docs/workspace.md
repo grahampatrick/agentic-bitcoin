@@ -5,9 +5,9 @@ the few things you can change without a command. Chat is the key (ADR-0027): the
 
 ## Getting in
 
-- In chat, send `/web` (or `/account`). The reply is a private link that works for 30 days from any
+- In chat, say “open my account”. The reply is a private link that works for 30 days from any
   browser. Keep it private: anyone with the link sees what you see.
-- `/web` again gives another link; `/web revoke` cuts every link off. "Log out" on the site revokes
+- Asking again gives another link; “log me out of the web everywhere” cuts every link off. "Log out" on the site revokes
   the link you are using; "Log out everywhere" revokes all of them.
 - No database on the server? `/me?t=demo` opens a fictional account so you can see the shape.
 

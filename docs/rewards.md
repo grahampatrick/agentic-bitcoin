@@ -1,7 +1,7 @@
 # Sats-back
 
 Purchases in the store earn sats-back (default 1%), paid to the buyer's own wallet from the operator's
-wallet (ADR-0017). `/rewards` in chat and `/rewards` on the web show pending, payable and paid.
+wallet (ADR-0017). “My rewards” in chat and `/rewards` on the web show pending, payable and paid.
 
 ## Operator setup
 

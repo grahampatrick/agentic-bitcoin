@@ -111,6 +111,12 @@ export const RAIL_LABEL: Record<keyof Policy["rails"], string> = {
   onchain: "Cold-storage sweeps",
 }
 
+/** The same words mid-sentence ("turn on paid APIs"). */
+export function railWords(rail: keyof Policy["rails"]): string {
+  const l = RAIL_LABEL[rail]
+  return rail === "compute" ? "paid APIs" : l.toLowerCase()
+}
+
 /** What the executor needs from whoever owns the stores (the bot). */
 export interface Desk {
   /**
@@ -341,7 +347,7 @@ export function applyPolicySetting(
 export function describeLimits(p: Policy): string[] {
   const on = (Object.keys(p.rails) as (keyof Policy["rails"])[])
     .filter((k) => p.rails[k])
-    .map((k) => RAIL_LABEL[k].toLowerCase())
+    .map((k) => railWords(k))
     .join(", ")
   return [
     `Daily cap ${formatSats(p.dailyCapSats)} · per payment ${formatSats(p.perActionCapSats)} · I ask you at ${formatSats(p.confirmAboveSats)} or more`,

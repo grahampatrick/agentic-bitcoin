@@ -12,7 +12,7 @@ merchant of record (ADR-0016).
   paste the payment preimage your wallet shows and we verify it against the invoice hash.
 - **By text:** "find me a study bible" returns results with prices and store links; `buy <id> for $X`
   buys it after you confirm, and for physical goods you add `ship to name, street, city, region,
-  postal, country`. The address is sealed before the purchase is recorded. `/orders` lists yours.
+  postal, country`. The address is sealed before the purchase is recorded. “Show my orders” lists yours.
 - **From Signal into the store:** `/shop` sends you the link; every product page shows the exact text
   to send back.
 
@@ -33,4 +33,4 @@ merchant of record (ADR-0016).
   (`RECIPIENTS_FILE`, kind `merchant`, verified).
 - Supabase: migration `0007_shop.sql`. Without a database the web shows a clearly labelled demo catalogue.
 - Charging for the shop: see docs/plans.md (`PLAN_PAYEE_SLUG`, `PLAN_SHOP_USD_CENTS`); off by default.
-- Bitrefill stays available for gift cards and top-ups when a user has set `/key bitrefill`.
+- Bitrefill stays available for gift cards and top-ups when a user has connected Bitrefill.

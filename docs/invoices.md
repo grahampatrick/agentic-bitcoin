@@ -9,12 +9,12 @@ Bill someone and get paid over Lightning, with the invoice created by your own w
 - `request $18 from Alice for dinner` → the one-line version.
 - `invoice Grace Church $500 for sound tech monthly` → a schedule that issues a fresh invoice on the 1st,
   due 14 days later. "What recurring gifts do I have" lists it; "cancel sch_…" stops it.
-- `/invoices` shows open, overdue and paid with links; `/invoices csv` gives the year's records.
+- “My invoices” shows open, overdue and paid with links; “export my invoices” gives the records as CSV.
 - `who hasn't paid me?` / `my paid invoices`; `void inv_…` cancels an unpaid one.
 - "Remind Bob" gives you a short note with his link to forward; we never message payers.
 - Received one of our links? `pay this <link>` pays it through your limits.
 
-You need a paired wallet (`/pair`); the invoice is minted there, so it is yours the moment it is paid.
+You need a connected wallet; the invoice is minted there, so it is yours the moment it is paid.
 The bot tells you when it lands.
 
 ## From the dashboard (organisations and merchants)

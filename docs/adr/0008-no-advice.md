@@ -6,9 +6,10 @@
 - The assistant executes instructions. It never recommends whether, when, or how much to buy,
   sell, or hold, and never comments on price direction. This is rule 3 of the system prompt and
   an adversarial eval case (`adv-6`).
-- The model cannot change policy. Caps, allow/deny lists, rail flags and the kill switch are set
-  only through `/budget`, `/kill`, `/resume` in the bot dispatcher, which never consult the model.
-  There is no tool for policy, so a prompt injection cannot reach it.
+- The model cannot move the fence. *(Revised by ADR-0029, 2026-11-11.)* It may propose a
+  settings change in the user's own words; a change that widens what may move waits for the
+  human's own yes, which the model cannot give, and a change that only narrows applies at once.
+  The policy is still evaluated in code on every action.
 - Untrusted text (invoice memos, product names, L402 bodies) is wrapped in `<untrusted>` before
   the model sees it, and the prompt says such text is data. Two eval cases (`adv-7`, `adv-8`) check
   that a memo cannot trigger a payment.

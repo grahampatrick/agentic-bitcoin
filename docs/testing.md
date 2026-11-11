@@ -75,5 +75,5 @@ lncli bakemacaroon onchain:read onchain:write --save_to onchain.macaroon
 export LND_REST_URL=https://your-node:8080 LND_MACAROON_HEX=$(xxd -p onchain.macaroon | tr -d '\n')
 ```
 
-In chat: `/cold <address from your hardware wallet>` → `/budget rail onchain on` → “sweep everything above
+In chat: “my cold storage address is <address from your hardware wallet>” → yes → “turn on cold-storage sweeps” → yes → “sweep everything above
 200000 sats to cold storage” → confirm → `/ledger` shows the txid. “sweep monthly” creates a schedule.

@@ -9,7 +9,7 @@ to the recipient's. This page is the standard for what "verified" means.
 | | Directory | Private |
 |---|---|---|
 | Who sees it | Everyone, once verified | Only the user who added it |
-| Who adds it | The operator (`RECIPIENTS_FILE` or the database) | The user: `/recipient add <lightning address> <name>` |
+| Who adds it | The operator (`RECIPIENTS_FILE` or the database) | The user: “add give@mychurch.org as My Church” |
 | May receive gifts | Only when verified | Always, from its owner |
 | Slug | Assigned by the operator | Derived from the name the user typed |
 
@@ -30,7 +30,7 @@ Unverified directory entries are listed nowhere and the policy denies gifts to t
 ## What we are not
 
 We are not the donee. No gift passes through us, and we issue no receipts or tax documents.
-`/statement [year]` gives the user their own CSV record of gifts; the recipient issues receipts.
+“Export my giving for 2026” gives the user their own CSV record of gifts; the recipient issues receipts.
 
 ## Self-onboarding (web /receive)
 
@@ -50,14 +50,14 @@ entries; `/verify revoke <slug>` undoes it). See ADR-0014.
 
 From the dashboard a recipient can open a **campaign**: a goal supporters pledge to, either dollars
 per month or a total in sats, with a story and updates. Supporters pledge from chat ("support
-ortiz-family $25 a month"), give once from the campaign page, or follow updates with `/follow <slug>`.
+ortiz-family $25 a month"), give once from the campaign page, or follow updates with “follow <slug>”.
 Progress is computed from gifts we observed (deduplicated by payment hash) plus any the recipient
 reports from outside Lightning, which are labelled as reported. See ADR-0015.
 
 ## Operator checklist for adding a church or missionary
 
 1. Get their Lightning address from them directly, not from a web page.
-2. Run the probe (it is what `/recipient add` does): the address must answer LNURL-pay.
+2. Run the probe (it is what adding a recipient in chat does): the address must answer LNURL-pay.
 3. If their website is on the same domain as the address, the entry is domain-verified
    automatically; otherwise confirm the address with them and set `"verified": true`.
 4. Add the entry to `RECIPIENTS_FILE` (see `apps/bot/recipients.example.json`) and restart the bot,

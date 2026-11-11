@@ -60,30 +60,40 @@ registration, the daemon, and a linked-device test mode for trying it on your ow
 
 ```bash
 cp apps/bot/.env.example apps/bot/.env    # SIGNAL_ACCOUNT, SECRETS_KEY, ANTHROPIC_API_KEY
-pnpm --filter @agentic-bitcoin/bot start   # fake wallet until you /pair; file-backed stores without Supabase
+pnpm --filter @agentic-bitcoin/bot start   # fake wallet until you connect one; file-backed stores without Supabase
 ```
 
-In chat: `/start` (three-question limits wizard) → `/pair <nostr+walletconnect://…>` (budgeted
-strings only) → “what's my balance?” → `/key strike …` / `/key bitrefill …` for the other rails.
+### How to talk to it
+
+In plain words. There are no commands to learn ([`docs/bot.md`](./docs/bot.md), ADR-0029).
+
+Say hi and it asks three questions (daily cap, when to ask you first, what it may do). Paste your
+wallet's connection string as a message of its own and it connects (strings with a budget only);
+the string is taken out of the chat before the model sees it. Then: “what's my balance?”, “pay 500
+sats to gm@getalby.com”, “set my daily cap to 20,000 sats”, “what did I spend today?”. A change
+that narrows what may move applies at once; one that widens it waits for your own yes, which the
+model cannot give. “Stop everything” works at any time, with no model in the path, and nothing
+moves until you say “resume”.
+
 Giving: “which churches can I give to?”, “tithe 20000 sats to grace-fellowship every sunday”,
-`/recipient add <lightning address> <name>` for your own recipients, `/statement` for the year's
-gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.example.json` and
+“add give@mychurch.org as My Church” for your own recipients, “export my giving for 2026” for the
+year's gifts. The operator's directory is `RECIPIENTS_FILE` (see `apps/bot/recipients.example.json` and
 [`docs/recipients.md`](./docs/recipients.md)).
 Receiving: a church, missionary or creator onboards at `/receive` with a Lightning address or a
 receive-only wallet connection and gets `slug@<host>`, `/give/<slug>`, `/tip/<slug>` and a tip button;
 every invoice is minted by their own wallet (ADR-0014). The operator lists them with `/verify <slug>`.
 Virtual Lightning cards: "create a card for steam with a 50,000 sat monthly limit" makes a named, scoped budget on
 the user's own wallet (never a balance), enforced by the executor and tagged in the ledger, with a card page to pause it;
-the store's `/shop/cards` builder makes one on the web, claimed from chat with `/cards claim`
+the store's `/shop/cards` builder makes one on the web, claimed from chat with the line its page shows
 ([`docs/cards.md`](./docs/cards.md), ADR-0021).
-Replace the bitcoin you spend: `/replace on` buys the value of every spend back on the user's own Strike account and
+Replace the bitcoin you spend: “replace the bitcoin I spend” buys the value of every spend back on the user's own Strike account and
 sweeps it into their wallet, derived from the ledger so each spend is replaced at most once
 ([`docs/replace.md`](./docs/replace.md), ADR-0022).
 Pay bills with bitcoin: "pay my rent, $450 to landlord@example.com on the 1st" schedules a payment from the user's own
 wallet, priced on the day, paid automatically or parked for a yes with "ask me first"
 ([`docs/bills.md`](./docs/bills.md), ADR-0023).
 Private transaction notes: "pay 500 sats to x@y, note: plumber deposit" keeps a note on the payment in the user's own
-ledger, sealed at rest and never sent to the payee; `/note`, `/notes` ([`docs/notes.md`](./docs/notes.md), ADR-0024).
+ledger, sealed at rest and never sent to the payee; “show my notes” lists them ([`docs/notes.md`](./docs/notes.md), ADR-0024).
 The commerce protocol: four endpoints any Lightning shop can serve so any agent can buy from it, with the shop's own
 invoice and the preimage as receipt; Anvard serves it for its merchants and consumes it from remote shops, mirrors their
 feeds, and imports CSV/Shopify inventory; trading cards carry set, condition, grade and provenance
@@ -92,24 +102,24 @@ The store: `/shop` is a Lightning marketplace in the Shop-app shape (search, cat
 every order is one invoice minted by the merchant's own wallet, shipping is sealed for the merchant alone, and "find me
 a study bible" / "buy <id>" work from Signal (ADR-0016, [`docs/shop.md`](./docs/shop.md)).
 Paying is one tap: `lightning:` links, browser wallets via WebLN with the preimage posted back as proof, named wallet
-buttons; `/connect` pairs your own Alby Hub or Coinos with a budget pre-filled; `/address yourname` gives you
-`yourname@anvard.ai` paying straight into your wallet (ADR-0019, [`docs/wallets.md`](./docs/wallets.md)).
+buttons; `/connect` on the site pairs your own Alby Hub or Coinos with a budget pre-filled; “I want the address
+yourname” gives you `yourname@anvard.ai` paying straight into your wallet (ADR-0019, [`docs/wallets.md`](./docs/wallets.md)).
 Invoices: “invoice Bob $200 for the deck due friday” returns a pay link whose Lightning invoice your own wallet minted;
 organisations create, void and export invoices from their dashboard; `pay this <link>` pays one from chat (ADR-0018,
 [`docs/invoices.md`](./docs/invoices.md)).
 Sats-back: store purchases earn 1% back, paid from the operator's wallet to the buyer's own wallet through the same
 executor and caps, never a balance held with us (ADR-0017, [`docs/rewards.md`](./docs/rewards.md)).
 Campaigns: a recipient opens a goal from their dashboard; supporters pledge from chat (“support
-ortiz-family $25 a month”), follow updates with `/follow`, and see progress at `/campaigns/<slug>` (ADR-0015).
+ortiz-family $25 a month”), follow updates with “follow <campaign>”, and see progress at `/campaigns/<slug>` (ADR-0015).
 
-Referral rewards: `/refer` gives you an invite code and a link; a friend who joins with it and makes a first payment
+Referral rewards: “how do I invite a friend?” gives you an invite code and a link; a friend who joins with it and makes a first payment
 of at least the minimum earns you both flat sats, recorded as ordinary rewards and paid from the operator's wallet to
 each person's own wallet. One referral per person, before their first payment, qualified from the ledger (ADR-0025).
 
-Your workspace on the web: `/web` in chat replies with a private 30-day link to `/me`, an account area in the manner of
+Your workspace on the web: “open my account” in chat replies with a private 30-day link to `/me`, an account area in the manner of
 a settings page: invites and contact, a vault (wallet, address, cards, cold storage, keys), trusted and blocked
 destinations, limits and rails, the kill switch, connectors. No password: chat is the key, and the page is a view over
-the same rows the bot writes; secrets never reach it. `/web revoke` cuts every link off (ADR-0027, docs/workspace.md).
+the same rows the bot writes; secrets never reach it. “Log me out of the web everywhere” cuts every link off (ADR-0027, docs/workspace.md).
 
 How it pays for itself: selling on Anvard costs a flat monthly shop plan after a free pilot, paid in sats as an ordinary
 invoice issued by the operator's own recipient; everything personal stays free, and a lapsed plan only pauses the

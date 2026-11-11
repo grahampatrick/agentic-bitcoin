@@ -58,11 +58,11 @@ ANTHROPIC_API_KEY=… SECRETS_KEY=… pnpm --filter @agentic-bitcoin/bot start
 ```
 
 The bot refuses to start if `/api/v1/check` does not answer. Then, from your phone: message the
-number, `/start`, `/pair …`.
+number, say hi, then paste your wallet's connection string.
 
 ## What Signal cannot do (and how the bot compensates)
 - **No buttons.** Confirmations are plain `yes` / `no` replies bound to the latest pending action.
-- **No deleting your messages.** After `/pair` or `/key`, delete the message yourself (the bot
+- **No deleting your messages.** After pasting a connection string or a key, delete the message yourself (the bot
   reminds you); on Telegram the bot deletes it.
-- **Prompt injection arrives in-band** like any chat. Commands never reach the model; secrets are
-  intercepted; the adversarial evals cover the rest.
+- **Prompt injection arrives in-band** like any chat. The model can propose a settings change but
+  never approve one; secrets are intercepted; the adversarial evals cover the rest (ADR-0029).

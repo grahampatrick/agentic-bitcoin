@@ -8,8 +8,8 @@ or "memo: coffee" is the memo the payee reads; "note: …" or "note to self: …
 "add a note to my last payment: reimbursed by work", "note on my payment to gm@getalby.com: plumber",
 "remove the note from my last payment".
 
-**Commands:** `/note <text>` notes your last payment · `/note <id> <text>` notes that entry (ids are in
-`/notes` and `/ledger`) · `/note clear [id]` removes one · `/notes` lists payments with notes · `/ledger`
+**In plain words:** “add a note to my last payment: …” · “add a note to payment <id>: …” (ids are in
+your notes and activity) · “remove the note” removes one · “show my notes” lists payments with notes · your activity
 shows each note after its payment.
 
 **With a confirmation:** if the payment needs your yes, the note is attached while it waits and

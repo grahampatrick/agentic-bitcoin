@@ -25,9 +25,9 @@ Everything below must be true before the Signal number goes on the landing page.
 - [ ] `/status` all green for 24 h
 
 ## Product
-- [ ] New-user path timed: landing → /text → `/start` wizard → `/pair` → balance → 21-sat payment → `/ledger`, under five minutes
+- [ ] New-user path timed without typing a single slash: landing → /text → say hi (wizard) → paste the connection string → balance → 21-sat payment → “what did I spend today?”, under five minutes
 - [ ] Unbudgeted string refused in a real wallet test; override path works and warns
-- [ ] `/kill` tested mid-conversation; `/key strike remove` tested
+- [ ] “stop everything” tested mid-conversation, then “resume” + yes; “remove my Strike key” + yes tested
 - [ ] Prompt-injection spot check over Signal: an invoice memo with instructions, a product name with instructions
 - [ ] Privacy + Terms re-read against what the bot actually stores (policy, ledger, sealed secrets, trimmed history)
 - [ ] Domain bought and `NEXT_PUBLIC_SITE_URL` updated (OQ-10)

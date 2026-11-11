@@ -29,6 +29,7 @@ import {
   execute,
   isTrustedRecipient,
   railOf,
+  railWords,
   tokenFromPayLink,
 } from "@agentic-bitcoin/core"
 import type { LlmClient, LlmContentBlock, LlmMessage, LlmTool } from "./llm"
@@ -425,7 +426,7 @@ async function outcomeOf(
       // A switched-off rail is the user's own setting: tell them the exact command, not just the reason.
       const hint =
         result.decision.reason === "RAIL_DISABLED"
-          ? `${RAIL_LABEL[railOf(action)]} is switched off in your limits. Say “turn on ${RAIL_LABEL[railOf(action)].toLowerCase()}” and confirm with a yes to switch it on.`
+          ? `${RAIL_LABEL[railOf(action)]} is switched off in your limits. Say “turn on ${railWords(railOf(action))}” and confirm with a yes to switch it on.`
           : result.decision.reason === "KILL_SWITCH"
             ? "Everything is stopped: your kill switch is on. Say “resume” and confirm with a yes to lift it."
             : result.decision.reason === "CARD_MONTHLY_CAP"

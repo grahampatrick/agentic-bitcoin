@@ -1,5 +1,5 @@
 /**
- * Intent evals: 30 utterances → the first tool call (or none) the model makes, scored offline
+ * Intent evals: each utterance → the first tool call (or none) the model makes, scored offline
  * against the expectations in intents.jsonl. Requires ANTHROPIC_API_KEY (or an `ant` profile).
  *
  *   pnpm --filter @agentic-bitcoin/agent test:evals

@@ -59,6 +59,7 @@ import {
   paymentEntries,
   periodEnd,
   periodStart,
+  railWords,
   readEntries,
   referralStats,
   referralsEnabled,
@@ -439,7 +440,7 @@ export class Dispatcher {
     const rail = name === "strike" ? "exchange" : "goods"
     const on = ((await this.deps.policies.get(userId)) ?? DEFAULT_POLICY).rails[rail]
     return reply(
-      `${name === "strike" ? "Strike" : "Bitrefill"} key stored (${maskSecret(value)}). I deleted your message if I could; delete it yourself otherwise.${on ? "" : `\n${RAIL_LABEL[rail]} is switched off in your limits. Say “turn on ${RAIL_LABEL[rail].toLowerCase()}” when you want it.`}`,
+      `${name === "strike" ? "Strike" : "Bitrefill"} key stored (${maskSecret(value)}). I deleted your message if I could; delete it yourself otherwise.${on ? "" : `\n${RAIL_LABEL[rail]} is switched off in your limits. Say “turn on ${railWords(rail)}” when you want it.`}`,
     )
   }
 

@@ -31,3 +31,20 @@ describeWalletRail("nwc", () => new NwcWalletRail(cfg), { payable, failing, addr
 ```
 
 `pnpm --filter @agentic-bitcoin/core test` runs the unit suite plus the contract suite against the fakes.
+
+## The desk: views and settings (M25, ADR-0029)
+
+`show` and `change_setting` are ordinary Actions. The pure half is in `desk.ts`:
+
+```ts
+import { applyPolicySetting, describeSetting, settingNarrows } from "@agentic-bitcoin/core"
+
+const change = { setting: "daily_cap", op: "set", value: "20000", name: "" } as const
+settingNarrows(change, policy)   // true: lower than today, so it applies without a yes
+describeSetting(change, policy)  // "Set your daily cap to 20,000 sats (now 100,000 sats)"
+applyPolicySetting(policy, change) // { ok: true, policy, text } · { ok: false, error } · null (needs a store)
+```
+
+`evaluate` allows a narrowing change and answers `needs_confirmation` for anything else; neither
+kind is gated by the kill switch or a rail switch. The executor reaches the stores through the
+`desk` hook (`show`, `check`, `change`) on `ExecuteInput`; without one the action fails.
