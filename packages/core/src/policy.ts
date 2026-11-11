@@ -16,6 +16,7 @@ import {
   spendSats,
 } from "./action"
 import type { VirtualCard } from "./cards"
+import { describeSetting, settingNarrows } from "./desk"
 import { type PriceSnapshot, type Sats, formatCents, formatSats, satsToCents } from "./money"
 import type { ReplaceSetting } from "./replace"
 
@@ -100,6 +101,17 @@ export function evaluate(
   const summary = ctx.card
     ? `${summarize(action, amount, ctx.price)} · card “${ctx.card.card.name}”`
     : summarize(action, amount, ctx.price)
+
+  // M25 (ADR-0029): the user's own views and settings touch no rail, so the kill switch and the
+  // rail switches do not gate them (they are how the kill switch is lifted). A setting that only
+  // stops or narrows applies at once; anything else waits for the human's yes.
+  if (action.kind === "show") return { type: "allow", summary }
+  if (action.kind === "change_setting") {
+    const what = describeSetting(action, policy)
+    return settingNarrows(action, policy)
+      ? { type: "allow", summary: what }
+      : { type: "needs_confirmation", summary: what, actionHash: actionHash(action) }
+  }
 
   if (policy.killSwitch) return deny("KILL_SWITCH", summary)
   if (!policy.rails[railOf(action)]) return deny("RAIL_DISABLED", summary)

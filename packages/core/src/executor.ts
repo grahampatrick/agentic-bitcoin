@@ -18,6 +18,7 @@ import {
   periodEnd,
   periodStart,
 } from "./cards"
+import type { Desk } from "./desk"
 import {
   INVOICE_EXPIRY_SECONDS,
   type InvoiceStore,
@@ -110,6 +111,8 @@ export interface ExecuteInput {
   cards?: CardContext
   /** M22: the referral programme, for `referral_info`. */
   referrals?: ReferralContext
+  /** M25: the user's views and settings, for `show` and `change_setting` (ADR-0029). */
+  desk?: Desk
 }
 
 export interface ReferralContext {
@@ -654,6 +657,20 @@ async function dispatch(
         result: { card: cardView(card, 0n, now), link },
         detail: `${card.id} ${card.name}`,
       }
+    }
+    case "show": {
+      const r = await need(input.desk, "desk").show(action.view, action.arg ?? "")
+      // the text is for the reader, not the ledger: nothing of it is stored
+      return { result: { view: action.view, text: r.text, direct: r.direct } }
+    }
+    case "change_setting": {
+      const r = await need(input.desk, "desk").change({
+        setting: action.setting,
+        op: action.op,
+        value: action.value,
+        name: action.name,
+      })
+      return { result: { text: r.text }, detail: `${action.setting} ${action.op}`.trim() }
     }
     case "list_cards": {
       const cc = need(input.cards, "cards")

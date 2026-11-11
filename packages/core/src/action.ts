@@ -6,6 +6,7 @@
  * retry can never pay twice.
  */
 import { createHash } from "node:crypto"
+import { type DeskSetting, type DeskView, describeSetting } from "./desk"
 import type { InvoiceItem } from "./invoice"
 import type { Cents, Sats } from "./money"
 import type { GivePurpose } from "./recipient"
@@ -283,6 +284,25 @@ export interface AddNote extends Base {
   match?: string
 }
 
+/** M25: read one of the user's own views (what `/ledger`, `/budget`, `/orders`… printed). Moves nothing. */
+export interface Show extends Base {
+  kind: "show"
+  view: DeskView
+  arg?: string
+}
+
+/**
+ * M25: one change to the user's own settings (ADR-0029). Narrowing applies at once; widening waits
+ * for the human's yes, which the model can never give.
+ */
+export interface ChangeSetting extends Base {
+  kind: "change_setting"
+  setting: DeskSetting
+  op: string
+  value: string
+  name: string
+}
+
 export type Action =
   | Give
   | ScheduleGive
@@ -311,6 +331,8 @@ export type Action =
   | SweepToCold
   | ScheduleSweep
   | AddNote
+  | Show
+  | ChangeSetting
 
 export type ActionKind = Action["kind"]
 
@@ -342,6 +364,8 @@ export const RAIL_FOR_KIND: Record<ActionKind, RailName> = {
   list_cards: "wallet",
   update_card: "wallet",
   add_note: "wallet",
+  show: "wallet",
+  change_setting: "wallet",
 }
 
 export function railOf(action: Action): RailName {
@@ -383,6 +407,8 @@ export function spendSats(action: Action): Sats {
     case "list_cards":
     case "update_card":
     case "add_note":
+    case "show":
+    case "change_setting":
       return 0n
   }
 }
@@ -423,6 +449,8 @@ export function destinationOf(action: Action): string | null {
     case "list_cards":
     case "update_card":
     case "add_note":
+    case "show":
+    case "change_setting":
       return null
   }
 }
@@ -501,6 +529,10 @@ function describeKind(action: Action): string {
       return action.privateNote
         ? `Add a private note to ${action.entryId ? `payment ${action.entryId}` : action.match ? `the payment matching “${action.match}”` : "the last payment"}`
         : `Remove the private note from ${action.entryId ? `payment ${action.entryId}` : action.match ? `the payment matching “${action.match}”` : "the last payment"}`
+    case "show":
+      return `Show ${action.view.replace(/_/g, " ")}`
+    case "change_setting":
+      return describeSetting(action)
   }
 }
 
