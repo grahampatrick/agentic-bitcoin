@@ -1,298 +1,270 @@
-"""Generates apps/web/public/anvard-vale.svg, the painted vale on the home page. Original art, deterministic.
+"""Generates apps/web/public/anvard-vale.svg, the painted valley on the home page.
 
-Run: python3 scripts/vale.py apps/web/public/anvard-vale.svg
+A vector painting built from brush strokes: every rock face, the sky, the clouds and the grass are a
+base shape plus hundreds of thin clipped strokes, then a displacement "brush" and paper grain.
+Deterministic (seeded). Run: python3 scripts/vale.py apps/web/public/anvard-vale.svg
 """
 import math, random, sys
 
-W, H = 1400, 350
-o = []
-def P(pts, fill, op=1.0, extra=""):
-    d = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-    a = f' opacity="{op}"' if op != 1 else ""
-    return f'<polygon points="{d}" fill="{fill}"{a} {extra}/>'
-def C(x, y, r, fill, op=1.0):
-    a = f' opacity="{op}"' if op != 1 else ""
-    return f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" fill="{fill}"{a}/>'
-def RECT(x, y, w, h, fill, op=1.0, extra=""):
-    a = f' opacity="{op}"' if op != 1 else ""
-    return f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" fill="{fill}"{a} {extra}/>'
+W, H, TOP = 1400, 349, -110  # the frame, plus extra sky above for the page to fade into
+defs, body = [], []
+_n = [0]
 
-clips = []
-def cloud(cid, cx, base, w, h, seed, light="#f7f3ea", mid="#dfe6ee", shade="#8fa9c9"):
+def pts(p):
+    return " ".join(f"{x:.0f},{y:.0f}" for x, y in p)
+def poly(p, fill, op=1.0):
+    a = f' opacity="{op:.2f}"' if op < 1 else ""
+    return f'<polygon points="{pts(p)}" fill="{fill}"{a}/>'
+def circ(x, y, r, fill, op=1.0):
+    a = f' opacity="{op:.2f}"' if op < 1 else ""
+    return f'<circle cx="{x:.0f}" cy="{y:.0f}" r="{r:.0f}" fill="{fill}"{a}/>'
+def inside(p, x, y):
+    c = False
+    for i in range(len(p)):
+        (x1, y1), (x2, y2) = p[i], p[i - 1]
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            c = not c
+    return c
+def stroke(x, y, L, t, a, fill, op):
+    """One brush stroke: a thin lens centred on (x, y), length L, width t, angle a in degrees (y down)."""
+    ca, sa = math.cos(math.radians(a)), math.sin(math.radians(a))
+    hx, hy = ca * L / 2, sa * L / 2
+    nx, ny = -sa * t / 2, ca * t / 2
+    return poly([(x - hx, y - hy), (x + nx, y + ny), (x + hx, y + hy), (x - nx, y - ny)], fill, op)
+def strokes(face, n, angle, jitter, L, t, palette, seed, op=(0.3, 0.75), accept=None):
     r = random.Random(seed)
-    n = max(5, int(w / 13))
-    blobs = []
-    for i in range(n):
-        t = i / (n - 1)
-        env = math.sin(math.pi * t) ** 0.75
-        rad = (r.uniform(0.22, 0.42) * h) * (0.35 + 0.65 * env) + 5
-        x = cx - w / 2 + t * w + r.uniform(-5, 5)
-        y = base - rad * r.uniform(0.35, 0.8) - env * h * r.uniform(0.0, 0.5)
-        blobs.append((x, y, rad))
-    clips.append(f'<clipPath id="{cid}"><rect x="0" y="-200" width="{W}" height="{base + 200:.1f}"/></clipPath>')
-    g = [f'<g clip-path="url(#{cid})">']
-    g += [C(x + 4, y + 6, rad, shade) for x, y, rad in blobs]
-    g += [C(x - 1, y, rad * 0.94, mid) for x, y, rad in blobs]
-    g += [C(x - 5, y - 6, rad * 0.74, light) for x, y, rad in blobs]
-    g.append("</g>")
-    return "\n".join(g)
-
-# ---------- sky ----------
-sky = [RECT(-30, -150, W + 60, H + 190, "url(#sky)")]
-r = random.Random(3)
-# cirrus: long wisps sweeping up to the right, a few broad veils
-def wisp(x, y, L, t, rise, op):
-    return (f'<path d="M {x:.1f} {y:.1f} Q {x + L * 0.45:.1f} {y + rise * 0.3 - t:.1f} {x + L:.1f} {y + rise:.1f} '
-            f'Q {x + L * 0.5:.1f} {y + rise * 0.45 + t * 0.5:.1f} {x:.1f} {y:.1f} Z" fill="#f0f4f6" opacity="{op:.2f}"/>')
-for i in range(16):
-    x = r.uniform(-120, 620); y = r.uniform(20, 170); L = r.uniform(220, 620)
-    sky.append(wisp(x, y, L, r.uniform(2, 9), -L * r.uniform(0.05, 0.16), r.uniform(0.16, 0.42)))
-for i in range(9):
-    x = r.uniform(900, 1300); y = r.uniform(40, 150); L = r.uniform(160, 420)
-    sky.append(wisp(x, y, L, r.uniform(2, 7), -L * r.uniform(0.03, 0.12), r.uniform(0.14, 0.36)))
-for i in range(12):
-    x = r.uniform(-120, 1250); y = r.uniform(-100, 10); L = r.uniform(200, 560)
-    sky.append(wisp(x, y, L, r.uniform(2, 8), -L * r.uniform(0.04, 0.12), r.uniform(0.12, 0.3)))
-for i in range(4):
-    x = r.uniform(-100, 400); y = r.uniform(60, 190); L = r.uniform(400, 700)
-    sky.append(wisp(x, y, L, r.uniform(14, 26), -L * r.uniform(0.04, 0.1), r.uniform(0.08, 0.16)))
-o.append('<g filter="url(#brush)">' + "\n".join(sky) + "</g>")
-
-# ---------- clouds ----------
-cl = [
-    cloud("c1", 1045, 34, 120, 60, 11),
-    cloud("c2", 1290, 190, 260, 120, 12),
-    cloud("c3", 1215, 205, 120, 60, 13, mid="#cfdbe8"),
-    cloud("c4", 620, 232, 210, 150, 14),
-    cloud("c5", 470, 228, 110, 95, 15),
-    cloud("c6", 80, 40, 150, 50, 16),
-    cloud("c7", 640, 70, 90, 26, 17),
-    cloud("c8", 330, -40, 170, 46, 18),
-    cloud("c9", 1240, -52, 110, 34, 19),
-]
-o.append('<g filter="url(#brushCloud)">' + "\n".join(cl) + "</g>")
-
-# ---------- far mountains ----------
-far = [
-    P([(1150, 300), (1178, 205), (1228, 162), (1262, 146), (1300, 172), (1350, 196), (1430, 222), (1430, 300)], "#7e9cc2"),
-    P([(1178, 205), (1228, 162), (1262, 146), (1250, 200), (1215, 262), (1170, 300), (1150, 300)], "#a3bcd8"),
-    P([(1262, 146), (1300, 172), (1325, 230), (1290, 300), (1250, 300), (1262, 215)], "#6785ad"),
-    # left mid-distance peak
-    P([(190, 312), (212, 232), (242, 190), (268, 156), (296, 168), (342, 198), (418, 236), (500, 264), (548, 296), (548, 312)], "#6d90bd"),
-    P([(190, 312), (212, 232), (242, 190), (268, 156), (262, 205), (240, 262), (225, 312)], "#93b2d6"),
-    P([(268, 156), (296, 168), (342, 198), (380, 262), (330, 248), (292, 205)], "#5a7dab"),
-    P([(300, 232), (360, 250), (440, 262), (520, 286), (548, 300), (430, 296), (330, 268)], "#d0802c", 0.9),
-    P([(250, 262), (300, 268), (360, 290), (300, 296), (236, 290)], "#e09a3e", 0.85),
-]
-o.append('<g filter="url(#brushLichenFar)">' + "\n".join(far) + "</g>")
-
-# ---------- central massif ----------
-m = [
-    P([(452, 308), (520, 262), (585, 214), (642, 168), (700, 104), (742, 40), (772, -10), (800, -58), (826, -100), (852, -72), (880, -36), (908, -8), (942, 30), (1012, 96),
-       (1078, 142), (1152, 186), (1216, 226), (1292, 264), (1336, 308)], "#6c85a6"),
-    # lit left faces
-    P([(452, 308), (520, 262), (585, 214), (642, 168), (700, 104), (742, 40), (772, -10), (800, -58), (826, -100), (820, -30), (792, 70), (752, 150),
-       (700, 214), (640, 268), (596, 308)], "#9fb2c8"),
-    P([(585, 214), (642, 168), (700, 104), (690, 160), (650, 214), (600, 262), (560, 268)], "#bac7d6"),
-    P([(742, 40), (772, -10), (800, -58), (798, -10), (770, 60), (740, 110), (722, 100)], "#c5d0dc"),
-    # shadowed right faces
-    P([(826, -100), (852, -72), (880, -36), (908, -8), (942, 30), (1012, 96), (1078, 142), (1040, 160), (980, 120), (930, 70), (890, 40), (858, -20)], "#506a8e"),
-    P([(930, 70), (980, 120), (1040, 160), (1078, 142), (1152, 186), (1216, 226), (1160, 240), (1080, 205), (1000, 170)], "#435b80"),
-    P([(826, -100), (858, -20), (890, 40), (930, 110), (900, 170), (860, 110), (830, 60), (820, -30)], "#7f96b4"),
-    P([(752, 150), (792, 70), (830, 60), (860, 110), (880, 190), (850, 262), (800, 308), (700, 308), (700, 214)], "#8399b4"),
-    P([(880, 190), (900, 170), (1000, 170), (1080, 205), (1160, 240), (1216, 226), (1292, 264), (1336, 308), (850, 308), (850, 262)], "#5b7495"),
-    # orange flanks, following the slope
-    P([(856, -52), (900, 2), (955, 62), (1025, 118), (1002, 124), (940, 78), (892, 28)], "#d98630"),
-    P([(985, 128), (1052, 160), (1128, 196), (1200, 232), (1150, 232), (1070, 196), (1010, 162)], "#cf7624"),
-    P([(1100, 232), (1180, 250), (1262, 268), (1310, 300), (1200, 296), (1120, 268)], "#e09a3e", 0.9),
-    P([(905, 120), (935, 150), (960, 205), (940, 215), (915, 165)], "#c8742a", 0.85),
-    P([(668, 150), (700, 118), (712, 150), (680, 196), (650, 214)], "#d98630", 0.75),
-    P([(540, 262), (590, 236), (620, 250), (575, 286), (520, 296)], "#e09a3e", 0.8),
-    P([(770, 200), (800, 170), (820, 205), (790, 250), (760, 262)], "#cf7624", 0.6),
-]
-o.append('<g filter="url(#brushLichen)">' + "\n".join(m) + "</g>")
-
-o.append('<rect x="-30" y="236" width="1460" height="84" fill="url(#haze)"/>')
-
-# ---------- near left ridge ----------
-lr = [
-    P([(-30, 78), (0, 92), (58, 118), (118, 150), (186, 204), (246, 250), (298, 286), (348, 322), (348, 380), (-30, 380)], "#8793a2"),
-    P([(0, 92), (58, 118), (118, 150), (100, 205), (60, 262), (-30, 310), (-30, 78)], "#b8c0c8"),
-    P([(118, 150), (186, 204), (246, 250), (200, 268), (140, 232), (100, 205)], "#a2adb9"),
-    P([(60, 262), (100, 205), (140, 232), (200, 268), (160, 310), (90, 330), (0, 340), (0, 300)], "#6f7d8f"),
-    P([(246, 250), (298, 286), (348, 322), (348, 350), (200, 350), (160, 310), (200, 268)], "#5c6a7e"),
-    P([(70, 150), (128, 178), (196, 232), (262, 278), (238, 286), (170, 242), (104, 196)], "#d98630"),
-    P([(20, 200), (70, 232), (120, 286), (90, 296), (40, 250), (0, 232), (0, 205)], "#cf7624", 0.9),
-    P([(180, 290), (250, 300), (330, 330), (348, 350), (230, 350)], "#e09a3e", 0.9),
-]
-o.append('<g filter="url(#brushLichen)">' + "\n".join(lr) + "</g>")
-
-# ---------- meadow ----------
-r = random.Random(8)
-top = [(300, 380)]
-x = 300
-while x <= 1200:
-    top.append((x, 302 + 5 * math.sin(x / 70.0) + r.uniform(-2, 2) + (10 if x < 420 else 0)))
-    x += 30
-top += [(1200, 380)]
-md = [P(top, "url(#meadow)")]
-for i in range(240):
-    x = r.uniform(310, 1190); y = r.uniform(306, 350); L = r.uniform(14, 70); t = r.uniform(1, 3.2)
-    col = r.choice(["#f0b44a", "#e9a53a", "#b9650f", "#a3540c", "#f6c768", "#c97618"])
-    md.append(P([(x, y), (x + L, y - r.uniform(0, 3)), (x + L * 0.6, y + t)], col, r.uniform(0.35, 0.85)))
-# a pale road curling to the gate
-md.append('<path d="M 808 312 C 800 322, 760 326, 700 332 S 560 344, 470 350 L 560 350 C 640 344, 760 336, 822 322 Z" fill="#f1dfb6" opacity="0.8"/>')
-o.append('<g filter="url(#brush)">' + "\n".join(md) + "</g>")
-
-# ---------- right dark slope ----------
-rs = [
-    P([(1118, 350), (1150, 302), (1200, 264), (1262, 236), (1330, 202), (1430, 154), (1430, 380), (1100, 380)], "#c86f17"),
-    P([(1150, 302), (1200, 264), (1262, 236), (1330, 202), (1430, 154), (1430, 206), (1340, 232), (1280, 262), (1220, 290), (1170, 320), (1140, 330)], "#263657"),
-    P([(1200, 264), (1262, 236), (1300, 232), (1250, 262), (1210, 286)], "#34476c"),
-    P([(1280, 262), (1340, 232), (1430, 206), (1430, 258), (1350, 268), (1300, 290)], "#e69a2e"),
-    P([(1170, 320), (1220, 290), (1300, 290), (1350, 268), (1430, 258), (1430, 380), (1100, 380)], "#d17c1c"),
-    P([(1230, 320), (1300, 306), (1400, 300), (1400, 318), (1310, 322), (1250, 336)], "#a3540c", 0.8),
-    P([(1160, 340), (1240, 336), (1330, 340), (1430, 334), (1430, 380), (1130, 380)], "#8a4409", 0.8),
-]
-for i in range(60):
-    x = r.uniform(1180, 1400); y = r.uniform(270, 350); L = r.uniform(12, 50)
-    rs.append(P([(x, y), (x + L, y - L * 0.25), (x + L * 0.6, y + 2)], r.choice(["#f6c768", "#f0b44a", "#b9650f"]), r.uniform(0.3, 0.7)))
-o.append('<g filter="url(#brush)">' + "\n".join(rs) + "</g>")
-
-# ---------- the castle ----------
-LIT, MIDC, SHD, DEEP = "#f5f1e7", "#e4e1d8", "#a7b4c7", "#7c8ca6"
-RED, REDS, GOLD, DARK = "#bf3229", "#74141a", "#e4b04a", "#283042"
-c = []
-def crenel(x0, x1, y, fill, mw=6, gap=5, mh=5):
-    out = []; x = x0
-    while x + mw <= x1 + 0.1:
-        out.append(RECT(x, y - mh, mw, mh, fill)); x += mw + gap
+    xs = [p[0] for p in face]; ys = [p[1] for p in face]
+    out, tries = [], 0
+    while len(out) < n and tries < n * 60:
+        tries += 1
+        x, y = r.uniform(min(xs), max(xs)), r.uniform(min(ys), max(ys))
+        if not inside(face, x, y):
+            continue
+        if accept and r.random() > accept(x, y):
+            continue
+        out.append(stroke(x, y, r.uniform(*L), r.uniform(*t), angle + r.uniform(-jitter, jitter), r.choice(palette), r.uniform(*op)))
     return out
-def tower(x, w, top, base, roof=0, crown=4, flag=None, slits=(), batter=0.06):
-    """A round tower lit from the left, a little wider at the foot; corbelled crown; optional cone roof."""
-    b = (base - top) * batter
-    out = [P([(x, top), (x + w, top), (x + w + b, base), (x - b, base)], "url(#stone)")]
-    out += [RECT(x - crown, top - 9, w + 2 * crown, 10, "url(#stone)"), RECT(x - crown, top + 1, w + 2 * crown, 2.4, DEEP, 0.55)]
-    mw = max(4, w / 7); gap = max(3, w / 9)
-    out += crenel(x - crown, x + w * 0.55, top - 9, LIT, mw=mw, gap=gap, mh=5)
-    out += crenel(x + w * 0.62, x + w + crown, top - 9, SHD, mw=mw, gap=gap, mh=5)
-    if roof:
-        cx = x + w / 2; ry = top - 9
-        out += [P([(x - 2, ry), (cx, ry - roof), (x + w + 2, ry)], "url(#tile)")]
-        if flag:
-            out += [RECT(cx - 0.6, ry - roof - 15, 1.2, 16, DARK), P([(cx + 0.6, ry - roof - 15), (cx + 16, ry - roof - 11), (cx + 0.6, ry - roof - 7)], flag)]
-    for sy in slits:
-        out.append(RECT(x + w * 0.3, sy, 2.2, 8, DARK, 0.8))
+def face(p, base, layers, flt="brush"):
+    """A clipped face: base fill, then stroke layers, all bent by the brush filter."""
+    _n[0] += 1
+    cid = f"f{_n[0]}"
+    defs.append(f'<clipPath id="{cid}"><polygon points="{pts(p)}"/></clipPath>')
+    inner = [poly(p, base)]
+    for l in layers:
+        inner += l
+    return f'<g filter="url(#{flt})"><g clip-path="url(#{cid})">' + "".join(inner) + "</g></g>"
+def lerp_line(line, x):
+    for (x1, y1), (x2, y2) in zip(line, line[1:]):
+        if x1 <= x <= x2:
+            return y1 + (y2 - y1) * (x - x1) / (x2 - x1)
+    return 1e9
+
+# ------------------------------------------------------------------ sky
+SKY = [(-40, TOP - 40), (W + 40, TOP - 40), (W + 40, H + 40), (-40, H + 40)]
+body.append(face(SKY, "url(#sky)", [
+    strokes(SKY, 330, 0, 4, (70, 300), (2, 8), ["#5a84b2", "#6a90b8", "#4470a3", "#7f9fc0", "#3f6a9f", "#547fae"], 1, (0.18, 0.5)),
+    # paler bands and wisps high on the left
+    strokes([(-40, -20), (620, -20), (620, 80), (-40, 120)], 46, -3, 5, (120, 420), (3, 12), ["#93abc6", "#a9bccd", "#c9d3d8", "#8aa1bc"], 2, (0.25, 0.6)),
+    strokes([(20, 0), (300, 0), (330, 70), (60, 60)], 16, 12, 6, (90, 260), (3, 9), ["#ece8da", "#dfe2da", "#f3eedd"], 3, (0.45, 0.85)),
+    strokes(SKY, 40, -4, 5, (160, 520), (2, 6), ["#a9bccd", "#c2cdd4"], 4, (0.12, 0.3), accept=lambda x, y: 1.0 if y < -10 else 0.25),
+], flt="brushSky"))
+body.append(f'<rect x="-40" y="{TOP - 40}" width="{W + 80}" height="{H - TOP + 80}" fill="url(#hazeRight)"/>')
+body.append('<ellipse cx="50" cy="40" rx="230" ry="110" fill="#9fb3c8" opacity="0.5" filter="url(#soft)"/>')
+
+# ------------------------------------------------------------------ clouds
+def cloud(shade, mid, cream, shade_col="#9db3cf", mid_col="#c3d0d8", cream_col="#f6eed9", seed=1):
+    r = random.Random(seed)
+    g = [circ(x, y, rad, shade_col) for x, y, rad in shade]
+    g += [circ(x, y, rad, mid_col, 0.85) for x, y, rad in mid]
+    g += [circ(x, y, rad, cream_col) for x, y, rad in cream]
+    for x, y, rad in cream:  # warm light on the crowns, lavender in the folds
+        for _ in range(5):
+            g.append(stroke(x + r.uniform(-rad, rad) * 0.6, y + r.uniform(-rad, rad * 0.4) * 0.6, r.uniform(8, 22), r.uniform(3, 8), r.uniform(-30, 30),
+                            r.choice(["#fdf7e4", "#efe6cf", "#fbf3dc"]), r.uniform(0.5, 0.9)))
+    for x, y, rad in shade:
+        for _ in range(4):
+            g.append(stroke(x + r.uniform(-rad, rad) * 0.7, y + r.uniform(-rad, rad) * 0.7, r.uniform(12, 34), r.uniform(4, 10), r.uniform(-25, 25),
+                            r.choice(["#8ea6c6", "#b2c3d6", "#a9bbd4", "#c9d4dc"]), r.uniform(0.3, 0.6)))
+    return '<g filter="url(#brushCloud)">' + "".join(g) + "</g>"
+body.append(cloud(  # the great cumulus left of the mountain
+    [(470, 168, 30), (505, 186, 34), (540, 162, 36), (575, 150, 40), (610, 140, 44), (650, 126, 44), (674, 150, 34), (560, 200, 40),
+     (610, 196, 44), (650, 190, 40), (500, 216, 30), (470, 206, 26), (445, 190, 20)],
+    [(482, 160, 22), (545, 150, 26), (600, 136, 32), (585, 176, 26)],
+    [(655, 112, 34), (673, 128, 26), (640, 100, 24), (626, 126, 22), (458, 150, 18), (450, 168, 16), (586, 166, 15), (600, 150, 13), (522, 226, 11)], seed=5))
+body.append(cloud(  # right
+    [(1180, 126, 30), (1215, 122, 36), (1255, 136, 34), (1295, 150, 32), (1335, 160, 30), (1375, 170, 30), (1410, 176, 28), (1240, 166, 30), (1290, 180, 26), (1345, 190, 22)],
+    [(1230, 140, 24), (1300, 162, 22), (1350, 172, 20), (1270, 150, 22)],
+    [(1196, 104, 27), (1226, 98, 28), (1176, 120, 17), (1254, 112, 27), (1284, 126, 25), (1314, 140, 23), (1346, 150, 22), (1378, 158, 22), (1410, 166, 22), (1238, 126, 20)],
+    shade_col="#a3b9cc", seed=6))
+body.append(cloud([(1300, 26, 24), (1350, 42, 26), (1392, 52, 22)], [], [(1290, 8, 26), (1326, 2, 30), (1366, 14, 32), (1404, 28, 30), (1345, 28, 22), (1340, -22, 30), (1386, -14, 34)], shade_col="#a3b9cc", seed=7))
+body.append(cloud([(1020, 18, 16), (1040, 28, 12)], [], [(1010, 8, 16), (1030, 4, 20), (1048, 22, 13)], seed=8))
+body.append(cloud([(66, 18, 14), (90, 22, 10), (318, -52, 18), (352, -50, 14)], [], [(56, 10, 14), (76, 6, 13), (96, 14, 9), (300, -60, 17), (330, -68, 22), (362, -60, 16), (386, -54, 10)], seed=9))
+
+# ------------------------------------------------------------------ far ridge on the right
+FAR = [(1150, 300), (1195, 152), (1207, 145), (1225, 155), (1262, 180), (1292, 200), (1330, 215), (1440, 232), (1440, 300)]
+body.append(face(FAR, "#5f7895", [strokes(FAR, 90, 40, 12, (20, 60), (2, 6), ["#75889f", "#4f6f9a", "#8795a8", "#566b88"], 11)]))
+
+# ------------------------------------------------------------------ the wedge peak, mid left
+WEDGE_SH = [(265, 155), (250, 180), (225, 215), (200, 245), (200, 335), (312, 335), (300, 270), (285, 215), (278, 180)]
+WEDGE_LT = [(265, 155), (300, 165), (350, 185), (440, 200), (462, 222), (520, 245), (565, 268), (565, 335), (312, 335), (300, 270), (285, 215), (278, 180)]
+RIDGE_W = [(265, 155), (300, 165), (350, 185), (440, 200), (462, 222), (520, 245)]
+body.append(face(WEDGE_SH, "#43668e", [strokes(WEDGE_SH, 80, 112, 10, (20, 70), (2, 6), ["#3e5b87", "#4a6f99", "#55789f", "#38557f"], 12)]))
+body.append(face(WEDGE_LT, "#7d8fa3", [
+    strokes(WEDGE_LT, 190, 20, 9, (20, 80), (2, 6), ["#8193a5", "#6b8094", "#9a887a", "#838b8e", "#5b7188", "#96a3b0", "#4d6d93"], 13),
+    strokes(WEDGE_LT, 70, 20, 8, (14, 50), (2, 6), ["#c8742a", "#d98a3a", "#a86a3a", "#b9763a"], 14, (0.5, 0.9),
+            accept=lambda x, y: 0.95 if 2 < y - lerp_line(RIDGE_W, x) < 22 else (0.3 if 70 < y - lerp_line(RIDGE_W, x) < 95 else 0.02)),
+]))
+FOOT = [(425, 335), (440, 300), (468, 276), (500, 263), (540, 276), (565, 292), (565, 335)]
+body.append(face(FOOT, "#44638f", [strokes(FOOT, 40, 150, 14, (14, 40), (2, 5), ["#3e5a85", "#4f6f99", "#5a7aa3"], 15)]))
+
+# ------------------------------------------------------------------ the mountain
+EDGE_L = [(460, 297), (515, 250), (565, 210), (615, 165), (640, 150), (685, 115), (710, 75), (737, 0), (752, -40), (775, -70), (800, -82)]
+EDGE_R = [(800, -82), (830, -62), (855, -30), (880, 10), (930, 30), (995, 48), (1070, 100), (1140, 133), (1200, 150), (1230, 170), (1266, 200)]
+SPLIT = [(800, -82), (806, 0), (840, 70), (868, 140), (880, 210), (882, 302)]  # where shadow meets light
+M_SH = EDGE_L + SPLIT[1:] + [(460, 302)]
+M_LT = EDGE_R + [(1266, 302)] + SPLIT[::-1][:-1]
+body.append(face(M_SH, "url(#shadowFace)", [
+    strokes(M_SH, 300, 112, 9, (26, 110), (2, 7), ["#3a5682", "#46689a", "#4d72a3", "#35507a", "#5a7fae", "#415f8d"], 21, (0.22, 0.55)),
+    strokes(M_SH, 40, 118, 8, (30, 90), (2, 5), ["#6c8fb8", "#7b9cc0"], 22, (0.2, 0.4)),
+]))
+HOT = [(806, -30), (880, 8), (962, 58), (1004, 130), (962, 204), (900, 172), (862, 92)]  # the orange shoulder
+def orange_p(x, y):
+    d = y - lerp_line(EDGE_R, x)
+    if inside(HOT, x, y):
+        return 0.75
+    if 3 < d < 30:
+        return 0.8
+    return 0.05
+body.append(face(M_LT, "#a3a4a2", [
+    strokes(M_LT, 460, 48, 14, (18, 90), (2, 7), ["#c4c3bd", "#b0aea8", "#989a9b", "#808688", "#6b7686", "#d3d0c4", "#8d9299"], 23, (0.35, 0.8)),
+    strokes(M_LT, 70, 55, 12, (20, 70), (3, 8), ["#556378", "#4a5a78", "#5b6980", "#4f6f9a"], 24, (0.3, 0.65), accept=lambda x, y: 0.9 if x > 1080 and y > 190 else 0.3),
+    strokes(M_LT, 230, 50, 14, (12, 56), (2, 7), ["#c8772e", "#b86a2c", "#a28369", "#986e4f", "#d98a3a", "#c06f2b"], 25, (0.5, 0.92), accept=orange_p),
+    strokes(M_LT, 50, 52, 10, (20, 70), (2, 5), ["#e3ded0", "#d9d5c8"], 26, (0.4, 0.7)),
+]))
+body.append('<rect x="-40" y="238" width="1480" height="70" fill="url(#haze)"/>')
+
+# ------------------------------------------------------------------ near left ridge
+RIDGE = [(-40, 80), (0, 102), (30, 118), (60, 150), (150, 210), (210, 235), (280, 280), (340, 320), (365, 362), (-40, 362)]
+body.append(face(RIDGE, "#a8a195", [
+    strokes(RIDGE, 380, 52, 9, (30, 120), (2, 7), ["#b9b2a4", "#c6c0ae", "#9d9d9b", "#8b8b8b", "#7f8286", "#d0cab8", "#a39c90"], 31, (0.3, 0.75)),
+    strokes(RIDGE, 60, 50, 8, (30, 90), (3, 8), ["#7f807f", "#6c7478", "#5c6969"], 32, (0.3, 0.6), accept=lambda x, y: 0.9 if y > 300 or x < 40 else 0.15),
+    strokes([(120, 225), (180, 232), (200, 290), (150, 290)], 16, 55, 8, (14, 40), (2, 5), ["#b9763a", "#c8823f", "#a86a3a"], 33, (0.5, 0.85)),
+]))
+
+# ------------------------------------------------------------------ the plain
+MEADOW = [(352, 362), (372, 326), (410, 310), (470, 301), (560, 299), (700, 303), (900, 300), (1160, 297), (1160, 362)]
+body.append(face(MEADOW, "#c2742f", [
+    strokes(MEADOW, 430, 0, 8, (14, 70), (1.5, 4), ["#c67c34", "#be7435", "#d98a3a", "#ad6b35", "#976840", "#e09a45", "#8a5a34", "#cf8437"], 41, (0.4, 0.9)),
+]))
+body.append('<g filter="url(#brush)">'
+            + poly([(578, 338), (606, 322), (700, 330), (700, 362), (566, 362)], "#2f3663", 0.85)   # the building's shadow
+            + poly([(880, 322), (1000, 318), (1130, 321), (1130, 326), (1000, 324), (880, 329)], "#cdbf9f", 0.75)  # a pale road
+            + "</g>")
+
+# ------------------------------------------------------------------ low white buildings, bottom left
+body.append('<g filter="url(#brushFine)">'
+            + poly([(248, 352), (276, 324), (322, 321), (332, 352)], "#dfe3df") + poly([(322, 321), (346, 317), (352, 352), (332, 352)], "#5f7490")
+            + poly([(346, 330), (420, 311), (426, 318), (362, 341)], "#f1efe2") + poly([(352, 337), (424, 319), (428, 352), (352, 352)], "#3f5a85")
+            + poly([(366, 322), (386, 317), (387, 322), (367, 327)], "#2f3663") + poly([(262, 340), (300, 334), (302, 352), (256, 352)], "#b9c2c6")
+            + "</g>")
+
+# ------------------------------------------------------------------ dark slope, right
+SLOPE = [(1118, 362), (1142, 300), (1160, 280), (1190, 245), (1230, 220), (1290, 200), (1360, 200), (1385, 185), (1440, 156), (1440, 362)]
+GRASS = [(1128, 362), (1150, 340), (1180, 322), (1240, 290), (1300, 262), (1360, 235), (1440, 196), (1440, 362)]
+body.append(face(SLOPE, "#2c3558", [strokes(SLOPE, 130, -28, 12, (20, 80), (2, 7), ["#262744", "#323353", "#3a4268", "#2d355a", "#414a70"], 51)]))
+body.append(face(GRASS, "#a75e28", [strokes(GRASS, 300, -26, 12, (14, 64), (1.5, 5), ["#b76a2a", "#aa622e", "#c8772e", "#995128", "#8a4a26", "#d08a3a", "#734830"], 52, (0.4, 0.9))]))
+
+# ------------------------------------------------------------------ the citadel
+CREAM, CREAM2, PALE, NAVY = "#f3ebd4", "#e7dfc8", "#b4c6d2", "#2d3560"
+b = []
+def spire(x0, x1, top, base, foot_l, foot_r, seed):
+    """A swept spire: a narrow shaft that flares to a wide foot, a dark slot up the lit edge."""
+    r = random.Random(seed)
+    mid = top + (base - top) * 0.52
+    out = [f'<path d="M {foot_l} {base} C {x0 - 18} {base - 28}, {x0 - 1} {mid + 44}, {x0} {mid} L {x0} {top + 1} L {x1} {top} '
+           f'C {x1 + 3} {top + (base - top) * 0.53:.0f}, {x1 + 25} {base - 42}, {foot_r} {base} Z" fill="url(#cream)"/>',
+           f'<path d="M {foot_l} {base} C {x0 - 18} {base - 28}, {x0 - 1} {mid + 44}, {x0} {mid} L {x0} {top + 1} L {x0 + 5} {top + 1} L {x0 + 5} {base} Z" fill="{PALE}"/>',
+           f'<path d="M {foot_l + 14} {base} C {x0 - 12} {base - 20}, {x0 - 2} {base - 44}, {x0 + 1} {base - 70} L {x0 + 1} {base} Z" fill="#dbe7ea" opacity="0.8"/>',
+           f'<rect x="{x0 + 3.5}" y="{top + 11}" width="{5 if x1 - x0 > 26 else 4}" height="{base - top - 11}" fill="{NAVY}"/>',
+           f'<rect x="{x0 + 1}" y="{top + 3}" width="6" height="6" fill="#fffdf4"/>']
+    for _ in range(26):  # faint weathering down the lit face
+        y = r.uniform(top + 20, base - 6); t = (y - top) / (base - top)
+        x = r.uniform(x0 + 12, x1 + (foot_r - x1) * t ** 2.2 - 6)
+        out.append(stroke(x, y, r.uniform(10, 30), r.uniform(1, 2.4), 84 - 30 * t, r.choice(["#ddd5bd", "#fbf5e2", "#e9e1c9"]), r.uniform(0.35, 0.7)))
     return out
-G = 314  # ground line at the castle
-# cast shadow on the meadow, to the right
-c.append(P([(668, G), (1070, G - 2), (1190, G + 16), (1020, G + 22), (700, G + 7)], "#6e380c", 0.5))
-# hall behind the wall
-c += [RECT(752, 226, 132, 50, "url(#stone)"), P([(744, 228), (818, 190), (892, 228)], "url(#tile)")]
-# the tall towers
-c += tower(712, 40, 84, G, roof=52, flag=GOLD, slits=(118, 160, 204, 244))
-c += tower(868, 28, 138, G, roof=38, flag=RED, slits=(166, 208))
-c += tower(808, 20, 176, G, roof=28, slits=(196,))
-c += tower(770, 14, 204, G, roof=20)
-# the curtain wall, with a return wall in shadow running back to the right
-c += [RECT(652, 266, 318, G - 266, "url(#wall)")]
-c += crenel(652, 970, 266, LIT, mw=7, gap=6, mh=6)
-c += [P([(970, 266), (1046, 277), (1046, G - 1), (970, G)], "url(#wallShade)")]
-c += [P([(970 + i * 12.5, 266 + i * 1.8), (977 + i * 12.5, 267 + i * 1.8), (977 + i * 12.5, 261 + i * 1.8), (970 + i * 12.5, 260 + i * 1.8)], SHD) for i in range(6)]
-# corner towers
-c += tower(632, 38, 238, G, roof=32, slits=(258, 284))
-c += tower(950, 38, 232, G, roof=32, flag=GOLD, slits=(252, 282))
-c += tower(1034, 22, 250, G - 1, roof=20)
-# gatehouse
-c += [RECT(776, 248, 68, G - 248, "url(#wall)"), RECT(824, 248, 20, G - 248, SHD, 0.9)]
-c += crenel(776, 844, 248, LIT, mw=7, gap=5, mh=6)
-c += [f'<path d="M 796 {G} L 796 292 A 14 14 0 0 1 824 292 L 824 {G} Z" fill="{DARK}"/>',
-      f'<path d="M 800 {G} L 800 294 A 10 10 0 0 1 820 294 L 820 {G} Z" fill="#0f1420"/>',
-      RECT(785, 262, 3, 9, DARK, 0.8), RECT(832, 262, 3, 9, DARK, 0.55), P([(803, 248), (810, 236), (817, 248)], GOLD)]
-for sx in (678, 708, 738, 760, 866, 896, 926):
-    c.append(RECT(sx, 282, 2.2, 9, DARK, 0.6))
-c += [RECT(742, 272, 12, 22, RED), P([(742, 294), (748, 289), (754, 294)], LIT)]
-o.append('<g filter="url(#brushFine)">' + "\n".join(c) + "</g>")
+# the base: a low battered block, left face in shadow, right face in the sun
+b += [poly([(590, 336), (606, 320), (675, 258), (800, 258), (808, 331)], "url(#baseShade)"),
+      poly([(752, 262), (792, 262), (800, 326), (748, 326)], "#cfe0e6", 0.55),
+      poly([(665, 274), (736, 274), (735, 288), (650, 288)], "#3b4f77"), poly([(632, 302), (722, 302), (720, 324), (608, 324)], "#333867"),
+      poly([(800, 258), (1020, 262), (1031, 300), (808, 331)], "#f1ead7"),
+      poly([(808, 318), (1031, 292), (1031, 300), (808, 331)], "#d9cfb4", 0.8),
+      poly([(672, 254), (800, 254), (1023, 258), (1021, 264), (800, 260), (674, 260)], "#ece8d8"),
+      poly([(925, 272), (990, 274), (993, 300), (929, 305)], "#2e335e"),
+      poly([(997, 291), (1024, 290), (1026, 299), (998, 301)], "#5a3a3a"),
+      poly([(835, 271), (851, 271), (851, 280), (835, 280)], "#3b4f77")]
+for i, x in enumerate((936, 947, 958, 969, 980)):
+    b.append(poly([(x, 274), (x + 5, 274), (x + 6, 302), (x + 1, 303)], "#4a5fa0", 0.7 if i % 2 else 0.45))
+for x in (850, 880, 905):
+    b.append(poly([(x, 262), (x + 1.4, 262), (x + 3, 322 - (x - 808) * 0.12), (x + 1.6, 322 - (x - 808) * 0.12)], "#cfc7b0", 0.8))
+b += [poly([(860, 286), (900, 285), (902, 310), (862, 314)], "#e6dec6", 0.9), poly([(812, 290), (846, 289), (848, 318), (813, 322)], "#e9e2cb", 0.9)]
+b += spire(885, 910, 60, 259, 858, 992, 61)
+b += spire(745, 775, 30, 257, 705, 882, 62)
+# dome and dish
+b += ['<path d="M 521 306 A 25 23 0 0 1 571 306 Z" fill="#f3ecd8"/>', '<path d="M 521 306 A 25 23 0 0 1 536 286 A 30 30 0 0 0 548 306 Z" fill="#a9bccd"/>',
+      poly([(512, 306), (578, 306), (574, 311), (516, 311)], "#3f5a85", 0.7),
+      '<ellipse cx="1046" cy="315" rx="7" ry="7.5" fill="#8d95a3"/>', '<rect x="1045.3" y="321" width="1.4" height="12" fill="#5a5f6b"/>']
+for x in (1085, 1098, 1111, 1124, 1137):
+    b.append(f'<rect x="{x}" y="326" width="1" height="6" fill="#6b5a4a"/>')
+body.append('<g filter="url(#brushFine)">' + "".join(b) + "</g>")
 
-# ---------- small things: cottages on the left, a watchtower dome ----------
-s = []
-for (x, y, w) in ((452, 334, 22), (484, 338, 18), (420, 340, 16), (520, 332, 14)):
-    s += [RECT(x, y - 9, w, 9, LIT), RECT(x + w * 0.6, y - 9, w * 0.4, 9, SHD), P([(x - 2, y - 9), (x + w / 2, y - 18), (x + w + 2, y - 9)], RED)]
-s += [f'<path d="M 560 318 A 14 14 0 0 1 588 318 Z" fill="{LIT}"/>', f'<path d="M 576 318 A 14 14 0 0 0 574 304 A 14 14 0 0 1 588 318 Z" fill="{SHD}"/>']
-o.append('<g filter="url(#brushFine)">' + "\n".join(s) + "</g>")
-
-defs = f'''<defs>
-<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#1a4284"/><stop offset="0.36" stop-color="#3468aa"/>
-  <stop offset="0.6" stop-color="#7ba5d1"/><stop offset="0.78" stop-color="#b9d2e7"/><stop offset="1" stop-color="#dde9f1"/>
+# ------------------------------------------------------------------ assemble
+head = f'''<defs>
+<linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="{TOP}" x2="0" y2="{H}">
+  <stop offset="0" stop-color="#3f6a9f"/><stop offset="0.35" stop-color="#4b76a8"/><stop offset="0.7" stop-color="#5a88b0"/><stop offset="1" stop-color="#8fb0c8"/>
+</linearGradient>
+<linearGradient id="hazeRight" gradientUnits="userSpaceOnUse" x1="820" y1="0" x2="1400" y2="0">
+  <stop offset="0" stop-color="#93adc3" stop-opacity="0"/><stop offset="1" stop-color="#93adc3" stop-opacity="0.62"/>
 </linearGradient>
 <linearGradient id="haze" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#dfe9f1" stop-opacity="0"/><stop offset="1" stop-color="#e8eef2" stop-opacity="0.42"/>
+  <stop offset="0" stop-color="#b9cbd8" stop-opacity="0"/><stop offset="1" stop-color="#b9cbd8" stop-opacity="0.3"/>
 </linearGradient>
-<linearGradient id="meadow" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#e59a2a"/><stop offset="1" stop-color="#c06d12"/>
+<linearGradient id="shadowFace" gradientUnits="userSpaceOnUse" x1="0" y1="-80" x2="0" y2="302">
+  <stop offset="0" stop-color="#3c5884"/><stop offset="0.7" stop-color="#405f8b"/><stop offset="1" stop-color="#5a7699"/>
 </linearGradient>
-<linearGradient id="stone" x1="0" y1="0" x2="1" y2="0">
-  <stop offset="0" stop-color="#fbf8ef"/><stop offset="0.38" stop-color="#efebe0"/>
-  <stop offset="0.6" stop-color="#b9c3d2"/><stop offset="1" stop-color="#8797b1"/>
-</linearGradient>
-<linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#f7f3e9"/><stop offset="0.6" stop-color="#f1e9d8"/><stop offset="1" stop-color="#e6cfa4"/>
-</linearGradient>
-<linearGradient id="wallShade" x1="0" y1="0" x2="0" y2="1">
-  <stop offset="0" stop-color="#9eadc3"/><stop offset="1" stop-color="#a99a8d"/>
-</linearGradient>
-<linearGradient id="tile" x1="0" y1="0" x2="1" y2="0">
-  <stop offset="0" stop-color="#d9463a"/><stop offset="0.5" stop-color="#b82a22"/>
-  <stop offset="0.56" stop-color="#84181b"/><stop offset="1" stop-color="#641014"/>
-</linearGradient>
-<filter id="brush" x="-2%" y="-5%" width="104%" height="110%" color-interpolation-filters="sRGB">
-  <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="3" seed="4" result="n"/>
-  <feDisplacementMap in="SourceGraphic" in2="n" scale="7" xChannelSelector="R" yChannelSelector="G"/>
+<linearGradient id="cream" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f7f0db"/><stop offset="1" stop-color="{CREAM2}"/></linearGradient>
+<linearGradient id="baseShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#93a8b8"/><stop offset="1" stop-color="#5c728d"/></linearGradient>
+<filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="26"/></filter>
+<filter id="brush" x="-3%" y="-6%" width="106%" height="112%" color-interpolation-filters="sRGB">
+  <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" seed="4" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G"/>
 </filter>
-<filter id="brushFine" x="-2%" y="-5%" width="104%" height="110%" color-interpolation-filters="sRGB">
+<filter id="brushSky" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+  <feTurbulence type="fractalNoise" baseFrequency="0.02 0.06" numOctaves="3" seed="8" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="9" xChannelSelector="R" yChannelSelector="G"/>
+</filter>
+<filter id="brushFine" x="-3%" y="-6%" width="106%" height="112%" color-interpolation-filters="sRGB">
   <feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="2" seed="9" result="n"/>
-  <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" xChannelSelector="R" yChannelSelector="G"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="1.4" xChannelSelector="R" yChannelSelector="G"/>
 </filter>
-<filter id="brushCloud" x="-2%" y="-10%" width="104%" height="120%" color-interpolation-filters="sRGB">
-  <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="4" seed="2" result="n"/>
-  <feDisplacementMap in="SourceGraphic" in2="n" scale="11" xChannelSelector="R" yChannelSelector="G"/>
-</filter>
-<filter id="brushLichen" x="-2%" y="-5%" width="104%" height="110%" color-interpolation-filters="sRGB">
-  <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="6" result="w"/>
-  <feDisplacementMap in="SourceGraphic" in2="w" scale="9" xChannelSelector="R" yChannelSelector="G" result="d"/>
-  <feTurbulence type="fractalNoise" baseFrequency="0.02 0.055" numOctaves="4" seed="12" result="n"/>
-  <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.84  0 0 0 0 0.50  0 0 0 0 0.17  6 0 0 0 -3.5" result="o"/>
-  <feComposite in="o" in2="d" operator="in" result="oc"/>
-  <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.16  0 0 0 0 0.22  0 0 0 0 0.36  0 -3 0 0 1.05" result="k"/>
-  <feComposite in="k" in2="d" operator="in" result="kc"/>
-  <feMerge><feMergeNode in="d"/><feMergeNode in="kc"/><feMergeNode in="oc"/></feMerge>
-</filter>
-<filter id="brushLichenFar" x="-2%" y="-5%" width="104%" height="110%" color-interpolation-filters="sRGB">
-  <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="3" seed="16" result="w"/>
-  <feDisplacementMap in="SourceGraphic" in2="w" scale="7" xChannelSelector="R" yChannelSelector="G" result="d"/>
-  <feTurbulence type="fractalNoise" baseFrequency="0.03 0.07" numOctaves="3" seed="22" result="n"/>
-  <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.86  0 0 0 0 0.56  0 0 0 0 0.24  5 0 0 0 -3.1" result="o"/>
-  <feComposite in="o" in2="d" operator="in" result="oc"/>
-  <feMerge><feMergeNode in="d"/><feMergeNode in="oc"/></feMerge>
+<filter id="brushCloud" x="-10%" y="-20%" width="120%" height="140%" color-interpolation-filters="sRGB">
+  <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="4" seed="2" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="14" xChannelSelector="R" yChannelSelector="G" result="d"/>
+  <feGaussianBlur in="d" stdDeviation="0.7"/>
 </filter>
 <filter id="grain" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-  <feTurbulence type="fractalNoise" baseFrequency="1.3" numOctaves="2" seed="5" result="n"/>
-  <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.06  0 0 0 0 0.09  0 0 0 0 0.18  0 0 0 1.5 -0.62"/>
+  <feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="5" result="n"/>
+  <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.08  0 0 0 0 0.11  0 0 0 0 0.2  0 0 0 1.5 -0.62"/>
 </filter>
 <filter id="grainLight" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
-  <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves="2" seed="31" result="n"/>
-  <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 0.97  0 0 0 0 0.9  0 0 0 1.4 -0.66"/>
+  <feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="31" result="n"/>
+  <feColorMatrix in="n" type="matrix" values="0 0 0 0 1  0 0 0 0 0.96  0 0 0 0 0.86  0 0 0 1.4 -0.66"/>
 </filter>
-{"".join(clips)}
+{"".join(defs)}
 </defs>'''
-
-svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -110 {W} {H + 110}" preserveAspectRatio="xMidYMax slice" role="img" aria-label="A painted vale: a pale castle with red roofs below a mountain, orange hills, a blue sky.">
-{defs}
-{chr(10).join(o)}
-<rect y="-110" width="{W}" height="{H + 110}" filter="url(#grain)" opacity="0.26"/>
-<rect y="-110" width="{W}" height="{H + 110}" filter="url(#grainLight)" opacity="0.2"/>
-</svg>
-'''
+svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 {TOP} {W} {H - TOP}" preserveAspectRatio="xMidYMax slice" role="img" '
+       f'aria-label="A painted valley: a pale twin-spired citadel below a mountain, orange grass, a blue sky.">\n{head}\n'
+       + "\n".join(body)
+       + f'\n<rect y="{TOP}" width="{W}" height="{H - TOP}" filter="url(#grain)" opacity="0.3"/>'
+       + f'\n<rect y="{TOP}" width="{W}" height="{H - TOP}" filter="url(#grainLight)" opacity="0.22"/>\n</svg>\n')
 open(sys.argv[1], "w").write(svg)
-print(len(svg))
+print(len(svg), "bytes,", svg.count("<polygon"), "strokes")
