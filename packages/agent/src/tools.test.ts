@@ -170,6 +170,10 @@ describe("quoteUntrusted", () => {
 
 function sampleInput(name: string): Record<string, unknown> {
   switch (name) {
+    case "show":
+      return { view: "activity", arg: "" }
+    case "change_setting":
+      return { setting: "daily_cap", op: "set", value: "50000", name: "" }
     case "get_balance":
       return {}
     case "make_invoice":

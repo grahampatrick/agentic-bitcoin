@@ -21,7 +21,7 @@ const REQUIRED_METHODS = ["get_balance", "make_invoice", "pay_invoice", "lookup_
 
 /**
  * Decide whether a connection may be paired. Refuses strings without a budget unless the user
- * explicitly overrides (`/pair unbudgeted <url>`), and strings missing the methods we need.
+ * explicitly overrides ("connect anyway"), and strings missing the methods we need.
  */
 export function assessPairing(probe: WalletProbe, opts: { allowUnbudgeted: boolean }): PairResult {
   const missing = probe.methods ? REQUIRED_METHODS.filter((m) => !probe.methods?.includes(m)) : []
@@ -35,7 +35,7 @@ export function assessPairing(probe: WalletProbe, opts: { allowUnbudgeted: boole
       ok: false,
       unbudgeted: true,
       error:
-        "This connection has NO budget: the wallet would let me spend everything in it. Create a new connection with a daily budget and an expiry (Alby Hub: Apps → Add connection → Budget), then /pair again. If you really want this one, send: /pair unbudgeted <string>",
+        "This connection has NO budget: the wallet would let me spend everything in it. Create a new connection with a daily budget and an expiry (Alby Hub: Apps → Add connection → Budget) and paste that one instead. If you really want this one, reply “connect anyway” in the next few minutes.",
     }
   }
   const b = probe.budget
@@ -50,14 +50,19 @@ export function assessPairing(probe: WalletProbe, opts: { allowUnbudgeted: boole
   }
 }
 
+/**
+ * Long strings that are meant to be read: a Lightning invoice or LNURL, a bitcoin address, a link.
+ * People paste these to pay, to register cold storage, or to pay one of our pay links, so they
+ * must reach the model. None of them can spend from anything.
+ */
+const PUBLIC_STRING =
+  /\b(?:lightning:)?(?:ln(?:bc|tb|bcrt|url)[a-z0-9]{20,}|(?:bc|tb|bcrt)1[a-z0-9]{20,})\b|https?:\/\/\S+/gi
+
 /** Does this text look like a wallet connection string or an API key? Never let it reach the model. */
 export function looksLikeSecret(text: string): boolean {
-  return (
-    /nostr\+walletconnect:\/\//i.test(text) ||
-    /\bsecret=[0-9a-f]{32,}/i.test(text) ||
-    /\b(sk|pk|key)[-_][A-Za-z0-9]{20,}/.test(text) ||
-    /\b[A-Za-z0-9]{40,}\b/.test(text)
-  )
+  if (/nostr\+walletconnect:\/\//i.test(text) || /\bsecret=[0-9a-f]{32,}/i.test(text)) return true
+  const rest = text.replace(PUBLIC_STRING, " ")
+  return /\b(sk|pk|key)[-_][A-Za-z0-9]{20,}/.test(rest) || /\b[A-Za-z0-9]{40,}\b/.test(rest)
 }
 
 /**
@@ -75,12 +80,12 @@ export function redactForLog(text: string): string {
 }
 
 export const PAIR_HELP = [
-  "To pair your wallet, send: /pair <nostr+walletconnect://…>",
+  "To connect your wallet, paste its connection string (it starts with nostr+walletconnect://) here as a message of its own. I take it out of the chat before the model sees it and store it encrypted.",
   "Get a connection string with a BUDGET and an EXPIRY:",
   "• Alby Hub: Apps → Add connection → name it, set a daily budget (e.g. 20,000 sats), expiry 30 days → copy.",
   "• Coinos: Settings → Nostr Wallet Connect → create with a limit.",
   "• Primal / Zeus: Wallet → Nostr Wallet Connect → new connection with a budget.",
-  "I only accept budgeted strings. Delete the message after pairing; on Telegram I delete it for you.",
+  "I only accept strings with a budget. Delete the message afterwards if I could not.",
 ].join("\n")
 
 // --- first-run policy wizard ------------------------------------------------------------------
@@ -95,7 +100,7 @@ export function startWizard(base: Policy = DEFAULT_POLICY): { state: WizardState
   return {
     state: { step: "daily", draft: { ...base } },
     prompt:
-      "Let's set your limits (you can change them later with /budget).\n1/3 — How many sats may I spend per day in total? Reply with a number, e.g. 20000.",
+      "Let's set your limits (you can change them any time: just tell me).\n1/3 — How many sats may I spend per day in total? Reply with a number, e.g. 20000.",
   }
 }
 
@@ -151,7 +156,8 @@ export function wizardStep(
       return {
         state: null,
         policy,
-        prompt: "Done. Your limits are set. Next: /pair your wallet, then just text me.",
+        prompt:
+          "Done. Your limits are set. Next, connect your wallet: paste its connection string here (say “connect my wallet” for the steps). Then just text me.",
       }
     }
   }
@@ -188,8 +194,16 @@ export function parseKeyCommand(args: string[]): KeyCommand {
   return { kind: "set", name: n, value }
 }
 
+/** What to do to connect each service. The paste is caught before the model and stored encrypted. */
+export const KEY_STEPS: Record<KeyName, string> = {
+  strike:
+    "Strike (buying bitcoin): create a key at strike.me → Developer with ONLY these scopes: currency-exchange quote create + execute, rates, balances. Then paste the key here as a message of its own. I take it out of the chat before the model sees it and store it encrypted.",
+  bitrefill:
+    "Bitrefill (gift cards, top-ups): bitrefill.com/account/developers → Personal API key. Then paste the key here as a message of its own. I take it out of the chat before the model sees it and store it encrypted.",
+}
+
 export const KEY_HELP = [
-  "Strike (buy bitcoin): create a key at strike.me → Developer with ONLY these scopes: currency-exchange quote create + execute, rates, balances. Then: /key strike <key>",
-  "Bitrefill (gift cards, top-ups): bitrefill.com/account/developers → Personal API key. Then: /key bitrefill <key>",
-  "Keys are encrypted with a server key and shown masked. Remove any time: /key strike remove",
+  KEY_STEPS.strike,
+  KEY_STEPS.bitrefill,
+  "Keys are shown masked. Remove one any time: say “remove my Strike key”.",
 ].join("\n")

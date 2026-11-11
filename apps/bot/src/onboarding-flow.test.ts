@@ -98,7 +98,8 @@ describe("first-run wizard", () => {
       rails: { wallet: true, compute: true, exchange: false, goods: false },
     })
     await surface.receive({ userId: "u", text: "/start" })
-    expect(last()).toContain("/pair") // second /start is help, not the wizard
+    expect(last()).toContain("Text me in plain words") // second /start is help, not the wizard
+    expect(last()).not.toMatch(/(^|\s)\/[a-z]/) // and help teaches no slash command
   })
   it("plain text during the wizard is a wizard answer, never a model turn; /kill aborts it", async () => {
     const { surface, d, last } = setup()
@@ -199,7 +200,7 @@ describe("/cold", () => {
     expect(last()).toContain("No cold-storage address yet")
     await surface.receive({ userId: "u", text: "/cold bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" })
     expect(last()).toContain("Registered p2wpkh address on mainnet")
-    expect(last()).toContain("/budget rail onchain on")
+    expect(last()).toContain("say “turn on cold-storage sweeps”")
     expect((await policies.get("u"))?.coldStorageAddresses).toEqual([
       "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
     ])
@@ -219,8 +220,8 @@ describe("/key and secret interception", () => {
     await d.start()
     const k = "strike-live-abcdefghijklmnopqrstuvwxyz"
     await surface.receive({ userId: "u", text: `/key strike ${k}`, messageId: "m9" })
-    expect(last()).toContain("strike key stored (stri…wxyz)")
-    expect(last()).toContain("/budget rail exchange on")
+    expect(last()).toContain("Strike key stored (stri…wxyz)")
+    expect(last()).toContain("Say “turn on buying bitcoin”")
     expect(surface.redacted).toEqual(["m9"])
     expect(decryptSecret((await secrets.get("u", "strike")) as string, KEY)).toBe(k)
     await surface.receive({ userId: "u", text: "/key" })
@@ -233,11 +234,13 @@ describe("/key and secret interception", () => {
     expect(last()).toContain("Usage")
   })
   it("a bare connection string in chat never reaches the model", async () => {
-    const { surface, d, last } = setup()
+    const { surface, d, last, secrets } = setup()
     await d.start()
     await surface.receive({ userId: "u", text: `here you go ${NWC}`, messageId: "m2" })
-    expect(last()).toContain("never pass those to the model")
+    // M25: a pasted connection string pairs the wallet; no command, and never a model turn
+    expect(last()).toContain("Paired hub")
     expect(surface.redacted).toEqual(["m2"])
     expect(surface.sent.some((s) => s.m.text === "model saw it")).toBe(false)
+    expect(decryptSecret((await secrets.get("u", "nwc")) as string, KEY)).toBe(NWC)
   })
 })

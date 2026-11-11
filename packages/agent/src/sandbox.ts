@@ -8,6 +8,7 @@ import {
   type Campaign,
   type ComputeRail,
   DEFAULT_POLICY,
+  type Desk,
   FakeExchangeRail,
   FakeGoodsRail,
   FakeOnChainRail,
@@ -21,12 +22,17 @@ import {
   type PriceSnapshot,
   type Recipient,
   type ScheduleSummary,
+  applyPolicySetting,
   contributionSink,
   describeAction,
+  describeLimits,
   foldEntries,
+  formatSats,
   parseAction,
   recipientsForUser,
   serializeAction,
+  spentSince,
+  windowStart,
 } from "@agentic-bitcoin/core"
 import { InMemoryPendingStore, type PendingStore, type UserContext, runTurn } from "./agent"
 import type { LlmClient, LlmMessage } from "./llm"
@@ -238,7 +244,41 @@ export async function sandboxTurn(
     },
   }
   const campaigns = new InMemoryCampaignStore(SANDBOX_CAMPAIGNS)
-  const ctx: UserContext = {
+  // M25: the sandbox desk covers what lives in the policy (limits, lists, switches) and two views.
+  let policy = state.policy
+  const elsewhere =
+    "That is not part of the sandbox. On the real assistant it works the same way: you ask in plain words."
+  const desk: Desk = {
+    async show(view) {
+      if (view === "limits") return { text: describeLimits(policy).join("\n") }
+      if (view === "connections")
+        return { text: "Wallet: connected (a sandbox wallet holding fake sats)" }
+      if (view === "activity") {
+        const entries = foldEntries(await ledger.events())
+        const lines = entries
+          .filter((e) => e.action.kind !== "show")
+          .slice(-8)
+          .reverse()
+          .map((e) => `${e.at.slice(11, 16)} ${e.outcome} ${e.decision.summary}`)
+        return {
+          text: `Last 24h: ${formatSats(spentSince(entries, windowStart(now())))} of ${formatSats(policy.dailyCapSats)}.\n${lines.join("\n") || "No actions yet."}`,
+        }
+      }
+      return { text: elsewhere }
+    },
+    async check(c) {
+      const r = applyPolicySetting(policy, c)
+      return r === null ? elsewhere : r.ok ? null : r.error
+    },
+    async change(c) {
+      const r = applyPolicySetting(policy, c)
+      if (!r) throw new Error(elsewhere)
+      if (!r.ok) throw new Error(r.error)
+      policy = r.policy
+      return { text: r.text }
+    },
+  }
+  const base: UserContext = {
     userId: "demo",
     policy: state.policy,
     ledger,
@@ -256,10 +296,13 @@ export async function sandboxTurn(
     campaigns,
     contributions: contributionSink(campaigns),
     supporterKey: "demo-supporter",
+    desk,
   }
+  /** The context under the policy as it stands now (a setting may have changed it this turn). */
+  const current = (): UserContext => ({ ...base, policy })
   const deps = {
     llm,
-    resolveContext: async () => ctx,
+    resolveContext: async () => current(),
     price: async () => SANDBOX_PRICE,
     now,
     maxIterations: 4,
@@ -267,7 +310,7 @@ export async function sandboxTurn(
 
   let result: Awaited<ReturnType<typeof runTurn>>
   const t = text.trim()
-  const yes = /^(y|yes|yep|confirm|approve|ok)[.!]?$/i.test(t)
+  const yes = /^(y|yes|yep|yeah|sure|confirm|approve|ok|okay|go ahead)[.!]?$/i.test(t)
   const no = /^(n|no|nope|cancel|deny)[.!]?$/i.test(t)
   if ((yes || no) && (await pending.latest())) {
     const latest = (await pending.latest()) as { actionHash: string; action: Action }
@@ -281,7 +324,7 @@ export async function sandboxTurn(
         deliveries: [],
       }
     } else {
-      const out = await confirmPending(ctx, latest.actionHash, {
+      const out = await confirmPending(current(), latest.actionHash, {
         confirmedBy: "demo",
         price: SANDBOX_PRICE,
         now,
@@ -294,14 +337,16 @@ export async function sandboxTurn(
       }
       const { replyFor } = await import("./scripted")
       const reply =
-        parsed.status === "succeeded"
-          ? replyFor(
-              latest.action.kind === "pay_address" ? "pay_lightning_address" : latest.action.kind,
-              parsed as Record<string, unknown>,
-            )
-          : parsed.status === "no_pending_action"
-            ? "That approval was already used."
-            : `Not done: ${parsed.error ?? parsed.status}.`
+        parsed.status === "succeeded" && out.userText
+          ? `Done. ${out.userText}`
+          : parsed.status === "succeeded"
+            ? replyFor(
+                latest.action.kind === "pay_address" ? "pay_lightning_address" : latest.action.kind,
+                parsed as Record<string, unknown>,
+              )
+            : parsed.status === "no_pending_action"
+              ? "That approval was already used."
+              : `Not done: ${parsed.error ?? parsed.status}.`
       result = {
         reply,
         history: state.history,
@@ -318,7 +363,7 @@ export async function sandboxTurn(
     version: 1,
     walletSats: (await wallet.getBalance()).sats.toString(),
     onchainSats: (await onchain.getBalance()).confirmedSats.toString(),
-    policy: state.policy,
+    policy,
     events: [...events],
     pending: state.pending,
     history: result.history.slice(-24),

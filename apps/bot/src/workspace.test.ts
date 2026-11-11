@@ -65,7 +65,7 @@ describe("the workspace link (M23, ADR-0027)", () => {
     expect((await store.listForUser("u")).length).toBe(2)
     expect(await say("/web revoke")).toMatch(/^Every web link for you is revoked/)
     expect((await store.listForUser("u")).length).toBe(0)
-    expect(await say("/help")).toContain("/web — your workspace")
+    expect(await say("/help")).toContain("Text me in plain words")
   })
 
   it("is off without a store or a site url", async () => {

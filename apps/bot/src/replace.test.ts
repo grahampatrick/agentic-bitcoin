@@ -26,7 +26,7 @@ describe("applyReplaceArgs", () => {
   it("turns the rule on from now, switches the exchange rail on, and needs a key", () => {
     expect(applyReplaceArgs(p, ["on"], now, false)).toMatchObject({
       ok: false,
-      error: expect.stringContaining("/key strike"),
+      error: expect.stringContaining("say “connect Strike”"),
     })
     const r = applyReplaceArgs(p, ["on", "50%"], now, true)
     expect(r).toMatchObject({
@@ -37,7 +37,7 @@ describe("applyReplaceArgs", () => {
       },
     })
     if (!r.ok) return
-    expect(r.text).toContain("The exchange rail is now on")
+    expect(r.text).toContain("Buying bitcoin is now switched on")
     expect(describePolicy(r.policy)).toContain("Replace what you spend: 50% of every spend")
     expect(applyReplaceArgs(p, ["on", "0"], now, true)).toMatchObject({ ok: false })
     expect(applyReplaceArgs(p, ["on", "150"], now, true)).toMatchObject({ ok: false })

@@ -112,7 +112,7 @@ describe("referral rewards in sats (M22, ADR-0025)", () => {
     expect((await referralStore.forFriend("bob"))?.referrerId).toBe("alice")
 
     // carol already onboarded, never paid: /join
-    expect(await say("carol", "/join")).toMatch(/^Usage: \/join <code>/)
+    expect(await say("carol", "/join")).toMatch(/^An invite code is six characters/)
     expect(await say("carol", "/join ZZZZZZ")).toBe(
       "No invite with the code ZZZZZZ. Check it with your friend.",
     )
@@ -186,6 +186,6 @@ describe("referral rewards in sats (M22, ADR-0025)", () => {
     await none.d.start()
     await none.known("alice")
     expect(await none.say("alice", "/refer")).toBe("Referral rewards are not on for this server.")
-    expect(await none.say("alice", "/help")).toContain("/refer")
+    expect(await none.say("alice", "/help")).not.toContain("/")
   })
 })

@@ -12,6 +12,7 @@
  */
 import { formatSats } from "./money"
 import type { Policy } from "./policy"
+import { patchPolicy } from "./workspace"
 
 export const DESK_VIEWS = [
   "activity",
@@ -99,6 +100,15 @@ export const SETTING_OPS: Record<DeskSetting, readonly string[]> = {
   key: ["remove"],
   referral_code: ["join"],
   workspace_links: ["revoke"],
+}
+
+/** What a person calls each switch ("rail" is our word, not theirs). */
+export const RAIL_LABEL: Record<keyof Policy["rails"], string> = {
+  wallet: "Wallet payments",
+  exchange: "Buying bitcoin",
+  goods: "Shopping",
+  compute: "Paid APIs",
+  onchain: "Cold-storage sweeps",
 }
 
 /** What the executor needs from whoever owns the stores (the bot). */
@@ -233,4 +243,113 @@ export function settingNarrows(c: SettingChange, policy: Policy): boolean {
     case "referral_code":
       return false
   }
+}
+
+/**
+ * The settings that live in the policy alone (caps, the two lists, switches, the kill switch),
+ * applied purely: the new policy and a sentence, or why not. Null for a setting that needs a
+ * store. The bot's desk and the demo sandbox both stand on this.
+ */
+export function applyPolicySetting(
+  policy: Policy,
+  c: SettingChange,
+): { ok: true; policy: Policy; text: string } | { ok: false; error: string } | null {
+  const value = c.value.trim()
+  switch (c.setting) {
+    case "daily_cap":
+    case "per_action_cap":
+    case "confirm_above": {
+      const n = parseSettingSats(value)
+      if (n === null) return { ok: false, error: "That needs a whole number of sats, e.g. 20000." }
+      // a daily cap below the per-payment cap brings the per-payment cap down with it
+      const lowered = c.setting === "daily_cap" && n > 0n && n < policy.perActionCapSats
+      const r = patchPolicy(
+        policy,
+        c.setting === "daily_cap"
+          ? { dailyCapSats: n, ...(lowered ? { perActionCapSats: n } : {}) }
+          : c.setting === "per_action_cap"
+            ? { perActionCapSats: n }
+            : { confirmAboveSats: n },
+      )
+      if (!r.ok) return { ok: false, error: `${r.error}.` }
+      const text =
+        c.setting === "daily_cap"
+          ? `Your daily cap is now ${formatSats(n)}${lowered ? `, and the per-payment cap came down with it to ${formatSats(n)}` : ""}.`
+          : c.setting === "per_action_cap"
+            ? `Your per-payment cap is now ${formatSats(n)}.`
+            : n === 0n
+              ? "I will ask you before every payment."
+              : `I will ask you before any payment of ${formatSats(n)} or more.`
+      return { ok: true, policy: r.policy, text }
+    }
+    case "allow_destination":
+    case "deny_destination": {
+      const allow = c.setting === "allow_destination"
+      const list = allow ? policy.allowDestinations : policy.denyDestinations
+      const d = value.toLowerCase()
+      if (!d)
+        return { ok: false, error: "Which destination? A Lightning address, *@domain or *.host." }
+      if (c.op === "remove") {
+        if (!list.includes(d))
+          return { ok: false, error: `${d} is not on your ${allow ? "allow" : "block"} list.` }
+        const r = patchPolicy(policy, allow ? { allowRemove: d } : { denyRemove: d })
+        if (!r.ok) return { ok: false, error: `${r.error}.` }
+        const text = !allow
+          ? `Unblocked ${d}.`
+          : r.policy.allowDestinations.length
+            ? `Removed ${d}. You now pay only: ${r.policy.allowDestinations.join(", ")}.`
+            : `Removed ${d}. Your allow list is empty, so anyone you have not blocked can be paid.`
+        return { ok: true, policy: r.policy, text }
+      }
+      const r = patchPolicy(policy, allow ? { allowAdd: d } : { denyAdd: d })
+      if (!r.ok) return { ok: false, error: `${r.error}.` }
+      return {
+        ok: true,
+        policy: r.policy,
+        text: allow
+          ? `Added ${d}. You now pay only: ${r.policy.allowDestinations.join(", ")}.`
+          : `Blocked ${d}. It will never be paid.`,
+      }
+    }
+    case "rail": {
+      const rail = value.toLowerCase() as keyof Policy["rails"]
+      if (!(rail in policy.rails))
+        return { ok: false, error: "Which one? wallet, exchange, goods, compute or onchain." }
+      const on = c.op === "on"
+      return {
+        ok: true,
+        policy: { ...policy, rails: { ...policy.rails, [rail]: on } },
+        text: `${RAIL_LABEL[rail]} is now ${on ? "on" : "off"}.`,
+      }
+    }
+    case "kill_switch": {
+      const on = c.op === "on"
+      return {
+        ok: true,
+        policy: { ...policy, killSwitch: on },
+        text: on
+          ? "Stopped. Nothing moves until you say “resume”."
+          : "The kill switch is off. Your limits still apply.",
+      }
+    }
+    default:
+      return null
+  }
+}
+
+/** The user's limits in a few lines, with no command in sight. */
+export function describeLimits(p: Policy): string[] {
+  const on = (Object.keys(p.rails) as (keyof Policy["rails"])[])
+    .filter((k) => p.rails[k])
+    .map((k) => RAIL_LABEL[k].toLowerCase())
+    .join(", ")
+  return [
+    `Daily cap ${formatSats(p.dailyCapSats)} · per payment ${formatSats(p.perActionCapSats)} · I ask you at ${formatSats(p.confirmAboveSats)} or more`,
+    `Switched on: ${on || "nothing"}${p.killSwitch ? " · KILL SWITCH ON (say “resume” to lift it)" : ""}`,
+    p.allowDestinations.length
+      ? `You pay only: ${p.allowDestinations.join(", ")}`
+      : "You can pay anyone you have not blocked",
+    p.denyDestinations.length ? `Blocked: ${p.denyDestinations.join(", ")}` : "",
+    p.coldStorageAddresses.length ? `Cold storage: ${p.coldStorageAddresses.join(", ")}` : "",
+  ].filter(Boolean)
 }

@@ -1,9 +1,14 @@
 import { createHash } from "node:crypto"
 /**
- * The dispatcher: turns inbound chat messages into agent turns, commands, confirmation decisions,
- * or onboarding steps. Surface-agnostic. Commands never go through the model (they change policy
- * and credentials, which the model is not allowed to touch — ADR-0008). Secrets never reach the
- * model or the history: a message that looks like one is intercepted before `runTurn`.
+ * The dispatcher: turns inbound chat messages into agent turns, confirmation decisions, or
+ * onboarding steps. Surface-agnostic.
+ *
+ * M25 (ADR-0029): people talk in plain words. Four things stay in code and never reach the model:
+ * a pasted secret (a wallet connection string or an API key is stored and redacted before
+ * `runTurn`), "stop everything" (the kill switch, with no model call), a yes or a no (bound to the
+ * parked action's hash), and the invite code at first contact. Views and settings are ordinary
+ * tools (`show`, `change_setting`) served by the desk below. The slash commands still work as
+ * aliases and share the same code; nothing teaches them any more.
  */
 import {
   type AgentDeps,
@@ -16,18 +21,21 @@ import {
   type CampaignStore,
   type CardStore,
   DEFAULT_POLICY,
+  type Desk,
+  type DeskView,
   type InvoiceStore,
   type IssuedInvoice,
   type LedgerEntry,
   type LightningAddressStore,
   type OrderStore,
   type Policy,
+  RAIL_LABEL,
   type Recipient,
   type RecipientStore,
   type ReferralRules,
   type ReferralStore,
   type RewardStore,
-  SLUG_RE,
+  type SettingChange,
   type VirtualCard,
   type WebLinkStore,
   campaignProgress,
@@ -71,7 +79,16 @@ import {
 } from "@agentic-bitcoin/rails"
 import { nextRun, parseCron } from "@agentic-bitcoin/scheduler"
 import {
+  type DeskDeps,
+  applyReplaceArgs,
+  budgetChange,
+  describePolicy,
+  joinTerms,
+  planSetting,
+} from "./desk"
+import {
   KEY_HELP,
+  KEY_STEPS,
   PAIR_HELP,
   type WalletProbe,
   type WizardState,
@@ -137,14 +154,148 @@ export interface DispatcherDeps {
   now?: () => Date
 }
 
-const YES = /^(y|yes|yep|yeah|confirm|approve|ok|okay|do it)[.!]?$/i
-const NO = /^(n|no|nope|cancel|stop|deny)[.!]?$/i
+const YES =
+  /^(y|yes|yep|yeah|yup|sure|confirm|approve|approved|ok|okay|do it|go ahead|yes please|yes do it|yes go ahead|please do)[.!]*$/i
+const NO = /^(n|no|nope|cancel|stop|deny|don't|do not)[.!]*$/i
+/** The kill switch in plain words. No model call: stopping must work when the model does not. */
+const KILL =
+  /^(stop everything|stop it all|stop all|kill|kill it|kill switch|freeze|freeze everything|halt|panic|emergency stop)[.!]*$/i
+const STOP = /^stop[.!]*$/i
+const NWC_RE = /nostr\+walletconnect:\/\/\S+/i
+/** How long a pasted secret may wait in memory for one answer ("strike or bitrefill?"). Never stored. */
+const HELD_MS = 5 * 60 * 1000
+/** How long "paste your Strike key here" stays armed after the user asked to connect. */
+const EXPECT_MS = 10 * 60 * 1000
+
+type Held =
+  | { kind: "key"; value: string; at: number }
+  | { kind: "nwc-unbudgeted"; value: string; at: number }
 
 export class Dispatcher {
   private readonly now: () => Date
   private readonly wizards = new Map<string, WizardState>()
+  /** A pasted secret waiting for one answer. Memory only, a few minutes, cleared on use. */
+  private readonly held = new Map<string, Held>()
+  /** Which key the user said they are about to paste. */
+  private readonly expecting = new Map<string, { name: "strike" | "bitrefill"; at: number }>()
+  private readonly redacted = new WeakSet<InboundMessage>()
+  private readonly deskDeps: DeskDeps
   constructor(private readonly deps: DispatcherDeps) {
     this.now = deps.now ?? (() => new Date())
+    this.deskDeps = {
+      policies: deps.policies,
+      secrets: deps.secrets,
+      recipients: deps.recipients,
+      probeAddress: deps.probeAddress,
+      campaigns: deps.campaigns,
+      addresses: deps.addresses,
+      referrals: deps.referrals,
+      webLinks: deps.webLinks,
+      siteUrl: deps.siteUrl,
+      onCredentialsChanged: deps.onCredentialsChanged,
+      resolveContext: deps.resolveContext,
+      now: this.now,
+    }
+  }
+
+  /** The user's context with the desk attached, so `show` and `change_setting` reach the stores. */
+  private async ctxFor(userId: string): Promise<UserContext> {
+    return { ...(await this.deps.resolveContext(userId)), desk: this.desk(userId) }
+  }
+
+  /** ADR-0029: the views and settings behind the two desk tools, for one user. */
+  private desk(userId: string): Desk {
+    const plan = (c: SettingChange) => planSetting(this.deskDeps, userId, c)
+    return {
+      show: (view, arg) => this.show(userId, view, arg),
+      check: async (c) => {
+        const p = await plan(c)
+        return p.ok ? null : p.error
+      },
+      change: async (c) => {
+        const p = await plan(c)
+        if (!p.ok) throw new Error(p.error)
+        return { text: await p.commit() }
+      },
+    }
+  }
+
+  /** What a slash command would have printed, as text. */
+  private async printed(userId: string, command: string): Promise<string> {
+    const out: string[] = []
+    await this.command({ userId, text: command }, command, async (t) => {
+      out.push(t)
+    })
+    return out.join("\n")
+  }
+
+  private async show(
+    userId: string,
+    view: DeskView,
+    arg: string,
+  ): Promise<{ text: string; direct?: string }> {
+    switch (view) {
+      case "activity":
+        return { text: await this.printed(userId, "/ledger") }
+      case "limits":
+        return { text: await this.printed(userId, "/budget") }
+      case "connections": {
+        // never the secrets, not even masked: this text goes to the model
+        const has = async (n: SecretName) => !!(await this.deps.secrets.get(userId, n))
+        return {
+          text: [
+            `Wallet: ${(await has("nwc")) ? "connected" : "not connected"}`,
+            `Strike key (buying bitcoin): ${(await has("strike")) ? "stored" : "not set"}`,
+            `Bitrefill key (gift cards, top-ups): ${(await has("bitrefill")) ? "stored" : "not set"}`,
+          ].join("\n"),
+        }
+      }
+      case "orders":
+        return { text: await this.printed(userId, "/orders") }
+      case "notes":
+        return { text: await this.printed(userId, "/notes") }
+      case "giving_statement": {
+        const year = /^\d{4}$/.test(arg) ? arg : ""
+        const full = await this.printed(userId, `/statement ${year}`.trim())
+        const [head = "", ...rest] = full.split("\n\n")
+        return rest.length ? { text: head, direct: full } : { text: full }
+      }
+      case "invoices_csv": {
+        const csv = await this.printed(userId, "/invoices csv")
+        const rows = Math.max(0, csv.split("\n").length - 1)
+        return rows > 0 && csv.includes(",")
+          ? { text: `A CSV of ${rows} invoice${rows === 1 ? "" : "s"} was sent.`, direct: csv }
+          : { text: csv }
+      }
+      case "lightning_address":
+        return { text: await this.printed(userId, "/address") }
+      case "campaigns":
+        return { text: await this.printed(userId, "/campaigns") }
+      case "replace":
+        return { text: await this.printed(userId, "/replace") }
+      case "workspace_link": {
+        // a bearer link: straight to the human, never through the model or the history
+        const link = await this.printed(userId, "/web")
+        return link.includes("/me?t=")
+          ? {
+              text: "A private link to their workspace was sent. It opens for 30 days.",
+              direct: link,
+            }
+          : { text: link }
+      }
+      case "shop":
+        return { text: await this.printed(userId, "/shop") }
+      case "receive":
+        return { text: await this.printed(userId, "/receive") }
+      case "connect_wallet":
+        return { text: PAIR_HELP }
+      case "connect_strike":
+      case "connect_bitrefill": {
+        const name = view === "connect_strike" ? "strike" : "bitrefill"
+        this.expecting.set(userId, { name, at: this.now().getTime() })
+        return { text: KEY_STEPS[name] }
+      }
+    }
   }
 
   async start(): Promise<void> {
@@ -160,24 +311,24 @@ export class Dispatcher {
       if (m.decision)
         return await this.decide(m.userId, m.decision.actionHash, m.decision.approve, reply)
       if (text.startsWith("/")) return await this.command(m, text, reply)
-      if (looksLikeSecret(text)) {
-        await this.redact(m)
-        return reply(
-          "That looks like a wallet connection string or an API key. I never pass those to the model. Use /pair <string> or /key <strike|bitrefill> <key> instead, and delete that message.",
-        )
-      }
+      if (looksLikeSecret(text)) return await this.secret(m, text, reply)
+      const held = this.takeHeld(m.userId)
+      if (held && (await this.answerHeld(m, held, text, reply))) return
       const wizard = this.wizards.get(m.userId)
       if (!wizard && (await this.deps.policies.get(m.userId)) === null)
         return await this.firstContact(m.userId, text, reply)
+      if (KILL.test(text)) return await this.kill(m.userId, reply)
       if (wizard) return await this.wizard(m.userId, wizard, text, reply)
       if (YES.test(text) || NO.test(text)) {
-        const ctx = await this.deps.resolveContext(m.userId)
+        const ctx = await this.ctxFor(m.userId)
         const latest = await ctx.pending.latest(m.userId)
         if (latest) return await this.decide(m.userId, latest.actionHash, YES.test(text), reply)
+        // a bare "stop" with nothing to cancel means stop everything
+        if (STOP.test(text)) return await this.kill(m.userId, reply)
       }
       const history = await this.deps.history.get(m.userId)
       const result = await runTurn(
-        { ...this.deps.agent, resolveContext: this.deps.resolveContext },
+        { ...this.deps.agent, resolveContext: (u) => this.ctxFor(u) },
         m.userId,
         text,
         history,
@@ -193,6 +344,99 @@ export class Dispatcher {
       console.error("[dispatcher]", err instanceof Error ? err.message : err)
       await reply("Something went wrong on my side. Nothing was sent. Try again in a moment.")
     }
+  }
+
+  /** Stop everything: the kill switch on, the wizard dropped, nothing left waiting for a yes. */
+  private async kill(userId: string, reply: (t: string) => Promise<void>): Promise<void> {
+    this.wizards.delete(userId)
+    const ctx = await this.deps.resolveContext(userId)
+    await this.deps.policies.set(userId, { ...ctx.policy, killSwitch: true })
+    for (let i = 0; i < 20; i++) {
+      const p = await ctx.pending.latest(userId)
+      if (!p) break
+      await ctx.pending.delete(userId, p.actionHash)
+    }
+    return reply("Stopped. Nothing moves until you say “resume”.")
+  }
+
+  /**
+   * A message that looks like a secret never reaches the model. A wallet connection string pairs;
+   * a key is stored under the name the message gives ("my strike key is …"), the one the user just
+   * asked to connect, or the answer to one question. The message is redacted first, whatever follows.
+   */
+  private async secret(
+    m: InboundMessage,
+    text: string,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    await this.redact(m)
+    const nwc = NWC_RE.exec(text)?.[0]
+    if (nwc) return this.pair(m, [nwc], reply)
+    const key = keyToken(text)
+    if (!key)
+      return reply(
+        "That looks like a secret, so I removed it and did not read it. To connect a wallet, paste its connection string as a message of its own; for Strike or Bitrefill, paste the key on its own.",
+      )
+    const named = /\bstrike\b/i.test(text)
+      ? "strike"
+      : /\bbitrefill\b/i.test(text)
+        ? "bitrefill"
+        : null
+    const armed = this.expecting.get(m.userId)
+    const expected = armed && this.now().getTime() - armed.at < EXPECT_MS ? armed.name : null
+    this.expecting.delete(m.userId)
+    const name = named ?? expected
+    if (name) return this.storeKey(m.userId, name, key, reply)
+    if (!this.deps.secretsKey)
+      return reply("Key storage is disabled on this server (no SECRETS_KEY).")
+    this.held.set(m.userId, { kind: "key", value: key, at: this.now().getTime() })
+    return reply(
+      "That looks like an API key, so I removed the message and did not show it to the model. Is it a Strike key or a Bitrefill key? Reply “strike” or “bitrefill”. Anything else and I forget it.",
+    )
+  }
+
+  /** A held secret is good for one answer within a few minutes; it is gone as soon as it is read. */
+  private takeHeld(userId: string): Held | null {
+    const h = this.held.get(userId)
+    if (!h) return null
+    this.held.delete(userId)
+    return this.now().getTime() - h.at < HELD_MS ? h : null
+  }
+
+  /** True when the message answered the question about a held secret. */
+  private async answerHeld(
+    m: InboundMessage,
+    held: Held,
+    text: string,
+    reply: (t: string) => Promise<void>,
+  ): Promise<boolean> {
+    const t = text.toLowerCase().replace(/[.!]+$/, "")
+    if (held.kind === "key" && (t === "strike" || t === "bitrefill")) {
+      await this.storeKey(m.userId, t, held.value, reply)
+      return true
+    }
+    if (held.kind === "nwc-unbudgeted" && t === "connect anyway") {
+      await this.pair(m, ["unbudgeted", held.value], reply)
+      return true
+    }
+    return false
+  }
+
+  private async storeKey(
+    userId: string,
+    name: "strike" | "bitrefill",
+    value: string,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    if (!this.deps.secretsKey)
+      return reply("Key storage is disabled on this server (no SECRETS_KEY).")
+    await this.deps.secrets.set(userId, name, encryptSecret(value, this.deps.secretsKey))
+    this.deps.onCredentialsChanged?.(userId)
+    const rail = name === "strike" ? "exchange" : "goods"
+    const on = ((await this.deps.policies.get(userId)) ?? DEFAULT_POLICY).rails[rail]
+    return reply(
+      `${name === "strike" ? "Strike" : "Bitrefill"} key stored (${maskSecret(value)}). I deleted your message if I could; delete it yourself otherwise.${on ? "" : `\n${RAIL_LABEL[rail]} is switched off in your limits. Say “turn on ${RAIL_LABEL[rail].toLowerCase()}” when you want it.`}`,
+    )
   }
 
   /** A number we have never seen: gate on the invite code if configured, then greet and start the limits wizard. */
@@ -214,6 +458,16 @@ export class Dispatcher {
     return reply(
       `Hey! Glad you're here. I'm Agentic Bitcoin: text me in plain words and I'll move bitcoin through your own wallet, within limits you set. Nothing moves without your limits, and anything over your threshold waits for your yes.${joined ? `\n\n${joined}` : ""}\n\n${w.prompt}`,
     )
+  }
+
+  /** A slash alias for a settings change: the human typed it, so it applies at once. */
+  private async apply(
+    userId: string,
+    c: SettingChange,
+    reply: (t: string) => Promise<void>,
+  ): Promise<void> {
+    const p = await planSetting(this.deskDeps, userId, c)
+    return reply(p.ok ? await p.commit() : p.error)
   }
 
   private referralsOn(): boolean {
@@ -240,10 +494,7 @@ export class Dispatcher {
 
   private joinTerms(): string {
     const rules = this.deps.referrals?.rules
-    if (!rules) return ""
-    const you = rules.friendSats > 0n ? `you get ${formatSats(rules.friendSats)}` : ""
-    const them = rules.referrerSats > 0n ? `your friend gets ${formatSats(rules.referrerSats)}` : ""
-    return `after your first payment of at least ${formatSats(rules.qualifyingSats)}, ${[you, them].filter(Boolean).join(" and ")}, paid to your own wallets.`
+    return rules ? joinTerms(rules) : ""
   }
 
   /** /refer: the user's code, link and tally. */
@@ -263,7 +514,7 @@ export class Dispatcher {
       ? `\nSo far: ${st.joined} joined · ${st.qualified} qualified · ${formatSats(st.earnedSats)} earned.`
       : ""
     return reply(
-      `Your invite code is ${st.code}. Share ${st.link} or tell a friend to text me the code first.\nWhen a friend joins with it and makes a first payment of at least ${formatSats(rc.rules.qualifyingSats)}, ${earn}, paid to your own wallets (up to ${rc.rules.maxPerReferrerPerMonth} friends a month).${tally}\nRewards are a promise from this server's operator, not a balance; /rewards shows what is pending and paid.`,
+      `Your invite code is ${st.code}. Share ${st.link} or tell a friend to text me the code first.\nWhen a friend joins with it and makes a first payment of at least ${formatSats(rc.rules.qualifyingSats)}, ${earn}, paid to your own wallets (up to ${rc.rules.maxPerReferrerPerMonth} friends a month).${tally}\nRewards are a promise from this server's operator, not a balance; ask me about your rewards to see what is pending and paid.`,
     )
   }
 
@@ -275,10 +526,8 @@ export class Dispatcher {
   ): Promise<void> {
     const wl = this.deps.webLinks
     if (!wl || !this.deps.siteUrl) return reply("The web workspace is not on for this server.")
-    if (args[0]?.toLowerCase() === "revoke") {
-      await wl.store.revokeAll(userId)
-      return reply("Every web link for you is revoked. /web makes a new one.")
-    }
+    if (args[0]?.toLowerCase() === "revoke")
+      return this.apply(userId, setting("workspace_links", "revoke"), reply)
     const now = this.now()
     const token = wl.newToken()
     const ttl = wl.ttlDays ?? 30
@@ -289,49 +538,14 @@ export class Dispatcher {
       expiresAt: webLinkExpiry(now, ttl),
     })
     return reply(
-      `Your Anvard on the web: ${workspaceUrl(this.deps.siteUrl, token)}\nIt opens your limits, wallet, cards, address, invites and rewards for ${ttl} days from any browser. Keep it private: anyone with the link sees what you see. /web again for a fresh one, /web revoke to cut them all off.`,
+      `Your Anvard on the web: ${workspaceUrl(this.deps.siteUrl, token)}\nIt opens your limits, wallet, cards, address, invites and rewards for ${ttl} days from any browser. Keep it private: anyone with the link sees what you see. Ask me for a fresh one any time, or say “log me out of the web everywhere”.`,
     )
   }
 
-  /** /join <code>: an existing user who has not paid yet links to the friend who invited them. */
-  private async join(
-    userId: string,
-    ctx: UserContext,
-    arg: string,
-    reply: (t: string) => Promise<void>,
-  ): Promise<void> {
-    const rc = this.deps.referrals
-    if (!rc || !this.referralsOn()) return reply("Referral rewards are not on for this server.")
-    const code = normalizeCode(arg)
-    if (!code)
-      return reply("Usage: /join <code> — the six-character invite code a friend gave you.")
-    const r = await joinWithCode(rc.store, rc.rules, {
-      code,
-      friendId: userId,
-      spent: hasSpent(await readEntries(ctx.ledger)),
-      now: this.now(),
-      newId: rc.newId,
-    })
-    if (r.ok) return reply(`You're in with ${code}: ${this.joinTerms()}`)
-    switch (r.code) {
-      case "UNKNOWN_CODE":
-        return reply(`No invite with the code ${code}. Check it with your friend.`)
-      case "SELF":
-        return reply("That is your own invite code.")
-      case "ALREADY_REFERRED":
-        return reply("You already joined with a friend's code; a referral cannot be changed.")
-      case "ALREADY_SPENT":
-        return reply(
-          "A friend's code counts only before your first payment, and you have already paid.",
-        )
-      default:
-        return reply("Referral rewards are not on for this server.")
-    }
-  }
-
   private async redact(m: InboundMessage): Promise<void> {
-    if (m.messageId && this.deps.surface.redact)
-      await this.deps.surface.redact(m.userId, m.messageId)
+    if (!m.messageId || !this.deps.surface.redact || this.redacted.has(m)) return
+    this.redacted.add(m)
+    await this.deps.surface.redact(m.userId, m.messageId)
   }
 
   private async decide(
@@ -340,7 +554,7 @@ export class Dispatcher {
     approve: boolean,
     reply: (t: string) => Promise<void>,
   ): Promise<void> {
-    const ctx = await this.deps.resolveContext(userId)
+    const ctx = await this.ctxFor(userId)
     if (!approve) {
       await ctx.pending.delete(userId, actionHash)
       return reply("Cancelled. Nothing was sent.")
@@ -353,6 +567,10 @@ export class Dispatcher {
       error?: string
       code?: string
       result?: { preimage?: string }
+    }
+    if (parsed.status === "succeeded" && out.userText) {
+      await reply(`Done. ${out.userText}`)
+      return
     }
     if (parsed.status === "succeeded") {
       await reply(
@@ -410,30 +628,24 @@ export class Dispatcher {
       }
       case "/pair":
         return this.pair(m, args, reply)
-      case "/unpair": {
-        await this.deps.secrets.delete(userId, "nwc")
-        this.deps.onCredentialsChanged?.(userId)
-        return reply("Wallet unpaired. Also revoke the connection in your wallet app.")
-      }
+      case "/unpair":
+        return this.apply(userId, setting("wallet", "disconnect"), reply)
       case "/key":
         return this.key(m, args, reply)
       case "/cold":
         return this.cold(userId, args, ctx.policy, reply)
-      case "/kill": {
-        this.wizards.delete(userId)
-        await this.deps.policies.set(userId, { ...ctx.policy, killSwitch: true })
-        return reply("Kill switch ON. Nothing moves until you send /resume.")
-      }
-      case "/resume": {
-        await this.deps.policies.set(userId, { ...ctx.policy, killSwitch: false })
-        return reply("Kill switch off. Your limits still apply.")
-      }
+      case "/kill":
+        return this.kill(userId, reply)
+      case "/resume":
+        return this.apply(userId, setting("kill_switch", "off"), reply)
       case "/budget": {
         if (args.length === 0) return reply(describePolicy(ctx.policy))
-        const next = applyBudgetArgs(ctx.policy, args)
-        if (!next.ok) return reply(next.error)
-        await this.deps.policies.set(userId, next.policy)
-        return reply(`Updated.\n${describePolicy(next.policy)}`)
+        const c = budgetChange(args)
+        if (!c)
+          return reply(
+            "Tell me the change in plain words: “set my daily cap to 50,000 sats”, “ask me above 5,000”, “block *.evil.example”, “turn on buying bitcoin”.",
+          )
+        return this.apply(userId, c, reply)
       }
       case "/recipients":
         return this.recipients(userId, reply)
@@ -455,7 +667,7 @@ export class Dispatcher {
       case "/invite":
         return this.refer(userId, reply)
       case "/join":
-        return this.join(userId, ctx, args.join(" "), reply)
+        return this.apply(userId, setting("referral_code", "join", args.join(" ")), reply)
       case "/web":
       case "/account":
         return this.web(userId, args, reply)
@@ -464,10 +676,15 @@ export class Dispatcher {
       case "/notes":
         return this.notes(ctx, reply)
       case "/replace": {
-        const r = applyReplaceArgs(ctx.policy, args, this.now(), !!ctx.rails.exchange)
-        if (!r.ok) return reply(r.error)
-        if (r.policy !== ctx.policy) await this.deps.policies.set(userId, r.policy)
-        return reply(r.text)
+        if (!args.length) {
+          const r = applyReplaceArgs(ctx.policy, [], this.now(), !!ctx.rails.exchange)
+          return reply(r.ok ? r.text : r.error)
+        }
+        return this.apply(
+          userId,
+          setting("replace", (args[0] ?? "").toLowerCase(), args[1] ?? ""),
+          reply,
+        )
       }
       case "/invoices": {
         const store = this.deps.invoiceStore
@@ -483,7 +700,7 @@ export class Dispatcher {
         const line = (i: IssuedInvoice) =>
           `• ${i.number} ${i.payerName} ${formatCents(i.totalCents)} — ${invoiceStatus(i, now)}${i.dueAt ? ` · due ${i.dueAt.slice(0, 10)}` : ""} · ${this.deps.siteUrl ?? ""}/pay/${i.token}`
         return reply(
-          `${open.length} open of ${list.length}.\n${list.slice(0, 10).map(line).join("\n")}${list.length > 10 ? "\n…" : ""}\n/invoices csv for the full list. Say “void inv_…” to cancel one.`,
+          `${open.length} open of ${list.length}.\n${list.slice(0, 10).map(line).join("\n")}${list.length > 10 ? "\n…" : ""}\nSay “export my invoices” for the full list as CSV, or “void inv_…” to cancel one.`,
         )
       }
       case "/rewards": {
@@ -493,7 +710,7 @@ export class Dispatcher {
         const sum = summarizeRewards(list, this.now())
         if (!sum.count)
           return reply(
-            `No rewards yet. Store purchases earn sats-back once they are paid; /shop to browse.${this.referralsOn() ? " /refer to invite a friend and earn sats." : ""}`,
+            `No rewards yet. Store purchases earn sats-back once they are paid; ask me to find something in the shop.${this.referralsOn() ? " Ask me how to invite a friend and you both earn sats." : ""}`,
           )
         return reply(
           `Sats-back: ${formatSats(sum.paidSats)} paid · ${formatSats(sum.payableSats)} payable now · ${formatSats(sum.pendingSats)} pending${sum.nextPayableAt ? ` (next on ${sum.nextPayableAt.slice(0, 10)})` : ""}.\nPayouts arrive in your paired wallet automatically; until paid, a reward is a promise from us, not a balance. ${this.deps.siteUrl ?? ""}/rewards`,
@@ -508,7 +725,10 @@ export class Dispatcher {
         if (!store || !this.deps.buyerKeyOf)
           return reply("The store is not enabled on this server.")
         const list = await store.listForBuyer(this.deps.buyerKeyOf(userId), 10)
-        if (!list.length) return reply("No orders yet. /shop to browse.")
+        if (!list.length)
+          return reply(
+            "No orders yet. Tell me what you are looking for and I will search the shop.",
+          )
         return reply(
           list
             .map(
@@ -519,21 +739,12 @@ export class Dispatcher {
         )
       }
       case "/follow":
-      case "/unfollow": {
-        const store = this.deps.campaigns
-        if (!store) return reply("Campaigns are not enabled on this server.")
-        const slug = args[0]?.toLowerCase()
-        const c = slug ? await store.get(slug) : null
-        if (!c) return reply("Which campaign? /campaigns lists them.")
-        if (cmd === "/follow") {
-          await store.follow(c.slug, userId)
-          return reply(
-            `Following ${c.title}: I will send you its updates here. /unfollow ${c.slug} to stop.`,
-          )
-        }
-        await store.unfollow(c.slug, userId)
-        return reply(`No more updates from ${c.title}.`)
-      }
+      case "/unfollow":
+        return this.apply(
+          userId,
+          setting("campaign_updates", (cmd ?? "").slice(1).toLowerCase(), args[0] ?? ""),
+          reply,
+        )
       case "/receive":
         return reply(
           `Churches, missionaries and creators receive through their own wallet, never ours. Onboard at ${this.deps.siteUrl ?? "the website"}/receive — a Lightning address you already have, or a receive-only wallet connection. You get a give page, a tip page and a Lightning address; the operator verifies you before you appear in the directory.`,
@@ -543,7 +754,8 @@ export class Dispatcher {
         const price = await this.deps.agent.price()
         const spent = spentSince(entries, windowStart(this.now()))
         const lines = entries
-          .filter((e) => e.action.kind !== "add_note") // the note shows on the payment it belongs to
+          // a note shows on the payment it belongs to; looking at a view is not activity
+          .filter((e) => e.action.kind !== "add_note" && e.action.kind !== "show")
           .slice(-8)
           .reverse()
           .map((e) => {
@@ -556,13 +768,9 @@ export class Dispatcher {
         )
       }
       default:
-        if (looksLikeSecret(text)) {
-          await this.redact(m)
-          return reply(
-            "That looks like a wallet connection string or an API key. I never pass those to the model. Use /pair <string> or /key <strike|bitrefill> <key> instead, and delete that message.",
-          )
-        }
-        return reply("Unknown command. /help lists them.")
+        // a secret after an unknown slash still must not linger in the chat
+        if (looksLikeSecret(text)) return this.secret(m, text, reply)
+        return reply(`I did not recognise that. ${HELP}`)
     }
   }
 
@@ -576,7 +784,9 @@ export class Dispatcher {
     if (!url) return reply(PAIR_HELP)
     await this.redact(m) // the message holds a secret: remove it first, whatever happens next
     if (!this.deps.secretsKey)
-      return reply("Pairing is disabled on this server (no SECRETS_KEY). Ask the operator.")
+      return reply(
+        "Connecting a wallet is disabled on this server (no SECRETS_KEY). Ask the operator.",
+      )
     try {
       validateConnectionString(url)
     } catch (err) {
@@ -589,7 +799,12 @@ export class Dispatcher {
       return reply(`I could not reach that wallet: ${(err as Error).message}`)
     }
     const verdict = assessPairing(probe, { allowUnbudgeted })
-    if (!verdict.ok) return reply(verdict.error)
+    if (!verdict.ok) {
+      // hold the string for one answer so "connect anyway" needs no second paste
+      if (verdict.unbudgeted)
+        this.held.set(m.userId, { kind: "nwc-unbudgeted", value: url, at: this.now().getTime() })
+      return reply(verdict.error)
+    }
     await this.deps.secrets.set(m.userId, "nwc", encryptSecret(url, this.deps.secretsKey))
     this.deps.onCredentialsChanged?.(m.userId)
     return reply(
@@ -604,12 +819,12 @@ export class Dispatcher {
     const visible = all.filter((r) => isTrustedRecipient(r, userId))
     if (!visible.length)
       return reply(
-        "No recipients yet. Add your own: /recipient add <lightning address> <name>, e.g. /recipient add give@mychurch.org My Church",
+        "No recipients yet. Add your own by telling me, e.g. “add give@mychurch.org as My Church”.",
       )
     const line = (r: Recipient) =>
       `• ${r.name} — ${r.slug} (${r.kind}${r.ownerUserId ? ", yours" : r.verified ? `, verified by ${r.verified.how}` : ""})${r.website ? ` ${r.website}` : ""}`
     return reply(
-      `You can give to:\n${visible.map(line).join("\n")}\nSay e.g. “give 1000 sats to ${visible[0]?.slug}” or “tithe 20000 sats to ${visible[0]?.slug} every sunday”. /recipient add|remove manages your own.`,
+      `You can give to:\n${visible.map(line).join("\n")}\nSay e.g. “give 1000 sats to ${visible[0]?.slug}” or “tithe 20000 sats to ${visible[0]?.slug} every sunday”. To add your own: “add give@mychurch.org as My Church”.`,
     )
   }
 
@@ -619,48 +834,17 @@ export class Dispatcher {
     args: string[],
     reply: (t: string) => Promise<void>,
   ): Promise<void> {
-    const store = this.deps.recipients
-    if (!store) return reply("Giving is not enabled on this server.")
     const [sub, ...rest] = args
-    if (sub?.toLowerCase() === "remove") {
-      const slug = rest[0]?.toLowerCase()
-      const r = slug ? await store.get(slug, userId) : null
-      if (!r || r.ownerUserId !== userId)
-        return reply("You can only remove recipients you added. /recipients lists them.")
-      await store.remove(r.slug)
-      return reply(`Removed ${r.name}. Any recurring gift to it will pause at its next run.`)
-    }
+    if (sub?.toLowerCase() === "remove")
+      return this.apply(userId, setting("recipient", "remove", rest[0] ?? ""), reply)
     if (sub?.toLowerCase() !== "add" || rest.length < 2)
       return reply(
-        "Usage: /recipient add <lightning address> <name>  ·  /recipient remove <slug>\nExample: /recipient add give@mychurch.org My Church",
+        "Tell me in plain words: “add give@mychurch.org as My Church”, or “remove my-church”.",
       )
-    const address = (rest[0] ?? "").toLowerCase()
-    const name = rest.slice(1).join(" ").trim().slice(0, 80)
-    if (!isLightningAddress(address))
-      return reply(`${address} is not a Lightning address (name@domain).`)
-    const slug = slugify(name)
-    if (!SLUG_RE.test(slug))
-      return reply("Give the recipient a name with at least two letters or digits.")
-    const existing = await store.get(slug, userId)
-    if (existing && existing.ownerUserId !== userId)
-      return reply(`“${slug}” is already a directory recipient. Pick a different name.`)
-    if (this.deps.probeAddress) {
-      const p = await this.deps.probeAddress(address)
-      if (!p.ok)
-        return reply(
-          `That address does not answer Lightning payments right now (${p.error}). Not saved.`,
-        )
-    }
-    await store.upsert({
-      slug,
-      kind: "creator",
-      name,
-      lightningAddress: address,
-      verified: null,
-      ownerUserId: userId,
-    })
-    return reply(
-      `Saved ${name} as ${slug} (private to you). Say “give 1000 sats to ${slug}” or “give 5000 sats to ${slug} every month”.`,
+    return this.apply(
+      userId,
+      setting("recipient", "add", rest[0] ?? "", rest.slice(1).join(" ")),
+      reply,
     )
   }
 
@@ -687,7 +871,7 @@ export class Dispatcher {
       )
     }
     return reply(
-      `${lines.join("\n")}\nSay e.g. “support ${active[0]?.recipientSlug} $25 a month” or “give 5000 sats to ${active[0]?.recipientSlug}”. /follow <slug> for updates.`,
+      `${lines.join("\n")}\nSay e.g. “support ${active[0]?.recipientSlug} $25 a month” or “give 5000 sats to ${active[0]?.recipientSlug}”. Say “follow ${active[0]?.slug}” for its updates.`,
     )
   }
 
@@ -744,43 +928,15 @@ export class Dispatcher {
     if (!sub) {
       return reply(
         current
-          ? `Your Lightning address is ${current.name}@${host}${current.forwardTo ? ` (forwards to ${current.forwardTo})` : " (invoices are created by your paired wallet)"}. Share it anywhere; the sats land in your wallet. /address remove to drop it.`
-          : `No address yet. Claim one with /address <name> — e.g. /address graham gives you graham@${host}, paying straight into your paired wallet.`,
+          ? `Your Lightning address is ${current.name}@${host}${current.forwardTo ? ` (forwards to ${current.forwardTo})` : " (invoices are created by your own wallet)"}. Share it anywhere; the sats land in your wallet. Say “give up my address” to drop it.`
+          : `No address yet. Tell me the name you want: “I want the address graham” gives you graham@${host}, paying straight into your own wallet.`,
       )
     }
-    if (sub.toLowerCase() === "remove") {
-      if (!current) return reply("You have no address.")
-      await store.remove(current.name)
-      return reply(`Removed ${current.name}@${host}.`)
-    }
-    if (sub.toLowerCase() === "forward") {
-      const to = rest[0]?.toLowerCase() ?? ""
-      if (!isLightningAddress(to))
-        return reply("Usage: /address forward <lightning address you already have>")
-      if (!current) return reply("Claim a name first: /address <name>")
-      if (this.deps.probeAddress) {
-        const p = await this.deps.probeAddress(to)
-        if (!p.ok) return reply(`${to} does not answer Lightning payments (${p.error}).`)
-      }
-      await store.update({ ...current, forwardTo: to, nwcSealed: undefined })
-      return reply(`${current.name}@${host} now forwards to ${to}.`)
-    }
-    const name = normalizeAddressName(sub)
-    if (!name)
-      return reply(
-        "Names are 2–32 characters: letters, digits, dot, dash, underscore. Some names are reserved.",
-      )
-    if (current)
-      return reply(
-        `You already have ${current.name}@${host}. /address remove first if you want ${name}.`,
-      )
-    if (await store.get(name)) return reply(`${name}@${host} is taken.`)
-    const blob = await this.deps.secrets.get(userId, "nwc")
-    if (!blob) return reply("Pair your wallet first (/pair): your address pays straight into it.")
-    await store.create({ name, userId, nwcSealed: blob, createdAt: this.now().toISOString() })
-    return reply(
-      `${name}@${host} is yours. Anyone can pay it from any Lightning wallet; each invoice is created by your own wallet and the sats land there. I will tell you when something arrives. Keep your wallet reachable (Alby Hub on, or Coinos).`,
-    )
+    const op = sub.toLowerCase()
+    if (op === "remove") return this.apply(userId, setting("lightning_address", "remove"), reply)
+    if (op === "forward")
+      return this.apply(userId, setting("lightning_address", "forward", rest[0] ?? ""), reply)
+    return this.apply(userId, setting("lightning_address", "claim", sub), reply)
   }
 
   /**
@@ -842,7 +998,9 @@ export class Dispatcher {
       const spent = cardSpentSince(entries, c.id, periodStart(c, now))
       return `• ${c.name} (${c.id}) — ${c.state} · ${formatSats(spent)} of ${formatSats(c.monthlyCapSats)} this month · pays ${c.scope.join(", ")} · resets ${periodEnd(c, now).slice(0, 10)}${this.deps.siteUrl ? ` · ${this.deps.siteUrl}/card/${c.id}` : ""}`
     }
-    return reply(`${cards.map(line).join("\n")}\n/cards pause <id> to freeze one instantly.`)
+    return reply(
+      `${cards.map(line).join("\n")}\nSay “pause my ${cards[0]?.name ?? "card"} card” to freeze one instantly.`,
+    )
   }
 
   /** M20: `/bills` lists the user's bills (schedules of kind bill); `/bills cancel <id>` stops one. */
@@ -880,7 +1038,7 @@ export class Dispatcher {
       }
       return `• ${b.summary} (${b.id})${next}`
     }
-    return reply(`${bills.map(line).join("\n")}\n/bills cancel <id> to stop one.`)
+    return reply(`${bills.map(line).join("\n")}\nSay “stop paying <name>” to stop one.`)
   }
 
   /** M21: the user's private note on an entry, opened with SECRETS_KEY when it was sealed. */
@@ -906,14 +1064,14 @@ export class Dispatcher {
   ): Promise<void> {
     if (!args.length)
       return reply(
-        "Usage: /note <text> — a private note on your last payment · /note <id> <text> · /note clear [id]. Notes stay in your own ledger; the payee never sees them. /notes lists them. In chat: “pay 500 sats to x@y, note: plumber deposit”.",
+        "Say “add a note to my last payment: plumber deposit”, or put it on the payment itself: “pay 500 sats to x@y, note: plumber deposit”. Notes stay in your own ledger; the payee never sees them.",
       )
     let rest = [...args]
     const clear = rest[0]?.toLowerCase() === "clear"
     if (clear) rest = rest.slice(1)
     const entryId = /^act_[0-9a-z_]+$/i.test(rest[0] ?? "") ? (rest.shift() as string) : ""
     const text = clear ? "" : rest.join(" ").trim()
-    if (!clear && !text) return reply("Usage: /note <text> · /note <id> <text> · /note clear [id]")
+    if (!clear && !text) return reply("What should the note say?")
     const now = this.now()
     const out = await handleToolCall(
       ctx,
@@ -934,12 +1092,12 @@ export class Dispatcher {
       return reply(
         entryId
           ? `No payment ${entryId} in your ledger.`
-          : "No payment to note yet. Notes attach to payments; /ledger shows them.",
+          : "No payment to note yet. Notes attach to payments; ask me for your activity to see them.",
       )
     return reply(
       r.result.cleared
         ? `Note removed from “${r.result.summary}” (${r.result.entryId}).`
-        : `Noted privately on “${r.result.summary}” (${r.result.entryId}). The payee never sees it; /notes lists your notes.`,
+        : `Noted privately on “${r.result.summary}” (${r.result.entryId}). The payee never sees it; ask me for your notes to list them.`,
     )
   }
 
@@ -952,7 +1110,7 @@ export class Dispatcher {
       .reverse()
     if (!noted.length)
       return reply(
-        "No private notes yet. Say “pay 500 sats to x@y, note: plumber deposit”, or /note <text> for your last payment. Notes stay in your own ledger; the payee never sees them.",
+        "No private notes yet. Say “pay 500 sats to x@y, note: plumber deposit”, or “add a note to my last payment: …”. Notes stay in your own ledger; the payee never sees them.",
       )
     return reply(
       noted
@@ -994,32 +1152,13 @@ export class Dispatcher {
     if (!addr) {
       return reply(
         current.length
-          ? `Cold storage: ${current.join(", ")}\nAsk me to “sweep everything above 200000 sats to cold storage” or “sweep monthly”. Remove with /cold remove <address>.`
-          : "No cold-storage address yet. Send: /cold <bitcoin address> (one from your hardware wallet). Sweeps can only go to addresses you register here.",
+          ? `Cold storage: ${current.join(", ")}\nAsk me to “sweep everything above 200000 sats to cold storage” or “sweep monthly”. To drop one, say “remove my cold storage address”.`
+          : "No cold-storage address yet. Tell me one from your hardware wallet: “my cold storage address is bc1…”. Sweeps can only go to addresses you register.",
       )
     }
-    if (addr.toLowerCase() === "remove") {
-      const target = args[1]?.trim()
-      if (!target) return reply("Usage: /cold remove <address>")
-      await this.deps.policies.set(userId, {
-        ...policy,
-        coldStorageAddresses: policy.coldStorageAddresses.filter((d) => d !== target.toLowerCase()),
-      })
-      return reply("Removed.")
-    }
-    try {
-      const parsed = await parseAddress(addr)
-      const next = {
-        ...policy,
-        coldStorageAddresses: [...new Set([...policy.coldStorageAddresses, addr.toLowerCase()])],
-      }
-      await this.deps.policies.set(userId, next)
-      return reply(
-        `Registered ${parsed.kind} address on ${parsed.network}: ${addr.slice(0, 10)}…${addr.slice(-6)}.${next.rails.onchain ? "" : " The on-chain rail is off: /budget rail onchain on"}\nEvery sweep still asks you to confirm.`,
-      )
-    } catch (err) {
-      return reply(`That is not a valid bitcoin address (${(err as Error).message}).`)
-    }
+    if (addr.toLowerCase() === "remove")
+      return this.apply(userId, setting("cold_storage", "remove", args[1] ?? ""), reply)
+    return this.apply(userId, setting("cold_storage", "add", addr), reply)
   }
 
   private async key(
@@ -1040,204 +1179,32 @@ export class Dispatcher {
         )
       }
       const nwc = await this.deps.secrets.get(m.userId, "nwc")
-      lines.push(`wallet: ${nwc ? "paired" : "not paired (/pair)"}`)
+      lines.push(`wallet: ${nwc ? "connected" : "not connected (say “connect my wallet”)"}`)
       return reply(`${lines.join("\n")}\n\n${KEY_HELP}`)
     }
     await this.redact(m)
-    if (!this.deps.secretsKey)
-      return reply("Key storage is disabled on this server (no SECRETS_KEY).")
-    if (cmd.kind === "remove") {
-      await this.deps.secrets.delete(m.userId, cmd.name)
-      this.deps.onCredentialsChanged?.(m.userId)
-      return reply(`${cmd.name} key removed. Also revoke it on their site.`)
-    }
-    await this.deps.secrets.set(m.userId, cmd.name, encryptSecret(cmd.value, this.deps.secretsKey))
-    this.deps.onCredentialsChanged?.(m.userId)
-    const railFlag = cmd.name === "strike" ? "exchange" : "goods"
-    const on = this.deps.policies.get(m.userId).then((p) => (p ?? DEFAULT_POLICY).rails[railFlag])
-    return reply(
-      `${cmd.name} key stored (${maskSecret(cmd.value)}). I deleted your message if I could; delete it yourself otherwise.${(await on) ? "" : `\nThe ${railFlag} rail is off in your limits: /budget rail ${railFlag} on`}`,
-    )
+    if (cmd.kind === "remove")
+      return this.apply(m.userId, setting("key", "remove", cmd.name), reply)
+    return this.storeKey(m.userId, cmd.name, cmd.value, reply)
   }
 }
 
-const HELP =
-  "Text me in plain words, e.g. “pay 500 sats to gm@getalby.com” or “what's my balance?”.\n/setup — limits wizard\n/pair — connect your wallet\n/key — Strike / Bitrefill keys\n/cold — cold-storage address for sweeps\n/recipients — who you can give to · /recipient add|remove\n/statement — this year's gifts as CSV\n/receive — how a church or creator gets paid through us\n/campaigns — goals you can support · /follow · /unfollow\n/shop — the store · /orders — your orders · /rewards — sats-back\n/refer — invite a friend; you both earn sats · /join <code>\n/web — your workspace on the site (limits, wallet, cards, invites)\n/invoices — bills you issued (·csv)\n/address — your name@anvard.ai, paid into your own wallet\n/bills — bills you pay in bitcoin · /bills cancel <id>\n/replace — buy back what you spend (on · off · 50% · cap $20)\n/note <text> — a private note on your last payment · /notes — list them\n/budget — show or set limits\n/kill — stop everything\n/resume — lift the kill switch\n/ledger — last actions"
+const setting = (
+  s: SettingChange["setting"],
+  op: string,
+  value = "",
+  name = "",
+): SettingChange => ({ setting: s, op, value, name })
 
-export function describePolicy(p: Policy): string {
-  const rails = Object.entries(p.rails)
-    .filter(([, on]) => on)
-    .map(([k]) => k)
-    .join(", ")
-  return [
-    `Daily cap ${formatSats(p.dailyCapSats)} · per action ${formatSats(p.perActionCapSats)} · confirm at ${formatSats(p.confirmAboveSats)}`,
-    `Rails on: ${rails || "none"}${p.killSwitch ? " · KILL SWITCH ON" : ""}`,
-    p.allowDestinations.length
-      ? `Allow: ${p.allowDestinations.join(", ")}`
-      : "Allow: anyone not denied",
-    p.denyDestinations.length ? `Deny: ${p.denyDestinations.join(", ")}` : "",
-    p.coldStorageAddresses.length ? `Cold storage: ${p.coldStorageAddresses.join(", ")}` : "",
-    p.replaceSpend?.enabled ? `Replace what you spend: ${describeReplace(p.replaceSpend)}` : "",
-    "Set with: /budget daily 50000 · /budget action 20000 · /budget confirm 5000 · /budget allow name@domain · /budget deny *.evil.example · /budget rail exchange on",
-  ]
-    .filter(Boolean)
-    .join("\n")
+/** The key-shaped token in a message that tripped `looksLikeSecret`, or null when there is not exactly one. */
+function keyToken(text: string): string | null {
+  const tokens = text.match(/[A-Za-z0-9_-]{20,}/g) ?? []
+  return tokens.length === 1 ? (tokens[0] as string) : null
 }
 
-/** `/budget daily 50000` etc. Pure, so it is unit-tested without a surface. */
-export function applyBudgetArgs(
-  p: Policy,
-  args: string[],
-): { ok: true; policy: Policy } | { ok: false; error: string } {
-  const [key, ...rest] = args
-  const n = () => {
-    const v = rest[0] ?? ""
-    if (!/^\d{1,12}$/.test(v)) return null
-    return BigInt(v)
-  }
-  switch (key?.toLowerCase()) {
-    case "daily": {
-      const v = n()
-      return v === null
-        ? { ok: false, error: "Usage: /budget daily <sats>" }
-        : { ok: true, policy: { ...p, dailyCapSats: v } }
-    }
-    case "action": {
-      const v = n()
-      return v === null
-        ? { ok: false, error: "Usage: /budget action <sats>" }
-        : { ok: true, policy: { ...p, perActionCapSats: v } }
-    }
-    case "confirm": {
-      const v = n()
-      return v === null
-        ? { ok: false, error: "Usage: /budget confirm <sats>" }
-        : { ok: true, policy: { ...p, confirmAboveSats: v } }
-    }
-    case "allow": {
-      const d = rest[0]?.toLowerCase()
-      if (!d) return { ok: false, error: "Usage: /budget allow <destination>" }
-      return {
-        ok: true,
-        policy: { ...p, allowDestinations: [...new Set([...p.allowDestinations, d])] },
-      }
-    }
-    case "unallow": {
-      const d = rest[0]?.toLowerCase()
-      return {
-        ok: true,
-        policy: { ...p, allowDestinations: p.allowDestinations.filter((x) => x !== d) },
-      }
-    }
-    case "deny": {
-      const d = rest[0]?.toLowerCase()
-      if (!d) return { ok: false, error: "Usage: /budget deny <destination>" }
-      return {
-        ok: true,
-        policy: { ...p, denyDestinations: [...new Set([...p.denyDestinations, d])] },
-      }
-    }
-    case "rail": {
-      const rail = rest[0]?.toLowerCase() as keyof Policy["rails"] | undefined
-      const on = rest[1]?.toLowerCase()
-      if (!rail || !(rail in p.rails) || (on !== "on" && on !== "off"))
-        return {
-          ok: false,
-          error: "Usage: /budget rail <wallet|exchange|goods|compute|onchain> on|off",
-        }
-      return { ok: true, policy: { ...p, rails: { ...p.rails, [rail]: on === "on" } } }
-    }
-    default:
-      return {
-        ok: false,
-        error:
-          "Usage: /budget [daily|action|confirm <sats> | allow|deny <dest> | rail <name> on|off]",
-      }
-  }
-}
+/** Three sentences. Everything else is a conversation. */
+export const HELP =
+  "Text me in plain words. Try “what's my balance?”, “pay 500 sats to gm@getalby.com” or “set my daily cap to 20,000 sats”. Say “stop everything” at any time and nothing moves until you say “resume”."
 
 export { DEFAULT_POLICY }
-
-export function describeReplace(r: NonNullable<Policy["replaceSpend"]>): string {
-  return `${r.percent}% of every spend bought back on ${r.exchange}${r.toWallet ? " and swept into your wallet" : ""} · spends under ${formatCents(r.minUsdCents)} skipped · at most ${formatCents(r.dailyCapUsdCents)} a day`
-}
-
-/**
- * `/replace` · `/replace on [percent]` · `/replace off` · `/replace cap <dollars>` · `/replace min <dollars>` ·
- * `/replace wallet on|off`. Pure. Turning it on needs an exchange key; it also switches the exchange rail on,
- * because that is what the person just asked for.
- */
-export function applyReplaceArgs(
-  p: Policy,
-  args: string[],
-  now: Date,
-  hasExchange: boolean,
-): { ok: true; policy: Policy; text: string } | { ok: false; error: string } {
-  const [key, ...rest] = args
-  const cur = p.replaceSpend
-  const usage =
-    "Usage: /replace on [percent] · /replace off · /replace cap <dollars per day> · /replace min <dollars> · /replace wallet on|off"
-  const show = (r: NonNullable<Policy["replaceSpend"]>) =>
-    r.enabled
-      ? `Replace is ON: ${describeReplace(r)}.
-/replace off to stop.`
-      : "Replace is off. /replace on buys back what you spend on your own Strike account; /replace on 50 buys back half."
-  if (!key) return { ok: true, policy: p, text: show(cur ?? replaceSetting({}, now)) }
-  const dollars = (v: string | undefined): bigint | null => {
-    const m = /^\$?(\d{1,6})(?:\.(\d{1,2}))?$/.exec(v ?? "")
-    if (!m) return null
-    return BigInt(m[1] ?? "0") * 100n + BigInt((m[2] ?? "").padEnd(2, "0"))
-  }
-  switch (key.toLowerCase()) {
-    case "on": {
-      const pct = rest[0] ? Number(rest[0].replace(/%$/, "")) : (cur?.percent ?? 100)
-      if (!Number.isInteger(pct) || pct < 1 || pct > 100)
-        return { ok: false, error: "Percent is a whole number from 1 to 100." }
-      if (!hasExchange)
-        return {
-          ok: false,
-          error:
-            "Replace buys on your own exchange account. Add a Strike key first: /key strike <key>.",
-        }
-      const r = replaceSetting(
-        { ...cur, enabled: true, percent: pct, since: now.toISOString() },
-        now,
-      )
-      const policy: Policy = { ...p, replaceSpend: r, rails: { ...p.rails, exchange: true } }
-      return {
-        ok: true,
-        policy,
-        text: `Replace is ON from now: ${describeReplace(r)}. Each buy-back goes through your limits and shows in /ledger.${p.rails.exchange ? "" : " The exchange rail is now on."}`,
-      }
-    }
-    case "off": {
-      if (!cur?.enabled) return { ok: true, policy: p, text: "Replace is already off." }
-      return {
-        ok: true,
-        policy: { ...p, replaceSpend: { ...cur, enabled: false } },
-        text: "Replace is off. Nothing already bought changes.",
-      }
-    }
-    case "cap": {
-      const c = dollars(rest[0])
-      if (c === null || c < 100n)
-        return { ok: false, error: "Cap is dollars a day, at least $1: /replace cap 20" }
-      const r = replaceSetting({ ...cur, dailyCapUsdCents: c }, now)
-      return { ok: true, policy: { ...p, replaceSpend: r }, text: show(r) }
-    }
-    case "min": {
-      const c = dollars(rest[0])
-      if (c === null) return { ok: false, error: "Minimum is dollars: /replace min 1" }
-      const r = replaceSetting({ ...cur, minUsdCents: c }, now)
-      return { ok: true, policy: { ...p, replaceSpend: r }, text: show(r) }
-    }
-    case "wallet": {
-      const v = rest[0]?.toLowerCase()
-      if (v !== "on" && v !== "off") return { ok: false, error: usage }
-      const r = replaceSetting({ ...cur, toWallet: v === "on" }, now)
-      return { ok: true, policy: { ...p, replaceSpend: r }, text: show(r) }
-    }
-    default:
-      return { ok: false, error: usage }
-  }
-}
+export { applyReplaceArgs, budgetChange, describePolicy, describeReplace } from "./desk"

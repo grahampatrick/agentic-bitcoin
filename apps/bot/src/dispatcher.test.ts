@@ -7,7 +7,7 @@ import {
 import { FakeWalletRail, InMemoryLedgerStore, readEntries } from "@agentic-bitcoin/core"
 import { POLICIES, PRICE, clockAt } from "@agentic-bitcoin/fixtures"
 import { describe, expect, it } from "vitest"
-import { Dispatcher, applyBudgetArgs, describePolicy } from "./dispatcher"
+import { Dispatcher, budgetChange, describePolicy } from "./dispatcher"
 import {
   InMemoryHistoryStore,
   InMemoryPolicyStore,
@@ -122,9 +122,11 @@ describe("dispatcher", () => {
     await surface.receive({ userId: "u", text: "/resume" })
     await surface.receive({ userId: "u", text: "/budget daily 123" })
     expect((await policies.get("u"))?.dailyCapSats).toBe(123n)
-    expect(surface.sent.at(-1)?.m.text).toContain("Daily cap 123 sats")
+    expect(surface.sent.at(-1)?.m.text).toContain("Your daily cap is now 123 sats")
+    // a daily cap below the per-payment cap brings it down too, so the policy stays coherent
+    expect((await policies.get("u"))?.perActionCapSats).toBe(123n)
     await surface.receive({ userId: "u", text: "/budget nonsense" })
-    expect(surface.sent.at(-1)?.m.text).toContain("Usage")
+    expect(surface.sent.at(-1)?.m.text).toContain("in plain words")
   })
   it("/ledger shows the window spend in sats and fiat", async () => {
     const { surface, d } = setup(21)
@@ -138,22 +140,28 @@ describe("dispatcher", () => {
 })
 
 describe("pure helpers", () => {
-  it("applyBudgetArgs", () => {
-    const p = POLICIES.open
-    expect(applyBudgetArgs(p, ["daily", "50000"])).toMatchObject({
-      ok: true,
-      policy: { dailyCapSats: 50_000n },
+  it("budgetChange maps the old /budget words onto one settings change", () => {
+    expect(budgetChange(["daily", "50000"])).toMatchObject({
+      setting: "daily_cap",
+      op: "set",
+      value: "50000",
     })
-    expect(applyBudgetArgs(p, ["daily", "-1"])).toMatchObject({ ok: false })
-    expect(applyBudgetArgs(p, ["allow", "GM@GetAlby.com"])).toMatchObject({
-      ok: true,
-      policy: { allowDestinations: ["gm@getalby.com"] },
+    expect(budgetChange(["allow", "GM@GetAlby.com"])).toMatchObject({
+      setting: "allow_destination",
+      op: "add",
     })
-    expect(applyBudgetArgs(p, ["rail", "exchange", "off"])).toMatchObject({
-      ok: true,
-      policy: { rails: { exchange: false } },
+    expect(budgetChange(["undeny", "*.evil.example"])).toMatchObject({
+      setting: "deny_destination",
+      op: "remove",
     })
-    expect(applyBudgetArgs(p, ["rail", "teleport", "on"])).toMatchObject({ ok: false })
+    expect(budgetChange(["rail", "exchange", "off"])).toMatchObject({
+      setting: "rail",
+      op: "off",
+      value: "exchange",
+    })
+    expect(budgetChange(["rail", "exchange", "sideways"])).toBeNull()
+    expect(budgetChange(["daily"])).toBeNull()
+    expect(budgetChange(["nonsense"])).toBeNull()
   })
   it("describePolicy mentions the kill switch", () => {
     expect(describePolicy({ ...POLICIES.open, killSwitch: true })).toContain("KILL SWITCH ON")

@@ -98,3 +98,46 @@ describe("sandbox end to end (scripted model, real policy/executor/ledger)", () 
     expect(t.ledger).toHaveLength(0)
   })
 })
+
+describe("sandbox: limits in plain words (M25, ADR-0029)", () => {
+  const llm = new ScriptedLlmClient()
+  const say = async (state: ReturnType<typeof initialSandbox>, text: string) =>
+    sandboxTurn(llm, state, text, now)
+
+  it("shows limits and activity without a command", async () => {
+    const a = await say(initialSandbox(), "what are my limits?")
+    expect(a.reply).toContain("Daily cap 100,000 sats")
+    expect(a.reply).not.toMatch(/(^|\s)\/[a-z]/)
+    const b = await say(a.state, "what did I spend today?")
+    expect(b.reply).toContain("Last 24h: 0 sats of 100,000 sats")
+  })
+
+  it("a lower cap applies at once; a higher one waits for a yes", async () => {
+    const lower = await say(initialSandbox(), "set my daily cap to 20,000")
+    expect(lower.reply).toBe(
+      "Done. Your daily cap is now 20,000 sats, and the per-payment cap came down with it to 20,000 sats.",
+    )
+    expect(lower.state.policy.dailyCapSats).toBe(20_000n)
+    expect(lower.pending).toBeUndefined()
+
+    const higher = await say(lower.state, "raise my daily cap to 900000")
+    expect(higher.pending?.summary).toBe("Set your daily cap to 900,000 sats (now 20,000 sats)")
+    expect(higher.state.policy.dailyCapSats).toBe(20_000n)
+    const yes = await say(higher.state, "yes")
+    expect(yes.reply).toBe("Done. Your daily cap is now 900,000 sats.")
+    expect(yes.state.policy.dailyCapSats).toBe(900_000n)
+  })
+
+  it("stop everything is instant, blocks a payment, and resume needs a yes", async () => {
+    const stop = await say(initialSandbox(), "stop everything")
+    expect(stop.state.policy.killSwitch).toBe(true)
+    const pay = await say(stop.state, "pay 500 sats to gm@getalby.com")
+    expect(pay.reply).toContain("Say “resume”")
+    expect(pay.state.walletSats).toBe(stop.state.walletSats)
+    const resume = await say(pay.state, "resume")
+    expect(resume.pending?.summary).toBe("Lift the kill switch")
+    expect(resume.state.policy.killSwitch).toBe(true)
+    const yes = await say(resume.state, "yes")
+    expect(yes.state.policy.killSwitch).toBe(false)
+  })
+})

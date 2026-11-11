@@ -543,12 +543,12 @@ const qualifyAfter = async (userId: string) => {
     const referrer = q.rewards.find((r) => r.userId === q.referral.referrerId)
     await surface.send(userId, {
       text: friend
-        ? `Your first payment counted: ${formatSats(friend.amountSats)} of referral reward is coming to your wallet (paid automatically; /rewards).`
+        ? `Your first payment counted: ${formatSats(friend.amountSats)} of referral reward is coming to your wallet (paid automatically; ask me about your rewards).`
         : "Your first payment counted toward your friend's referral.",
     })
     if (referrer)
       await surface.send(q.referral.referrerId, {
-        text: `A friend you invited made their first payment: ${formatSats(referrer.amountSats)} is coming to your wallet (paid automatically; /refer for your tally).`,
+        text: `A friend you invited made their first payment: ${formatSats(referrer.amountSats)} is coming to your wallet (paid automatically; ask me about your invites for the tally).`,
       })
   } catch (err) {
     console.error("[referrals]", err)

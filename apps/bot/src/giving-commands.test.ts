@@ -257,7 +257,7 @@ describe("/address (M15)", () => {
     await withPolicy(s, "u2")
     await s.d.start()
     await s.surface.receive({ userId: "u1", text: "/address graham" })
-    expect(s.last()).toContain("Pair your wallet first")
+    expect(s.last()).toContain("Connect your wallet first")
     await s.secrets.set("u1", "nwc", "sealed-nwc-blob")
     await s.surface.receive({ userId: "u1", text: "/address Admin" })
     expect(s.last()).toContain("reserved")

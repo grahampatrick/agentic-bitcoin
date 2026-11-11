@@ -96,7 +96,7 @@ describe("private transaction notes (M21, ADR-0024)", () => {
   it("/note with nothing to note explains itself", async () => {
     const { d, say } = setup(null)
     await d.start()
-    expect(await say("/note")).toMatch(/^Usage: \/note/)
+    expect(await say("/note")).toMatch(/^Say “add a note to my last payment/)
     expect(await say("/note hello")).toMatch(/^No payment to note yet/)
   })
 })

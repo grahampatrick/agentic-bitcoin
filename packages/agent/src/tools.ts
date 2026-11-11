@@ -10,10 +10,15 @@ import {
   type Action,
   type Campaign,
   type Cents,
+  DESK_SETTINGS,
+  DESK_VIEWS,
+  type DeskSetting,
+  type DeskView,
   GIVE_PURPOSES,
   type GivePurpose,
   type PriceSnapshot,
   type Recipient,
+  SETTING_OPS,
   type Sats,
   centsToSats,
   satsToCents,
@@ -223,7 +228,7 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: "sweep_to_cold",
     description:
-      "Move on-chain balance above keep_sats to the user's registered cold-storage address (set with /cold). Always requires confirmation.",
+      "Move on-chain balance above keep_sats to the user's registered cold-storage address (see show limits; registering one is change_setting cold_storage). Always requires confirmation.",
     input_schema: {
       type: "object",
       properties: {
@@ -541,6 +546,38 @@ export const TOOLS: readonly ToolSpec[] = [
       type: "object",
       properties: { invoice_id: str("The invoice id") },
       required: ["invoice_id"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "show",
+    description:
+      "Read one of the user's own views. Read-only; moves nothing. activity = recent actions and what was spent in the last 24 hours against the daily cap; limits = caps, confirm threshold, what is switched on, allow and block lists, cold storage, kill switch; connections = whether a wallet is connected and which keys are stored (never the secrets); orders = store orders; notes = private notes on payments; giving_statement = a year's gifts as CSV (arg = the year, or empty for this year); invoices_csv = every issued invoice as CSV; lightning_address = their name@ address; campaigns = campaigns they can support or follow; replace = the buy-back-what-you-spend rule; workspace_link = a private link to their account on the web; shop = where the store is; receive = how a church, missionary or creator gets paid; connect_wallet, connect_strike, connect_bitrefill = how to connect, when the user wants to connect or pair something. Some views are sent to the user directly instead of to you; then say only that it was sent.",
+    input_schema: {
+      type: "object",
+      properties: {
+        view: { type: "string", description: "Which view to read", enum: [...DESK_VIEWS] },
+        arg: str("Only for giving_statement: the four-digit year. Otherwise an empty string"),
+      },
+      required: ["view", "arg"],
+      additionalProperties: false,
+    },
+    strict: true,
+  },
+  {
+    name: "change_setting",
+    description:
+      "Propose one change to the user's own settings, exactly as they asked for it. A change that stops or narrows (kill switch on, something switched off, a lower cap, a blocked destination) applies at once. Anything else returns awaiting_confirmation and only the user's own yes applies it: you cannot confirm a settings change. setting / op / value / name: daily_cap, per_action_cap, confirm_above: op set, value whole sats (confirm_above 0 = always ask). allow_destination, deny_destination: op add or remove, value a Lightning address, *@domain or *.host. rail: op on or off, value wallet, exchange, goods, compute or onchain (exchange = buying bitcoin, goods = shopping, compute = paid APIs, onchain = cold-storage sweeps). kill_switch: op on or off. replace (buy back what they spend): op on with value the percent or empty for all; op off; op cap with value dollars a day; op min with value dollars; op wallet with value on or off. cold_storage: op add or remove, value the bitcoin address exactly as the user gave it. recipient: op add with value their Lightning address and name the display name; op remove with value the slug. campaign_updates: op follow or unfollow, value the campaign slug. lightning_address: op claim with value the name; op forward with value a Lightning address; op remove. wallet: op disconnect. key: op remove, value strike or bitrefill. referral_code: op join, value the friend's code. workspace_links: op revoke.",
+    input_schema: {
+      type: "object",
+      properties: {
+        setting: { type: "string", description: "Which setting", enum: [...DESK_SETTINGS] },
+        op: str("The operation for that setting, e.g. set, add, remove, on, off"),
+        value: str("The value as described for the setting, or an empty string"),
+        name: str("Only for recipient add: the display name. Otherwise an empty string"),
+      },
+      required: ["setting", "op", "value", "name"],
       additionalProperties: false,
     },
     strict: true,
@@ -997,6 +1034,35 @@ export function toolToAction(name: string, rawInput: unknown, ctx: ToolContext):
         privateNote: text,
         entryId: String(input.entry_id ?? "").trim() || undefined,
         match: String(input.match ?? "").trim() || undefined,
+      }
+    }
+    case "show": {
+      const view = String(input.view ?? "") as DeskView
+      if (!DESK_VIEWS.includes(view)) throw new ToolInputError("show: unknown view")
+      return { kind: "show", ...base, view, arg: String(input.arg ?? "").trim() || undefined }
+    }
+    case "change_setting": {
+      const setting = String(input.setting ?? "") as DeskSetting
+      if (!DESK_SETTINGS.includes(setting))
+        throw new ToolInputError("change_setting: unknown setting")
+      const op = String(input.op ?? "")
+        .trim()
+        .toLowerCase()
+      if (!SETTING_OPS[setting].includes(op))
+        throw new ToolInputError(
+          `change_setting: ${setting} takes op ${SETTING_OPS[setting].join(" or ")}`,
+        )
+      return {
+        kind: "change_setting",
+        ...base,
+        setting,
+        op,
+        value: String(input.value ?? "")
+          .trim()
+          .slice(0, 200),
+        name: String(input.name ?? "")
+          .trim()
+          .slice(0, 80),
       }
     }
     case "confirm_action":

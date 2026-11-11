@@ -13,11 +13,13 @@ import {
   type CardContext,
   type Confirmation,
   type ContributionSink,
+  type Desk,
   type ExecuteResult,
   type InvoiceContext,
   type LedgerStore,
   type Policy,
   type PriceSnapshot,
+  RAIL_LABEL,
   type Rails,
   type Recipient,
   type RecipientReader,
@@ -87,6 +89,8 @@ export interface UserContext {
   cards?: CardContext
   /** M22: the referral programme. */
   referrals?: ReferralContext
+  /** M25: the user's views and settings (ADR-0029). Without it, show and change_setting report "not available". */
+  desk?: Desk
   payLinks?: {
     resolve(
       token: string,
@@ -132,7 +136,7 @@ export async function runTurn(
   history: LlmMessage[],
 ): Promise<TurnResult> {
   const now = deps.now ?? (() => new Date())
-  const ctx = await deps.resolveContext(userId)
+  let ctx = await deps.resolveContext(userId)
   const price = await deps.price()
   const messages: LlmMessage[] = [...history, { role: "user", content: text }]
   const toolCalls: TurnResult["toolCalls"] = []
@@ -171,6 +175,9 @@ export async function runTurn(
       toolCalls.push({ name: use.name, status: r.status })
       if ("actionHash" in r) pending = { actionHash: r.actionHash, summary: r.summary }
       if (r.deliverToUser) deliveries.push(r.deliverToUser)
+      // A setting that applied changes the policy: the rest of this turn must run under the new one.
+      if (use.name === "change_setting" && r.status === "succeeded")
+        ctx = await deps.resolveContext(userId)
       results.push({
         type: "tool_result",
         tool_use_id: use.id,
@@ -205,8 +212,16 @@ type ToolOutcome =
       content: string
       isError: false
       deliverToUser?: undefined
+      userText?: undefined
     }
-  | { status: string; content: string; isError: boolean; deliverToUser?: string }
+  | {
+      status: string
+      content: string
+      isError: boolean
+      deliverToUser?: string
+      /** M25: what a settings change said, in its own words, for a surface that confirmed it. */
+      userText?: string
+    }
 
 /** Execute one tool call through policy; the result is what the model sees. */
 export async function handleToolCall(
@@ -277,11 +292,34 @@ export async function handleToolCall(
       typeof (input as { action_hash?: unknown })?.action_hash === "string"
         ? (input as { action_hash: string }).action_hash
         : ""
+    // ADR-0029: a settings change is the fence itself, so the model can propose one and never approve one.
+    const parked = hash ? await ctx.pending.get(ctx.userId, hash) : null
+    if (parked?.kind === "change_setting")
+      return {
+        status: "needs_user_confirmation",
+        content: toToolJson({
+          status: "needs_user_confirmation",
+          error:
+            "A settings change can only be approved by the user replying yes themselves. Ask them to reply yes or no, and stop.",
+        }),
+        isError: true,
+      }
     return confirmPending(ctx, hash, {
       confirmedBy: `${ctx.userId} (via model)`,
       price: opts.price,
       now: opts.now,
     })
+  }
+
+  // A change that cannot be made is refused before anyone is asked to approve it.
+  if (action.kind === "change_setting" && ctx.desk) {
+    const why = await ctx.desk.check(action)
+    if (why)
+      return {
+        status: "invalid_input",
+        content: toToolJson({ status: "invalid_input", error: why }),
+        isError: true,
+      }
   }
 
   const result = await execute({
@@ -302,6 +340,7 @@ export async function handleToolCall(
     invoices: ctx.invoices,
     cards: ctx.cards,
     referrals: ctx.referrals,
+    desk: ctx.desk,
     now: opts.now,
     context: { price: opts.price },
   })
@@ -348,6 +387,7 @@ export async function confirmPending(
     invoices: ctx.invoices,
     cards: ctx.cards,
     referrals: ctx.referrals,
+    desk: ctx.desk,
     now: opts.now,
     context: { price: opts.price },
     confirmation,
@@ -374,7 +414,9 @@ async function outcomeOf(
           action_hash: result.decision.actionHash,
           entry_id: result.id,
           instruction:
-            "Relay the summary to the user verbatim and ask them to reply yes or no. Do not call confirm_action until they have said yes.",
+            action.kind === "change_setting"
+              ? "Relay the summary to the user verbatim and ask them to reply yes or no. Only their own reply applies it: never call confirm_action for a settings change."
+              : "Relay the summary to the user verbatim and ask them to reply yes or no. Do not call confirm_action until they have said yes.",
         }),
         isError: false,
       }
@@ -383,14 +425,16 @@ async function outcomeOf(
       // A switched-off rail is the user's own setting: tell them the exact command, not just the reason.
       const hint =
         result.decision.reason === "RAIL_DISABLED"
-          ? `The ${railOf(action)} rail is off in your limits. Turn it on with: /budget rail ${railOf(action)} on`
-          : result.decision.reason === "CARD_MONTHLY_CAP"
-            ? "This spend landed on one of the user's virtual cards and would exceed its monthly limit. Say which card and what is left; the user can raise it (update_card set_limit) or wait for the reset."
-            : result.decision.reason === "CARD_PAUSED"
-              ? "The matching virtual card is paused. The user can resume it (update_card resume) or say /cards."
-              : result.decision.reason === "CARD_PER_ACTION_CAP"
-                ? "The matching virtual card caps a single spend below this amount."
-                : undefined
+          ? `${RAIL_LABEL[railOf(action)]} is switched off in your limits. Say “turn on ${RAIL_LABEL[railOf(action)].toLowerCase()}” and confirm with a yes to switch it on.`
+          : result.decision.reason === "KILL_SWITCH"
+            ? "Everything is stopped: your kill switch is on. Say “resume” and confirm with a yes to lift it."
+            : result.decision.reason === "CARD_MONTHLY_CAP"
+              ? "This spend landed on one of the user's virtual cards and would exceed its monthly limit. Say which card and what is left; the user can raise it (update_card set_limit) or wait for the reset."
+              : result.decision.reason === "CARD_PAUSED"
+                ? "The matching virtual card is paused. The user can resume it (update_card resume)."
+                : result.decision.reason === "CARD_PER_ACTION_CAP"
+                  ? "The matching virtual card caps a single spend below this amount."
+                  : undefined
       return {
         status: "denied",
         content: toToolJson({
@@ -412,12 +456,19 @@ async function outcomeOf(
       const order = (
         result.result as { order?: { state?: string; redemption?: string } } | undefined
       )?.order
+      // M25: a view may carry text for the human only (a bearer link, a CSV); it never reaches the model.
+      const direct = (result.result as { direct?: unknown } | undefined)?.direct
       const deliverToUser =
         order?.state === "delivered" && order.redemption
           ? `Your purchase is delivered. ${order.redemption}\nTreat this like cash: store it safely, redeem it soon, do not share it.`
-          : undefined
+          : typeof direct === "string" && direct
+            ? direct
+            : undefined
+      const changed = (result.result as { text?: unknown } | undefined)?.text
       return {
         deliverToUser,
+        userText:
+          action.kind === "change_setting" && typeof changed === "string" ? changed : undefined,
         status: "succeeded",
         content: toToolJson({
           status: "succeeded",
@@ -438,6 +489,10 @@ function sanitize(result: unknown): unknown {
   const r = { ...(result as Record<string, unknown>) }
   if (typeof r.preimage === "string") r.preimage = `${r.preimage.slice(0, 8)}…`
   if (typeof r.body === "string") r.body = quoteUntrusted(r.body)
+  // M25: view text carries names, titles and notes written by other people: data, never instructions.
+  if (typeof r.text === "string") r.text = quoteUntrusted(r.text, 6000)
+  if (typeof r.direct === "string")
+    r.direct = "[sent to the user directly, not shown here; say only that you sent it]"
   if (Array.isArray(r.invoices)) {
     r.invoices = r.invoices.map((x) => {
       const o = { ...(x as Record<string, unknown>) }

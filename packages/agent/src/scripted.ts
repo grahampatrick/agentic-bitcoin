@@ -78,6 +78,39 @@ export function intentOf(text: string): { name: string; input: Record<string, un
   if (/\b(balance|how (much|many) (sats|do i have))\b/.test(low))
     return { name: "get_balance", input: {} }
 
+  // M25: views and settings in plain words (ADR-0029)
+  const setting = (s: string, op: string, value = "") => ({
+    name: "change_setting",
+    input: { setting: s, op, value, name: "" },
+  })
+  if (/^(stop everything|freeze( everything)?|kill( switch)?|halt)[.!]*$/.test(low))
+    return setting("kill_switch", "on")
+  if (/^(resume|unfreeze|start again|lift the kill switch)[.!]*$/.test(low))
+    return setting("kill_switch", "off")
+  const cap =
+    /\b(?:set|raise|lower|change|make)\s+my\s+(daily|per[- ]?(?:payment|action))\s+(?:cap|limit)\s+(?:to\s+)?([\d,_]+)/i.exec(
+      t,
+    )
+  if (cap)
+    return setting(
+      /^daily$/i.test(cap[1] ?? "") ? "daily_cap" : "per_action_cap",
+      "set",
+      String(num(cap[2] ?? "0")),
+    )
+  const ask = /\bask me (?:first )?(?:above|over|before anything over)\s+([\d,_]+)/i.exec(t)
+  if (ask) return setting("confirm_above", "set", String(num(ask[1] ?? "0")))
+  if (/\balways ask( me)?( first)?\b/.test(low)) return setting("confirm_above", "set", "0")
+  const block = /^(?:block|never pay)\s+(\S+)$/i.exec(t)
+  if (block) return setting("deny_destination", "add", (block[1] ?? "").toLowerCase())
+  if (/\b(my|what are my|show( me)? my)\s+limits\b|\bis the kill switch on\b/.test(low))
+    return { name: "show", input: { view: "limits", arg: "" } }
+  if (
+    /\b(my|show( me)? my)\s+(activity|history|ledger)\b|\bwhat did i spend\b|\bwhat have i spent\b/.test(
+      low,
+    )
+  )
+    return { name: "show", input: { view: "activity", arg: "" } }
+
   // M20: "pay my rent, $450 to landlord@example.com on the 1st" / "pay 20,000 sats to x@y every month on the 15th, ask me first"
   const bill =
     /^(?:pay|set\s+up|schedule)\s+(?:my\s+)?(?:bill\s+(?:for\s+)?)?(.+?)[,:]?\s+(?:\$\s?([\d.,_]+)|([\d,_]+)\s*sats?)\s+to\s+(\S+@\S+?)\s+(?:every\s+month\s+)?on\s+the\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(?:of\s+)?(?:each|every)\s+month)?(?:[,.]?\s*(ask\s+me\s+first|remind\s+me))?\s*$/i.exec(
@@ -489,12 +522,18 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
   if (status === "denied")
     return r.hint
       ? `I can't do that: ${String(r.hint)}`
-      : `I can't do that: ${String(r.reason).replace(/_/g, " ").toLowerCase()} (${r.summary}). Your limits are set outside this chat with /budget.`
+      : `I can't do that: ${String(r.reason).replace(/_/g, " ").toLowerCase()} (${r.summary}). Your limits are yours to change: tell me the new limit and confirm it.`
   if (status === "invalid_input") return `I couldn't do that: ${r.error}.`
   if (status === "failed") return `That didn't go through: ${r.error}.`
   if (status === "no_pending_action") return "There is nothing waiting for your approval."
   const result = (r.result ?? {}) as Record<string, unknown>
+  // the text arrives wrapped as data; the canned model only unwraps what the desk itself wrote
+  const plain = (v: unknown) => String(v ?? "").replace(/<\/?untrusted>/g, "")
   switch (name) {
+    case "show":
+      return plain(result.text)
+    case "change_setting":
+      return `Done. ${plain(result.text)}`
     case "get_balance":
       return `Your wallet holds ${Number(result.sats).toLocaleString("en-US")} sats.`
     case "pay_lightning_address":
@@ -558,7 +597,7 @@ export function replyFor(name: string, r: Record<string, unknown>): string {
       const strip = (s: string) => s.replace(/<\/?untrusted>/g, "")
       return rs.length
         ? `You can give to: ${rs.map((x) => `${strip(x.name)} (${x.slug}, ${x.kind}${x.verified ? ", verified" : ""})${x.campaigns?.length ? ` — campaign: ${x.campaigns.map((c) => `${strip(c.title)} [${c.slug}], ${c.goal}`).join("; ")}` : ""}`).join("; ")}. Say e.g. “give 1000 sats to ${rs[0]?.slug}”.`
-        : "No recipient matched. Add your own with /recipient add <name> <lightning address>."
+        : "No recipient matched. Add your own: “add give@mychurch.org as My Church”."
     }
     case "list_schedules": {
       const ss = (result.schedules ?? []) as { id: string; summary: string; active: boolean }[]
