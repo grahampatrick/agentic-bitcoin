@@ -1,7 +1,7 @@
 import { LivePrice } from "@/components/LivePrice"
 import { ReactionIcon } from "@/components/ReactionIcon"
 import { ReactionTracker } from "@/components/ReactionTracker"
-import { LegalLinks, SiteHeader } from "@/components/SiteFrame"
+import { LegalLinks } from "@/components/SiteFrame"
 import { Chevron } from "@/components/WaitlistForm"
 import { COPY, TASKS } from "@/lib/copy"
 import { type PriceQuote, getPrice } from "@/lib/price/feed"
@@ -31,7 +31,6 @@ export default async function Home() {
           alt="A painted valley: a pale twin-spired citadel below a mountain."
         />
       </div>
-      <SiteHeader />
       <main className="home">
         <div className="home__wrapper">
           <div className="home__intro">
