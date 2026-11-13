@@ -23,6 +23,14 @@ export default async function Home() {
 
   return (
     <>
+      <div className="home__vale">
+        <img
+          src="/anvard-vale.jpg"
+          width={1400}
+          height={349}
+          alt="A painted valley: a pale twin-spired citadel below a mountain."
+        />
+      </div>
       <SiteHeader />
       <main className="home">
         <div className="home__wrapper">
@@ -77,14 +85,6 @@ export default async function Home() {
               </a>
             </p>
           </div>
-        </div>
-        <div className="home__vale">
-          <img
-            src="/anvard-vale.jpg"
-            width={1400}
-            height={349}
-            alt="A painted valley: a pale twin-spired citadel below a mountain."
-          />
         </div>
         <LegalLinks />
       </main>

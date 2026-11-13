@@ -147,17 +147,19 @@
   border-bottom: 1px solid currentColor;
 }
 
-/* The vale: a painted landscape across the foot of the page, its top edge dissolving into the paper. */
+/* The vale: a painted landscape across the head of the page, its lower edge dissolving into the paper. */
 .marketing-site:has(.home) {
   overflow-x: clip;
 }
 .home__vale {
+  flex-shrink: 0;
   width: 100vw;
+  margin-top: calc(-1 * var(--space-reg));
   margin-left: calc(50% - 50vw);
   aspect-ratio: 1400 / 349;
   min-height: 12rem;
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%);
-  mask-image: linear-gradient(to bottom, transparent 0, #000 16%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 78%, transparent 100%);
 }
 .marketing-site .home__vale img {
   display: block;
